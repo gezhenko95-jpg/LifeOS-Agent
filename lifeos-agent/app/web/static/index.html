@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LifeOS Agent</title>
+<style>
+  :root {
+    --bg: #f5f5f4;
+    --card-bg: #ffffff;
+    --text: #1c1c1c;
+    --muted: #6b6b6b;
+    --border: #e2e2e0;
+    --accent: #3a6df0;
+    --accent-text: #ffffff;
+    --danger: #d64545;
+    --high: #d64545;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17181a;
+      --card-bg: #212226;
+      --text: #eceef0;
+      --muted: #9a9ea4;
+      --border: #33353a;
+      --accent: #6d93ff;
+      --accent-text: #0b0d10;
+      --danger: #ff6b6b;
+      --high: #ff6b6b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    padding: 24px;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); margin: 0 0 20px; font-size: 0.9rem; }
+  .id-bar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .id-bar span { color: var(--muted); font-size: 0.85rem; }
+  input, select {
+    background: var(--card-bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.9rem;
+  }
+  button {
+    background: var(--accent);
+    color: var(--accent-text);
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+  button.secondary {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  button.danger {
+    background: transparent;
+    color: var(--danger);
+    border: 1px solid var(--danger);
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .card h2 { margin: 0 0 12px; font-size: 1.05rem; }
+  form.add-form {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  form.add-form input[type="text"] { flex: 1; min-width: 120px; }
+  ul.item-list { list-style: none; margin: 0; padding: 0; }
+  ul.item-list li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  ul.item-list li:last-child { border-bottom: none; }
+  .item-title { flex: 1; min-width: 120px; }
+  .item-title.high { color: var(--high); font-weight: 600; }
+  .meta { color: var(--muted); font-size: 0.8rem; }
+  .empty { color: var(--muted); font-size: 0.85rem; padding: 8px 0; }
+  .progress-bar {
+    width: 60px;
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+    display: inline-block;
+  }
+  .progress-bar > span {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+  }
+</style>
+</head>
+<body>
+
+<h1>LifeOS Agent</h1>
+<p class="subtitle">Простейший веб-интерфейс — использует тот же REST API, что и Telegram-бот.</p>
+
+<div class="id-bar">
+  <span>Telegram ID:</span>
+  <input id="userIdInput" type="text" placeholder="напр. 414825951" />
+  <button id="saveUserId" class="secondary">Сохранить</button>
+  <span id="userIdStatus"></span>
+</div>
+
+<div class="grid">
+
+  <section class="card">
+    <h2>Задачи</h2>
+    <form class="add-form" id="taskForm">
+      <input type="text" id="taskTitle" placeholder="Название задачи" required />
+      <select id="taskPriority">
+        <option value="normal">обычный</option>
+        <option value="high">важно</option>
+        <option value="low">неважно</option>
+      </select>
+      <button type="submit">Добавить</button>
+    </form>
+    <ul class="item-list" id="taskList"></ul>
+  </section>
+
+  <section class="card">
+    <h2>Привычки</h2>
+    <form class="add-form" id="habitForm">
+      <input type="text" id="habitTitle" placeholder="Название привычки" required />
+      <button type="submit">Добавить</button>
+    </form>
+    <ul class="item-list" id="habitList"></ul>
+  </section>
+
+  <section class="card">
+    <h2>Цели</h2>
+    <form class="add-form" id="goalForm">
+      <input type="text" id="goalTitle" placeholder="Название цели" required />
+      <button type="submit">Добавить</button>
+    </form>
+    <ul class="item-list" id="goalList"></ul>
+  </section>
+
+</div>
+
+<script>
+const STORAGE_KEY = "lifeos_telegram_user_id";
+
+function getUserId() {
+  return localStorage.getItem(STORAGE_KEY) || "";
+}
+
+function requireUserId() {
+  const id = getUserId();
+  if (!id) {
+    alert("Сначала впишите и сохраните Telegram ID сверху.");
+    throw new Error("no user id");
+  }
+  return id;
+}
+
+async function api(path, options) {
+  const response = await fetch(path, options);
+  if (!response.ok && response.status !== 204) {
+    const body = await response.text();
+    throw new Error(`${response.status}: ${body}`);
+  }
+  return response.status === 204 ? null : response.json();
+}
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+function formatDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+// ---- Tasks ----
+
+async function loadTasks() {
+  const id = getUserId();
+  const list = document.getElementById("taskList");
+  if (!id) { list.innerHTML = ""; return; }
+  const tasks = await api(`/tasks?telegram_user_id=${encodeURIComponent(id)}`);
+  if (!tasks.length) {
+    list.innerHTML = '<li class="empty">Активных задач нет.</li>';
+    return;
+  }
+  list.innerHTML = tasks.map((task) => `
+    <li>
+      <span class="item-title ${task.priority === "high" ? "high" : ""}">
+        ${task.priority === "high" ? "❗ " : ""}${escapeHtml(task.title)}
+      </span>
+      <span class="meta">${formatDate(task.due_date)}</span>
+      <button class="secondary" data-action="complete-task" data-id="${task.id}">✓</button>
+      <button class="danger" data-action="delete-task" data-id="${task.id}">✕</button>
+    </li>
+  `).join("");
+}
+
+document.getElementById("taskForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = requireUserId();
+  const title = document.getElementById("taskTitle").value.trim();
+  const priority = document.getElementById("taskPriority").value;
+  if (!title) return;
+  await api("/tasks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ telegram_user_id: Number(id), title, priority }),
+  });
+  document.getElementById("taskTitle").value = "";
+  await loadTasks();
+});
+
+document.getElementById("taskList").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  const taskId = btn.dataset.id;
+  if (btn.dataset.action === "complete-task") {
+    await api(`/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "completed" }),
+    });
+  } else if (btn.dataset.action === "delete-task") {
+    await api(`/tasks/${taskId}`, { method: "DELETE" });
+  }
+  await loadTasks();
+});
+
+// ---- Habits ----
+
+async function loadHabits() {
+  const id = getUserId();
+  const list = document.getElementById("habitList");
+  if (!id) { list.innerHTML = ""; return; }
+  const habits = await api(`/habits?telegram_user_id=${encodeURIComponent(id)}`);
+  if (!habits.length) {
+    list.innerHTML = '<li class="empty">Активных привычек нет.</li>';
+    return;
+  }
+  list.innerHTML = habits.map((habit) => `
+    <li>
+      <span class="item-title">${escapeHtml(habit.title)}</span>
+      <span class="meta">${habit.streak > 0 ? "🔥 " + habit.streak : ""}</span>
+      <button class="secondary" data-action="complete-habit" data-id="${habit.id}">Готово</button>
+      <button class="danger" data-action="delete-habit" data-id="${habit.id}">✕</button>
+    </li>
+  `).join("");
+}
+
+document.getElementById("habitForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = requireUserId();
+  const title = document.getElementById("habitTitle").value.trim();
+  if (!title) return;
+  await api("/habits", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ telegram_user_id: Number(id), title }),
+  });
+  document.getElementById("habitTitle").value = "";
+  await loadHabits();
+});
+
+document.getElementById("habitList").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  const habitId = btn.dataset.id;
+  if (btn.dataset.action === "complete-habit") {
+    await api(`/habits/${habitId}/complete`, { method: "POST" });
+  } else if (btn.dataset.action === "delete-habit") {
+    await api(`/habits/${habitId}`, { method: "DELETE" });
+  }
+  await loadHabits();
+});
+
+// ---- Goals ----
+
+async function loadGoals() {
+  const id = getUserId();
+  const list = document.getElementById("goalList");
+  if (!id) { list.innerHTML = ""; return; }
+  const goals = await api(`/goals?telegram_user_id=${encodeURIComponent(id)}`);
+  if (!goals.length) {
+    list.innerHTML = '<li class="empty">Активных целей нет.</li>';
+    return;
+  }
+  list.innerHTML = goals.map((goal) => `
+    <li>
+      <span class="item-title">${escapeHtml(goal.title)}</span>
+      <span class="progress-bar"><span style="width:${goal.progress}%"></span></span>
+      <span class="meta">${goal.progress}%</span>
+      <input type="number" min="0" max="100" step="5" value="${goal.progress}"
+             style="width:56px" data-action="progress-input" data-id="${goal.id}" />
+      <button class="secondary" data-action="save-progress" data-id="${goal.id}">✓</button>
+      <button class="danger" data-action="delete-goal" data-id="${goal.id}">✕</button>
+    </li>
+  `).join("");
+}
+
+document.getElementById("goalForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = requireUserId();
+  const title = document.getElementById("goalTitle").value.trim();
+  if (!title) return;
+  await api("/goals", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ telegram_user_id: Number(id), title }),
+  });
+  document.getElementById("goalTitle").value = "";
+  await loadGoals();
+});
+
+document.getElementById("goalList").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  const goalId = btn.dataset.id;
+  if (btn.dataset.action === "save-progress") {
+    const input = document.querySelector(`input[data-action="progress-input"][data-id="${goalId}"]`);
+    await api(`/goals/${goalId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ progress: Number(input.value) }),
+    });
+    await loadGoals();
+  } else if (btn.dataset.action === "delete-goal") {
+    await api(`/goals/${goalId}`, { method: "DELETE" });
+    await loadGoals();
+  }
+});
+
+// ---- User id + init ----
+
+function refreshUserIdStatus() {
+  const id = getUserId();
+  document.getElementById("userIdStatus").textContent = id ? `сохранён: ${id}` : "не задан";
+  document.getElementById("userIdInput").value = id;
+}
+
+document.getElementById("saveUserId").addEventListener("click", async () => {
+  const value = document.getElementById("userIdInput").value.trim();
+  if (!value) return;
+  localStorage.setItem(STORAGE_KEY, value);
+  refreshUserIdStatus();
+  await loadAll();
+});
+
+async function loadAll() {
+  await Promise.all([loadTasks(), loadHabits(), loadGoals()]);
+}
+
+refreshUserIdStatus();
+loadAll();
+</script>
+</body>
+</html>

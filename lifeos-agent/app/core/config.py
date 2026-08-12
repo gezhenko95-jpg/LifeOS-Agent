@@ -1,0 +1,54 @@
+"""
+Конфигурация приложения LifeOS Agent
+"""
+
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    app_name: str = "LifeOS Agent"
+    app_version: str = "0.1.0"
+    environment: str = "development"
+
+    host: str = "0.0.0.0"
+    port: int = 8000
+
+    # Database
+    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/lifeos"
+
+    # Telegram
+    telegram_bot_token: str = ""
+
+    # Владелец системы (проект single-user, см. PROJECT.md).
+    # 0 = утренний брифинг не отправляется (Telegram ID не задан).
+    owner_telegram_user_id: int = 0
+
+    # Утренний брифинг (см. flows/001-morning-briefing.md)
+    morning_briefing_enabled: bool = True
+    morning_briefing_hour: int = 8
+    morning_briefing_minute: int = 0
+
+    # Вечерняя рефлексия (см. flows/005-evening-reflection.md)
+    evening_reflection_enabled: bool = True
+    evening_reflection_hour: int = 21
+    evening_reflection_minute: int = 0
+
+    # Напоминания о задачах (специфичный due_date, а не ежедневное сообщение).
+    task_reminders_enabled: bool = True
+    task_reminders_interval_seconds: int = 60
+
+    # AI Service (OpenRouter) — фолбэк для Conversation Engine,
+    # см. specs/003-conversation.md. Пусто = фолбэк выключен.
+    openrouter_api_key: str = ""
+    openrouter_model: str = "openai/gpt-4o-mini"
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+
+    model_config = SettingsConfigDict(env_file=".env")
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """Получение настроек"""
+    return Settings()

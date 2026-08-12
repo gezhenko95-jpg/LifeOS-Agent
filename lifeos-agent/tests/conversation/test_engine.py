@@ -1,0 +1,304 @@
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
+
+from app.conversation.engine import ConversationEngine
+
+
+@pytest.fixture
+def task_service():
+    return AsyncMock()
+
+
+@pytest.fixture
+def habit_service():
+    return AsyncMock()
+
+
+@pytest.fixture
+def memory_service():
+    return AsyncMock()
+
+
+async def test_add_task_without_date(task_service, habit_service, memory_service):
+    task_service.create_task.return_value = SimpleNamespace(
+        title="Купить молоко", due_date=None, priority="normal"
+    )
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Купить молоко")
+
+    assert "Купить молоко" in reply
+    assert "❗" not in reply
+    task_service.create_task.assert_awaited_once_with(
+        1, "Купить молоко", None, "normal"
+    )
+
+
+async def test_add_task_with_date_shown_in_reply(
+    task_service, habit_service, memory_service
+):
+    from datetime import datetime
+
+    due = datetime(2026, 8, 13, 9, 0)
+    task_service.create_task.return_value = SimpleNamespace(
+        title="Купить молоко", due_date=due, priority="normal"
+    )
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Завтра купить молоко")
+
+    assert "13.08.2026" in reply
+
+
+async def test_add_task_with_high_priority_marker(
+    task_service, habit_service, memory_service
+):
+    task_service.create_task.return_value = SimpleNamespace(
+        title="Позвонить в банк", due_date=None, priority="high"
+    )
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Важно позвонить в банк")
+
+    assert "❗" in reply
+    task_service.create_task.assert_awaited_once_with(
+        1, "позвонить в банк", None, "high"
+    )
+
+
+async def test_add_task_empty_title_does_not_call_service(
+    task_service, habit_service, memory_service
+):
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Завтра")
+
+    task_service.create_task.assert_not_awaited()
+    assert "Не понял" in reply
+
+
+async def test_list_tasks_empty(task_service, habit_service, memory_service):
+    task_service.list_active_tasks.return_value = []
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "покажи задачи")
+
+    assert reply == "Активных задач нет."
+
+
+async def test_list_tasks_with_items(task_service, habit_service, memory_service):
+    task_service.list_active_tasks.return_value = [
+        SimpleNamespace(title="Купить молоко", due_date=None, priority="high"),
+        SimpleNamespace(title="Позвонить маме", due_date=None, priority="normal"),
+    ]
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "покажи задачи")
+
+    assert "1. ❗ Купить молоко" in reply
+    assert "2. Позвонить маме" in reply
+
+
+async def test_complete_task_found(task_service, habit_service, memory_service):
+    task = SimpleNamespace(title="Купить молоко")
+    task_service.find_active_by_title.return_value = [task]
+    task_service.complete_task_by_title.return_value = task
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Выполнил молоко")
+
+    assert "Готово" in reply
+    assert "Под «" not in reply
+    task_service.complete_task_by_title.assert_awaited_once_with(1, "молоко")
+
+
+async def test_complete_task_not_found(task_service, habit_service, memory_service):
+    task_service.find_active_by_title.return_value = []
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Выполнил молоко")
+
+    assert "Не нашёл" in reply
+    task_service.complete_task_by_title.assert_not_awaited()
+
+
+async def test_complete_task_ambiguous_lists_other_matches(
+    task_service, habit_service, memory_service
+):
+    task = SimpleNamespace(title="Купить молоко")
+    other = SimpleNamespace(title="Купить молоко и хлеб")
+    task_service.find_active_by_title.return_value = [task, other]
+    task_service.complete_task_by_title.return_value = task
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Выполнил молоко")
+
+    assert "Готово" in reply
+    assert "Купить молоко и хлеб" in reply
+
+
+async def test_delete_task_found(task_service, habit_service, memory_service):
+    task = SimpleNamespace(title="Купить молоко")
+    task_service.find_active_by_title.return_value = [task]
+    task_service.delete_task_by_title.return_value = task
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Удали молоко")
+
+    assert "Удалил" in reply
+    assert "Под «" not in reply
+
+
+async def test_delete_task_not_found(task_service, habit_service, memory_service):
+    task_service.find_active_by_title.return_value = []
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Удали молоко")
+
+    assert "Не нашёл" in reply
+    task_service.delete_task_by_title.assert_not_awaited()
+
+
+async def test_help(task_service, habit_service, memory_service):
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "/help")
+
+    assert "умею" in reply
+
+
+async def test_list_habits_empty(task_service, habit_service, memory_service):
+    habit_service.list_active_habits.return_value = []
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "привычки")
+
+    assert reply == "Активных привычек нет."
+
+
+async def test_list_habits_with_streak(task_service, habit_service, memory_service):
+    habit_service.list_active_habits.return_value = [
+        SimpleNamespace(title="Читать", id=1),
+        SimpleNamespace(title="Спорт", id=2),
+    ]
+    habit_service.get_streak.side_effect = [3, 0]
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "привычки")
+
+    assert "1. Читать — 🔥 3 дней подряд" in reply
+    assert "2. Спорт" in reply
+    assert "Спорт — 🔥" not in reply
+
+
+async def test_habit_done_found(task_service, habit_service, memory_service):
+    habit = SimpleNamespace(title="Читать", id=1)
+    habit_service.find_active_by_title.return_value = [habit]
+    habit_service.mark_done_today.return_value = habit
+    habit_service.get_streak.return_value = 1
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Привычка читать")
+
+    assert "Готово" in reply
+    assert "🔥 1" in reply
+    habit_service.mark_done_today.assert_awaited_once_with(1, "читать")
+
+
+async def test_habit_done_not_found(task_service, habit_service, memory_service):
+    habit_service.find_active_by_title.return_value = []
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Привычка читать")
+
+    assert "Не нашёл" in reply
+    habit_service.mark_done_today.assert_not_awaited()
+
+
+async def test_journal_entry_saved_to_memory(
+    task_service, habit_service, memory_service
+):
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Дневник: продуктивный день")
+
+    assert reply == "Записал в дневник."
+    from app.memory.models import MemoryType
+
+    memory_service.save.assert_awaited_once_with(
+        1, MemoryType.JOURNAL, "продуктивный день", source="telegram"
+    )
+
+
+async def test_journal_entry_empty_content_asks_to_reformulate(
+    task_service, habit_service, memory_service
+):
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Дневник")
+
+    assert "Что записать" in reply
+    memory_service.save.assert_not_awaited()
+
+
+async def test_ai_fallback_not_used_when_client_not_configured(
+    task_service, habit_service, memory_service, monkeypatch
+):
+    called = AsyncMock()
+    monkeypatch.setattr("app.conversation.engine.parse_intent_with_ai", called)
+    engine = ConversationEngine(
+        task_service, habit_service, memory_service, ai_client=None
+    )
+
+    reply = await engine.handle_message(1, "Завтра")
+
+    called.assert_not_called()
+    assert "Не понял" in reply
+
+
+async def test_ai_fallback_used_when_rule_based_fails(
+    task_service, habit_service, memory_service, monkeypatch
+):
+    from app.conversation.intent import Intent, ParsedIntent
+
+    fake_ai_client = AsyncMock()
+    monkeypatch.setattr(
+        "app.conversation.engine.parse_intent_with_ai",
+        AsyncMock(
+            return_value=ParsedIntent(
+                intent=Intent.ADD_TASK, title="День рождения сестры", due_date=None
+            )
+        ),
+    )
+    task_service.create_task.return_value = SimpleNamespace(
+        title="День рождения сестры", due_date=None, priority="normal"
+    )
+    engine = ConversationEngine(
+        task_service, habit_service, memory_service, ai_client=fake_ai_client
+    )
+
+    reply = await engine.handle_message(1, "Завтра")
+
+    task_service.create_task.assert_awaited_once_with(
+        1, "День рождения сестры", None, "normal"
+    )
+    assert "День рождения сестры" in reply
+
+
+async def test_ai_fallback_failure_keeps_old_message(
+    task_service, habit_service, memory_service, monkeypatch
+):
+    fake_ai_client = AsyncMock()
+    monkeypatch.setattr(
+        "app.conversation.engine.parse_intent_with_ai", AsyncMock(return_value=None)
+    )
+    engine = ConversationEngine(
+        task_service, habit_service, memory_service, ai_client=fake_ai_client
+    )
+
+    reply = await engine.handle_message(1, "Завтра")
+
+    task_service.create_task.assert_not_awaited()
+    assert "Не понял" in reply

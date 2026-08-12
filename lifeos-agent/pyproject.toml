@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lifeos-agent"
+version = "0.1.0"
+description = "Personal AI Chief of Staff - LifeOS Agent"
+authors = [{name = "LifeOS Team"}]
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "pydantic>=2.5.0",
+    "sqlalchemy>=2.0.23",
+    "alembic>=1.12.1",
+    "psycopg2-binary>=2.9.9",
+    "asyncpg>=0.29.0",
+    "python-telegram-bot[job-queue]>=20.6",
+    "python-dotenv>=1.0.0",
+    "pydantic-settings>=2.1.0",
+    "python-dateutil>=2.8.2",
+    "httpx>=0.25.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black>=23.11.0",
+    "ruff>=0.1.6",
+    "mypy>=1.7.1",
+    "pytest>=7.4.3",
+    "pytest-asyncio>=0.21.1",
+    "pytest-cov>=4.1.0",
+    "factory-boy>=3.3.0",
+    "aiosqlite>=0.19.0",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]
+# B008: FastAPI требует вызывать Depends() прямо в дефолтных значениях аргументов.
+ignore = ["E501", "B008"]
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+check_untyped_defs = true
+[tool.setuptools.packages.find]
+include = ["app*"]
+exclude = ["tests*", "migrations*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
