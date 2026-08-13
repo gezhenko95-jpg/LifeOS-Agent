@@ -23,6 +23,20 @@ _QUERY_BY_DATE_KEYWORDS = (
     "что я собирался",
     "что я планировал",
 )
+# Порядок не важен для распознавания intent (см. _contains_any), но для
+# извлечения query (см. _extract_recall_query) вырезаются ВСЕ найденные
+# фразы разом — иначе в "напомни, что я говорил про X" после удаления
+# только "напомни" в query остаётся филлер "что я говорил про".
+_RECALL_KEYWORDS = (
+    "напомни",
+    "вспомни",
+    "что я говорил про",
+    "что я говорил о",
+    "что я говорил",
+    "что ты знаешь про",
+    "что ты знаешь о",
+)
+_RECALL_CONNECTOR_PATTERN = re.compile(r"^[,\s]*(?:про|о|об)\b", re.IGNORECASE)
 _COMPLETE_KEYWORDS = ("выполнил", "сделал", "готово", "закрой")
 _DELETE_KEYWORDS = ("удали", "убери", "отмени")
 _HIGH_PRIORITY_KEYWORDS = ("важно", "срочно")
@@ -50,6 +64,10 @@ def parse_intent(text: str) -> ParsedIntent:
         if due_date is not None:
             return ParsedIntent(intent=Intent.QUERY_TASKS_BY_DATE, due_date=due_date)
         return ParsedIntent(intent=Intent.LIST_TASKS)
+
+    if _contains_any(lowered, _RECALL_KEYWORDS):
+        query = _extract_recall_query(stripped)
+        return ParsedIntent(intent=Intent.RECALL, title=query or None)
 
     if _contains_any(lowered, _LIST_HABITS_KEYWORDS):
         return ParsedIntent(intent=Intent.LIST_HABITS)
@@ -97,6 +115,18 @@ def _remove_keyword(text: str, keyword: str) -> str:
     pattern = re.compile(re.escape(keyword), re.IGNORECASE)
     cleaned = pattern.sub("", text, count=1)
     return re.sub(r"\s{2,}", " ", cleaned).strip()
+
+
+def _extract_recall_query(stripped: str) -> str:
+    """Вырезать все триггерные фразы (не только первую совпавшую — в
+    "напомни, что я говорил про X" их две), затем висящий предлог
+    "про/о/об" в начале и лишние пробелы/пунктуацию."""
+    text = stripped
+    for phrase in _RECALL_KEYWORDS:
+        text = re.sub(re.escape(phrase), "", text, count=1, flags=re.IGNORECASE)
+    text = _RECALL_CONNECTOR_PATTERN.sub("", text)
+    text = re.sub(r"\s{2,}", " ", text)
+    return text.strip(" ,:")
 
 
 def _extract_journal_entry(stripped: str, lowered: str) -> Optional[str]:

@@ -170,3 +170,33 @@ def test_query_by_date_keyword_without_date_falls_back_to_list_tasks():
     result = parse_intent("Какие задачи вообще у меня есть")
 
     assert result.intent is Intent.LIST_TASKS
+
+
+def test_recall_with_query():
+    # "напомни" И "что я говорил про" — оба триггерные фразы, оба должны
+    # быть вырезаны из query, не только первая найденная
+    result = parse_intent("Напомни, что я говорил про отпуск")
+
+    assert result.intent is Intent.RECALL
+    assert result.title == "отпуск"
+
+
+def test_recall_alternate_keyword():
+    result = parse_intent("Вспомни про проект LifeOS")
+
+    assert result.intent is Intent.RECALL
+    assert result.title == "проект LifeOS"
+
+
+def test_recall_no_trigger_prefix():
+    result = parse_intent("Что я говорил про маму")
+
+    assert result.intent is Intent.RECALL
+    assert result.title == "маму"
+
+
+def test_recall_without_query_is_still_recall():
+    result = parse_intent("Вспомни")
+
+    assert result.intent is Intent.RECALL
+    assert result.title is None

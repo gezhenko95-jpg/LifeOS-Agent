@@ -39,11 +39,14 @@ _HELP_TEXT = (
     "• привычки — «привычки» (список со стриком), «привычка чтение» "
     "(отметить сегодня)\n"
     "• спросить про день — «что на завтра», «какие задачи в пятницу»\n"
+    "• вспомнить — «напомни, что я говорил про отпуск»\n"
     "• дневник — «дневник: как прошёл день» (запомню в памяти)\n"
     "• иногда я сам спрашиваю о целях/привычках/проектах — просто "
     "ответьте текстом, и я запомню это как надо\n"
     "• /tasks, /habits, /goals — списки с кнопками прямо под сообщением"
 )
+
+_MAX_RECALL_RESULTS = 5
 
 
 class ConversationEngine:
@@ -144,6 +147,8 @@ class ConversationEngine:
             return await self._list_tasks(telegram_user_id)
         if parsed.intent is Intent.QUERY_TASKS_BY_DATE:
             return await self._list_tasks_by_date(telegram_user_id, parsed.due_date)
+        if parsed.intent is Intent.RECALL:
+            return await self._recall(telegram_user_id, parsed.title or "")
         if parsed.intent is Intent.COMPLETE_TASK:
             return await self._complete_task(telegram_user_id, parsed.title or "")
         if parsed.intent is Intent.DELETE_TASK:
@@ -198,6 +203,18 @@ class ConversationEngine:
         for index, task in enumerate(matches, start=1):
             prefix = "❗ " if task.priority == "high" else ""
             lines.append(f"{index}. {prefix}{task.title}")
+        return "\n".join(lines)
+
+    async def _recall(self, telegram_user_id: int, query: str) -> str:
+        if not query:
+            return "Что напомнить? Например: «напомни, что я говорил про отпуск»."
+
+        entries = await self._memory.search(telegram_user_id, query)
+        if not entries:
+            return f"Ничего не нашёл про «{query}»."
+
+        lines = [f"Нашёл по «{query}»:"]
+        lines.extend(f"• {entry.content}" for entry in entries[:_MAX_RECALL_RESULTS])
         return "\n".join(lines)
 
     async def _complete_task(self, telegram_user_id: int, title_query: str) -> str:

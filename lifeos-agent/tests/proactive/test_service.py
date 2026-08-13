@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 from app.proactive.questions import (
     GOAL_QUESTIONS,
     HABIT_QUESTIONS,
+    MUSING_QUESTIONS,
     PREFERENCE_QUESTIONS,
     PROJECT_QUESTIONS,
     REFLECT_QUESTIONS,
@@ -47,7 +48,15 @@ def _service(goals=None, habits=None, projects=None, preferences=None):
     )
 
 
-async def test_no_goals_asks_goal_question():
+def _no_musing(monkeypatch):
+    """Гарантировать, что pick_and_open не добавит вторую строку —
+    чтобы тесты gap-detection не зависели от random (musing тестируется
+    отдельно ниже)."""
+    monkeypatch.setattr("app.proactive.service.random.random", lambda: 0.99)
+
+
+async def test_no_goals_asks_goal_question(monkeypatch):
+    _no_musing(monkeypatch)
     service, repository = _service()
 
     question = await service.pick_and_open(1)
@@ -56,7 +65,8 @@ async def test_no_goals_asks_goal_question():
     repository.upsert.assert_awaited_once_with(1, "goal", question)
 
 
-async def test_has_goals_but_no_habits_asks_habit_question():
+async def test_has_goals_but_no_habits_asks_habit_question(monkeypatch):
+    _no_musing(monkeypatch)
     service, repository = _service(goals=[object()])
 
     question = await service.pick_and_open(1)
@@ -65,7 +75,10 @@ async def test_has_goals_but_no_habits_asks_habit_question():
     repository.upsert.assert_awaited_once_with(1, "habit", question)
 
 
-async def test_has_goals_and_habits_but_no_projects_asks_project_question():
+async def test_has_goals_and_habits_but_no_projects_asks_project_question(
+    monkeypatch,
+):
+    _no_musing(monkeypatch)
     service, repository = _service(goals=[object()], habits=[object()])
 
     question = await service.pick_and_open(1)
@@ -74,7 +87,8 @@ async def test_has_goals_and_habits_but_no_projects_asks_project_question():
     repository.upsert.assert_awaited_once_with(1, "project", question)
 
 
-async def test_fewer_than_three_preferences_asks_preference_question():
+async def test_fewer_than_three_preferences_asks_preference_question(monkeypatch):
+    _no_musing(monkeypatch)
     service, repository = _service(
         goals=[object()],
         habits=[object()],
@@ -88,7 +102,8 @@ async def test_fewer_than_three_preferences_asks_preference_question():
     repository.upsert.assert_awaited_once_with(1, "preference", question)
 
 
-async def test_everything_filled_asks_reflect_question():
+async def test_everything_filled_asks_reflect_question(monkeypatch):
+    _no_musing(monkeypatch)
     service, repository = _service(
         goals=[object()],
         habits=[object()],
@@ -100,6 +115,30 @@ async def test_everything_filled_asks_reflect_question():
 
     assert question in REFLECT_QUESTIONS
     repository.upsert.assert_awaited_once_with(1, "reflect", question)
+
+
+async def test_musing_appended_about_half_the_time(monkeypatch):
+    monkeypatch.setattr("app.proactive.service.random.random", lambda: 0.0)
+    service, repository = _service()
+
+    question = await service.pick_and_open(1)
+
+    assert "🤔" in question
+    assert any(musing in question for musing in MUSING_QUESTIONS)
+    # В pending_prompts уходит ЧИСТЫЙ вопрос, без musing-строки
+    stored_question = repository.upsert.await_args.args[2]
+    assert stored_question in GOAL_QUESTIONS
+    assert "🤔" not in stored_question
+
+
+async def test_musing_not_appended_when_chance_misses(monkeypatch):
+    _no_musing(monkeypatch)
+    service, repository = _service()
+
+    question = await service.pick_and_open(1)
+
+    assert "🤔" not in question
+    repository.upsert.assert_awaited_once_with(1, "goal", question)
 
 
 async def test_get_open_delegates_to_repository():

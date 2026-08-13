@@ -155,6 +155,38 @@ async def test_query_tasks_by_date_shows_priority_marker(
     assert "❗ Позвонить в банк" in reply
 
 
+async def test_recall_with_results(task_service, habit_service, memory_service):
+    memory_service.search.return_value = [
+        SimpleNamespace(content="Хочу съездить в отпуск в сентябре"),
+    ]
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Напомни про отпуск")
+
+    assert "Хочу съездить в отпуск в сентябре" in reply
+    memory_service.search.assert_awaited_once_with(1, "отпуск")
+
+
+async def test_recall_no_results(task_service, habit_service, memory_service):
+    memory_service.search.return_value = []
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Напомни про единорогов")
+
+    assert "Ничего не нашёл" in reply
+
+
+async def test_recall_empty_query_asks_what(
+    task_service, habit_service, memory_service
+):
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Вспомни")
+
+    assert "Что напомнить" in reply
+    memory_service.search.assert_not_awaited()
+
+
 async def test_complete_task_found(task_service, habit_service, memory_service):
     task = SimpleNamespace(title="Купить молоко")
     task_service.find_active_by_title.return_value = [task]

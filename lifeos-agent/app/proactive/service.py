@@ -5,7 +5,11 @@ specs/006-proactive-engagement.md).
 
 Выбор категории — простой детерминированный gap-detection (ADR-004: не
 нужен AI там, где хватает обычного кода): спрашиваем про то, чего у
-пользователя ещё нет.
+пользователя ещё нет. Примерно в половине случаев (`_with_musing`) к
+основному вопросу добавляется вторая строка — экзистенциальный вопрос
+или интересный факт-вопрос (`questions.py::MUSING_QUESTIONS`), для
+разнообразия. Musing не сохраняется в `pending_prompts` и не участвует в
+разборе ответа — это только украшение отправляемого текста.
 """
 
 import random
@@ -17,8 +21,10 @@ from app.memory.service import MemoryService
 from app.proactive.models import PendingPrompt
 from app.proactive.questions import (
     _MIN_PREFERENCES,
+    _MUSING_CHANCE,
     GOAL_QUESTIONS,
     HABIT_QUESTIONS,
+    MUSING_QUESTIONS,
     PREFERENCE_QUESTIONS,
     PROJECT_QUESTIONS,
     REFLECT_QUESTIONS,
@@ -41,8 +47,15 @@ class PendingPromptService:
 
     async def pick_and_open(self, telegram_user_id: int) -> str:
         category, question_text = await self._pick_question(telegram_user_id)
+        # В pending_prompts уходит ЧИСТЫЙ вопрос (без musing) — именно он
+        # даёт AI контекст при разборе ответа (ai_extract.py). Musing —
+        # только украшение отправляемого сообщения, к разбору ответа
+        # отношения не имеет: если пользователь ответит именно на него,
+        # extract_prompt_answer справедливо сочтёт это "unrelated" к
+        # основной категории и сообщение уйдёт по обычному пути (см.
+        # specs/006-proactive-engagement.md).
         await self._repository.upsert(telegram_user_id, category, question_text)
-        return question_text
+        return _with_musing(question_text)
 
     async def get_open(self, telegram_user_id: int) -> PendingPrompt | None:
         return await self._repository.get_for_user(telegram_user_id)
@@ -72,3 +85,9 @@ class PendingPromptService:
             return "preference", random.choice(PREFERENCE_QUESTIONS)
 
         return "reflect", random.choice(REFLECT_QUESTIONS)
+
+
+def _with_musing(question_text: str) -> str:
+    if random.random() >= _MUSING_CHANCE:
+        return question_text
+    return f"{question_text}\n\n🤔 {random.choice(MUSING_QUESTIONS)}"
