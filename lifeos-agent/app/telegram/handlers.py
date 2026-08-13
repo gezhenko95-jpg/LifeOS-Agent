@@ -9,7 +9,10 @@ inline-кнопками (app/telegram/keyboards.py) — ConversationEngine не
 должен знать про Telegram-специфичные типы.
 """
 
+import re
+
 from telegram import Update
+from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
 
 from app.ai.client import get_ai_client
@@ -35,8 +38,21 @@ from app.telegram.keyboards import (
     build_goals_message,
     build_habits_message,
     build_main_menu,
+    build_task_quick_actions_keyboard,
     build_tasks_message,
 )
+
+# Реплика ConversationEngine._add_task ("«{prefix}Добавил задачу: «{title}»…»")
+# — по этому паттерну распознаём "движок только что создал задачу", чтобы
+# прицепить быстрые кнопки (❗ Важно / 📅 Завтра), не меняя сам движок
+# (он намеренно Telegram-агностичен, см. модуль-докстринг выше).
+_TASK_CREATED_PATTERN = re.compile(r"^(?:❗ )?Добавил задачу: «(.+?)»")
+
+
+def extract_created_task_title(reply: str) -> str | None:
+    match = _TASK_CREATED_PATTERN.match(reply)
+    return match.group(1) if match else None
+
 
 _START_TEXT = (
     "Привет! Я LifeOS — помогаю не забывать задачи.\n"
@@ -67,7 +83,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await _reply_via_engine(update, "/help")
+    await _reply_via_engine(update, context, "/help")
 
 
 async def tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -101,7 +117,7 @@ async def handle_text_message(
         await _send_goals_keyboard(update)
         return
     if menu_action == "help":
-        await _reply_via_engine(update, "/help")
+        await _reply_via_engine(update, context, "/help")
         return
 
     intent = parse_intent(text).intent
@@ -112,7 +128,7 @@ async def handle_text_message(
         await _send_habits_keyboard(update)
         return
 
-    await _reply_via_engine(update, text)
+    await _reply_via_engine(update, context, text)
 
 
 async def _send_tasks_keyboard(update: Update) -> None:
@@ -155,15 +171,24 @@ async def _send_goals_keyboard(update: Update) -> None:
     await update.message.reply_text(text, reply_markup=markup)
 
 
-async def _reply_via_engine(update: Update, text: str) -> None:
+async def _reply_via_engine(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, text: str
+) -> None:
     if update.message is None or update.effective_user is None:
         return
 
     telegram_user_id = update.effective_user.id
 
+    # AI-вызовы (fallback-разбор, ответ на проактивный вопрос) занимают
+    # секунду-две — "печатает…" даёт понять, что бот не завис.
+    await context.bot.send_chat_action(
+        chat_id=telegram_user_id, action=ChatAction.TYPING
+    )
+
     async with AsyncSessionLocal() as session:
+        task_service = TaskService(TaskRepository(session))
         engine = ConversationEngine(
-            TaskService(TaskRepository(session)),
+            task_service,
             HabitService(HabitRepository(session)),
             MemoryService(MemoryRepository(session)),
             ai_client=get_ai_client(),
@@ -177,4 +202,18 @@ async def _reply_via_engine(update: Update, text: str) -> None:
         )
         reply = await engine.handle_message(telegram_user_id, text)
 
-    await update.message.reply_text(reply)
+        markup = None
+        created_title = extract_created_task_title(reply)
+        if created_title:
+            matches = await task_service.find_active_by_title(
+                telegram_user_id, created_title
+            )
+            if matches:
+                # Нужна именно только что созданная задача — а не первая
+                # по времени, как в find_active_by_title для complete/delete
+                # (см. flows/003-manage-tasks.md), иначе кнопки могли бы
+                # прицепиться к старой одноимённой задаче.
+                newest = max(matches, key=lambda t: t.created_at)
+                markup = build_task_quick_actions_keyboard(newest)
+
+    await update.message.reply_text(reply, reply_markup=markup)

@@ -11,6 +11,8 @@ from app.telegram.keyboards import (
     build_goals_message,
     build_habits_message,
     build_main_menu,
+    build_task_confirmation_message,
+    build_task_quick_actions_keyboard,
     build_tasks_message,
 )
 
@@ -67,6 +69,47 @@ def test_tasks_message_caps_at_max_items():
     _, markup = build_tasks_message(tasks)
 
     assert len(markup.inline_keyboard) == 10
+
+
+def test_quick_actions_both_buttons_when_nothing_set():
+    markup = build_task_quick_actions_keyboard(_task(1))
+
+    row = markup.inline_keyboard[0]
+    callbacks = [button.callback_data for button in row]
+    assert callbacks == ["t|p|1", "t|w|1"]
+
+
+def test_quick_actions_omits_priority_button_when_already_high():
+    markup = build_task_quick_actions_keyboard(_task(1, priority="high"))
+
+    callbacks = [b.callback_data for row in markup.inline_keyboard for b in row]
+    assert "t|p|1" not in callbacks
+    assert "t|w|1" in callbacks
+
+
+def test_quick_actions_omits_date_button_when_already_set():
+    markup = build_task_quick_actions_keyboard(
+        _task(1, due_date=datetime(2026, 8, 20, 9, 0))
+    )
+
+    callbacks = [b.callback_data for row in markup.inline_keyboard for b in row]
+    assert "t|w|1" not in callbacks
+    assert "t|p|1" in callbacks
+
+
+def test_quick_actions_none_when_both_already_set():
+    task = _task(1, priority="high", due_date=datetime(2026, 8, 20, 9, 0))
+
+    assert build_task_quick_actions_keyboard(task) is None
+
+
+def test_task_confirmation_message_reflects_state():
+    task = _task(1, title="Оплатить интернет", priority="high")
+
+    text, markup = build_task_confirmation_message(task)
+
+    assert text == "❗ Добавил задачу: «Оплатить интернет»"
+    assert len(markup.inline_keyboard[0]) == 1  # только "Завтра" осталась
 
 
 def test_habits_message_empty():

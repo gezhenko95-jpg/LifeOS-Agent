@@ -3,6 +3,7 @@
 """
 
 import logging
+from datetime import date, datetime, time, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import InlineKeyboardMarkup, Update
@@ -13,13 +14,19 @@ from app.goals.repository import GoalRepository
 from app.goals.service import GoalService
 from app.habits.repository import HabitRepository
 from app.habits.service import HabitService
+from app.tasks.models import Task
 from app.tasks.repository import TaskRepository
 from app.tasks.service import TaskService
 from app.telegram.keyboards import (
     build_goals_message,
     build_habits_message,
+    build_task_confirmation_message,
     build_tasks_message,
 )
+
+# 9:00 — тот же час по умолчанию, что и у date_parser.py для дат без
+# явного времени (не импортируем оттуда приватную константу).
+_DEFAULT_HOUR = 9
 
 logger = logging.getLogger(__name__)
 
@@ -68,12 +75,30 @@ async def _handle_task_action(
     session: AsyncSession, action: str, item_id: str, telegram_user_id: int
 ) -> tuple[str, InlineKeyboardMarkup]:
     service = TaskService(TaskRepository(session))
+
+    if action == "p":
+        task = await service.update_task(int(item_id), priority="high")
+        return _quick_action_result(task)
+    if action == "w":
+        tomorrow = datetime.combine(
+            date.today() + timedelta(days=1), time(hour=_DEFAULT_HOUR)
+        ).astimezone()
+        task = await service.update_task(int(item_id), due_date=tomorrow)
+        return _quick_action_result(task)
+
     if action == "c":
         await service.update_task(int(item_id), status="completed")
     elif action == "d":
         await service.delete_task(int(item_id))
     tasks = await service.list_active_tasks(telegram_user_id)
     return build_tasks_message(tasks)
+
+
+def _quick_action_result(task: Task | None) -> tuple[str, InlineKeyboardMarkup]:
+    if task is None:
+        # Задачу успели удалить/завершить, пока кнопка ещё была на экране.
+        return "Задача больше не активна.", InlineKeyboardMarkup([])
+    return build_task_confirmation_message(task)
 
 
 async def _handle_habit_action(

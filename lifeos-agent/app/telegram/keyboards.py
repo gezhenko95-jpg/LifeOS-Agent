@@ -11,6 +11,8 @@ inline-клавиатуры для списков задач/привычек/ц
 Чистые функции — только презентация, никакого доступа к БД/сети.
 callback_data — компактный формат "{домен}|{действие}|{id}":
   t|c|{id} / t|d|{id} — задача: выполнить / удалить
+  t|p|{id} / t|w|{id} — задача: сделать важной / поставить дату на завтра
+    (быстрые кнопки под подтверждением создания, см. handlers.py)
   h|d|{id} / h|x|{id} — привычка: отметить сегодня / удалить
   g|u|{id} / g|n|{id} / g|c|{id} / g|x|{id} — цель: +10% / -10% / завершить / удалить
   g|noop — строка-заголовок цели, не действие
@@ -68,6 +70,35 @@ def build_tasks_message(tasks: list[Task]) -> tuple[str, InlineKeyboardMarkup]:
             ]
         )
     return "Ваши задачи:", InlineKeyboardMarkup(rows)
+
+
+def build_task_quick_actions_keyboard(task: Task) -> InlineKeyboardMarkup | None:
+    """Кнопки под подтверждением создания задачи — только то, что ещё не
+    задано (не предлагаем "Важно", если уже важная). None, если предлагать
+    нечего (уже и приоритет high, и дата есть)."""
+    buttons = []
+    if task.priority != "high":
+        buttons.append(InlineKeyboardButton("❗ Важно", callback_data=f"t|p|{task.id}"))
+    if task.due_date is None:
+        buttons.append(
+            InlineKeyboardButton("📅 Завтра", callback_data=f"t|w|{task.id}")
+        )
+    if not buttons:
+        return None
+    return InlineKeyboardMarkup([buttons])
+
+
+def build_task_confirmation_message(task: Task) -> tuple[str, InlineKeyboardMarkup]:
+    """Текст+кнопки после изменения задачи через быструю кнопку (см.
+    app/telegram/callbacks.py) — тот же формат, что и у ConversationEngine
+    при создании (app/conversation/engine.py::_add_task), чтобы не было
+    расхождения в стиле."""
+    prefix = "❗ " if task.priority == "high" else ""
+    suffix = f" на {task.due_date:%d.%m.%Y}" if task.due_date else ""
+    recurrence_suffix = " 🔁" if task.recurrence else ""
+    text = f"{prefix}Добавил задачу: «{task.title}»{suffix}{recurrence_suffix}"
+    markup = build_task_quick_actions_keyboard(task) or InlineKeyboardMarkup([])
+    return text, markup
 
 
 def build_habits_message(
