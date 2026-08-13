@@ -193,3 +193,12 @@ class TaskService:
         """Сколько задач завершено с момента `since` — для еженедельного
         дайджеста (см. app/scheduler/weekly_digest.py)."""
         return await self._repository.count_completed_since(telegram_user_id, since)
+
+    async def count_tasks_completed_between(
+        self, telegram_user_id: int, since: datetime, until: datetime
+    ) -> int:
+        """Сколько задач завершено в [since, until) — для графика по
+        неделям (см. app/scheduler/charts.py)."""
+        return await self._repository.count_completed_between(
+            telegram_user_id, since, until
+        )

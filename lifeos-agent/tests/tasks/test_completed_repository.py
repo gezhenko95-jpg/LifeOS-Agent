@@ -78,3 +78,37 @@ async def test_zero_when_nothing_completed(session):
     count = await repository.count_completed_since(1, WEEK_AGO)
 
     assert count == 0
+
+
+async def test_count_completed_between_is_half_open_interval(session):
+    await _add(
+        session, status="completed", completed_at=WEEK_AGO
+    )  # ровно на границе since — входит
+    await _add(
+        session, status="completed", completed_at=WEEK_AGO - timedelta(seconds=1)
+    )  # чуть раньше since — не входит
+    await _add(
+        session, status="completed", completed_at=NOW
+    )  # ровно на границе until — не входит (полуоткрытый интервал)
+
+    repository = TaskRepository(session)
+    count = await repository.count_completed_between(1, WEEK_AGO, NOW)
+
+    assert count == 1
+
+
+async def test_count_completed_between_isolated_per_user(session):
+    await _add(session, status="completed", completed_at=NOW - timedelta(days=1))
+    other_user_task = Task(
+        telegram_user_id=2,
+        title="Y",
+        status="completed",
+        completed_at=NOW - timedelta(days=1),
+    )
+    session.add(other_user_task)
+    await session.commit()
+
+    repository = TaskRepository(session)
+    count = await repository.count_completed_between(1, NOW - timedelta(days=7), NOW)
+
+    assert count == 1

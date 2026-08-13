@@ -76,3 +76,18 @@ class TaskRepository:
         )
         result = await self._session.execute(query)
         return result.scalar_one()
+
+    async def count_completed_between(
+        self, telegram_user_id: int, since: datetime, until: datetime
+    ) -> int:
+        """Сколько задач завершено в полуоткрытом интервале [since, until) —
+        для графика "по неделям" (см. app/scheduler/charts.py)."""
+        query = select(func.count()).where(
+            Task.telegram_user_id == telegram_user_id,
+            Task.status == "completed",
+            Task.completed_at.is_not(None),
+            Task.completed_at >= since,
+            Task.completed_at < until,
+        )
+        result = await self._session.execute(query)
+        return result.scalar_one()

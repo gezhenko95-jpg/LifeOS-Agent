@@ -18,12 +18,17 @@ from app.memory.service import MemoryService
 from app.proactive.repository import PendingPromptRepository
 from app.proactive.service import PendingPromptService
 from app.scheduler.briefing import build_morning_briefing
+from app.scheduler.charts import gather_chart_data, render_chart
 from app.scheduler.nudges import build_nudges
 from app.scheduler.weekly_digest import build_weekly_digest
 from app.tasks.repository import TaskRepository
 from app.tasks.service import TaskService
 
 logger = logging.getLogger(__name__)
+
+# Лимит Telegram на подпись к фото — если текст дайджеста вдруг длиннее,
+# шлём фото без подписи и текст отдельным сообщением, а не падаем на API.
+_PHOTO_CAPTION_LIMIT = 1024
 
 
 async def send_morning_briefing_job(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -112,15 +117,39 @@ async def send_weekly_digest_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     async with AsyncSessionLocal() as session:
+        task_service = TaskService(TaskRepository(session))
+        habit_service = HabitService(HabitRepository(session))
         text = await build_weekly_digest(
             telegram_user_id,
-            TaskService(TaskRepository(session)),
-            HabitService(HabitRepository(session)),
+            task_service,
+            habit_service,
             GoalService(GoalRepository(session)),
             ai_client=get_ai_client(settings),
         )
 
-    await context.bot.send_message(chat_id=telegram_user_id, text=text)
+        chart = None
+        try:
+            chart_data = await gather_chart_data(
+                telegram_user_id, task_service, habit_service
+            )
+            chart = render_chart(chart_data)
+        except Exception:
+            # Картинка — бонус, а не критичная часть дайджеста; сбой
+            # рендера (например, из-за шрифтов) не должен срывать отправку
+            # (тот же принцип, что и у AI-инсайтов везде в проекте).
+            logger.exception("Не удалось построить график для дайджеста")
+
+    if chart is None:
+        await context.bot.send_message(chat_id=telegram_user_id, text=text)
+        return
+
+    if len(text) <= _PHOTO_CAPTION_LIMIT:
+        await context.bot.send_photo(
+            chat_id=telegram_user_id, photo=chart, caption=text
+        )
+    else:
+        await context.bot.send_photo(chat_id=telegram_user_id, photo=chart)
+        await context.bot.send_message(chat_id=telegram_user_id, text=text)
 
 
 async def send_nudges_job(context: ContextTypes.DEFAULT_TYPE) -> None:

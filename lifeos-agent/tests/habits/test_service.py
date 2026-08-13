@@ -176,6 +176,28 @@ async def test_days_since_last_completion_counts_from_most_recent_log(repository
     assert result == 2
 
 
+async def test_get_completed_days_filters_by_since(repository):
+    repository.list_logs.return_value = [
+        HabitLog(habit_id=1, completed_on=TODAY),
+        HabitLog(habit_id=1, completed_on=TODAY - timedelta(days=3)),
+        HabitLog(habit_id=1, completed_on=TODAY - timedelta(days=10)),
+    ]
+    service = HabitService(repository)
+
+    result = await service.get_completed_days(1, TODAY - timedelta(days=5))
+
+    assert result == {TODAY, TODAY - timedelta(days=3)}
+
+
+async def test_get_completed_days_empty_when_no_logs(repository):
+    repository.list_logs.return_value = []
+    service = HabitService(repository)
+
+    result = await service.get_completed_days(1, TODAY - timedelta(days=5))
+
+    assert result == set()
+
+
 async def test_delete_habit_found(repository):
     habit = Habit(telegram_user_id=1, title="Читать", id=1)
     repository.get_by_id.return_value = habit

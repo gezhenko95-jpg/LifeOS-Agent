@@ -235,6 +235,18 @@ async def test_count_tasks_completed_since_delegates_to_repository(repository):
     repository.count_completed_since.assert_awaited_once_with(1, since)
 
 
+async def test_count_tasks_completed_between_delegates_to_repository(repository):
+    repository.count_completed_between.return_value = 2
+    service = TaskService(repository)
+    since = datetime(2026, 8, 1, tzinfo=timezone.utc)
+    until = datetime(2026, 8, 8, tzinfo=timezone.utc)
+
+    count = await service.count_tasks_completed_between(1, since, until)
+
+    assert count == 2
+    repository.count_completed_between.assert_awaited_once_with(1, since, until)
+
+
 # --- Recurring tasks ---------------------------------------------------
 
 

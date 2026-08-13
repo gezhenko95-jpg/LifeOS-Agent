@@ -89,6 +89,12 @@ class HabitService:
             return None
         return (date.today() - logs[0].completed_on).days
 
+    async def get_completed_days(self, habit_id: int, since: date) -> set[date]:
+        """Дни (>= since), когда привычка была отмечена — для тепловой
+        карты в графике дайджеста (см. app/scheduler/charts.py)."""
+        logs = await self._repository.list_logs(habit_id)
+        return {log.completed_on for log in logs if log.completed_on >= since}
+
     async def delete_habit(self, habit_id: int) -> Optional[Habit]:
         habit = await self._repository.get_by_id(habit_id)
         if habit is None:
