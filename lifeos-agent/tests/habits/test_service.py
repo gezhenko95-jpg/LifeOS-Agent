@@ -154,6 +154,28 @@ async def test_get_streak_breaks_on_gap(repository):
     assert streak == 1
 
 
+async def test_days_since_last_completion_no_logs_returns_none(repository):
+    repository.list_logs.return_value = []
+    service = HabitService(repository)
+
+    result = await service.days_since_last_completion(1)
+
+    assert result is None
+
+
+async def test_days_since_last_completion_counts_from_most_recent_log(repository):
+    # list_logs сортирует desc — первый лог самый свежий
+    repository.list_logs.return_value = [
+        HabitLog(habit_id=1, completed_on=TODAY - timedelta(days=2)),
+        HabitLog(habit_id=1, completed_on=TODAY - timedelta(days=5)),
+    ]
+    service = HabitService(repository)
+
+    result = await service.days_since_last_completion(1)
+
+    assert result == 2
+
+
 async def test_delete_habit_found(repository):
     habit = Habit(telegram_user_id=1, title="Читать", id=1)
     repository.get_by_id.return_value = habit

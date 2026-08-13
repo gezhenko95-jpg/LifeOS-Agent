@@ -79,6 +79,16 @@ class HabitService:
 
         return streak
 
+    async def days_since_last_completion(self, habit_id: int) -> Optional[int]:
+        """Сколько дней прошло с последней отметки (None — ни разу не
+        отмечалась). Используется нэджем "стрик прервался"
+        (см. app/scheduler/nudges.py) — list_logs уже сортирует по
+        completed_on по убыванию, поэтому первый лог — самый свежий."""
+        logs = await self._repository.list_logs(habit_id)
+        if not logs:
+            return None
+        return (date.today() - logs[0].completed_on).days
+
     async def delete_habit(self, habit_id: int) -> Optional[Habit]:
         habit = await self._repository.get_by_id(habit_id)
         if habit is None:

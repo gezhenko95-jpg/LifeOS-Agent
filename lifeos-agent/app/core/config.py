@@ -52,6 +52,16 @@ class Settings(BaseSettings):
     proactive_prompt_evening_hour: int = 19
     proactive_prompt_evening_minute: int = 0
 
+    # Еженедельный дайджест по воскресеньям (см. flows/007-weekly-digest.md).
+    weekly_digest_enabled: bool = True
+    weekly_digest_hour: int = 20
+    weekly_digest_minute: int = 0
+
+    # Нэджи по целям/привычкам, раз в день (см. app/scheduler/nudges.py).
+    nudges_enabled: bool = True
+    nudges_hour: int = 9
+    nudges_minute: int = 0
+
     # AI Service (OpenRouter) — фолбэк для Conversation Engine,
     # см. specs/003-conversation.md. Пусто = фолбэк выключен.
     openrouter_api_key: str = ""

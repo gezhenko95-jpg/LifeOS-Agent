@@ -65,6 +65,18 @@ async def test_complete_task_by_title_found(repository):
     repository.save.assert_awaited_once()
 
 
+async def test_complete_task_by_title_sets_completed_at(repository):
+    repository.list_by_user.return_value = [
+        Task(telegram_user_id=1, title="Купить молоко", status="active")
+    ]
+    service = TaskService(repository)
+
+    task = await service.complete_task_by_title(1, "молоко")
+
+    assert task is not None
+    assert task.completed_at is not None
+
+
 async def test_complete_task_by_title_not_found(repository):
     repository.list_by_user.return_value = []
     service = TaskService(repository)
@@ -187,3 +199,38 @@ async def test_mark_reminded_not_found(repository):
     result = await service.mark_reminded(999)
 
     assert result is None
+
+
+async def test_update_task_status_to_completed_sets_completed_at(repository):
+    task = Task(telegram_user_id=1, title="X", status="active")
+    repository.get_by_id.return_value = task
+    service = TaskService(repository)
+
+    updated = await service.update_task(task_id=1, status="completed")
+
+    assert updated is not None
+    assert updated.completed_at is not None
+
+
+async def test_update_task_status_to_active_does_not_set_completed_at(repository):
+    task = Task(telegram_user_id=1, title="X", status="active")
+    repository.get_by_id.return_value = task
+    service = TaskService(repository)
+
+    updated = await service.update_task(task_id=1, priority="high")
+
+    assert updated is not None
+    assert updated.completed_at is None
+
+
+async def test_count_tasks_completed_since_delegates_to_repository(repository):
+    from datetime import datetime, timezone
+
+    repository.count_completed_since.return_value = 3
+    service = TaskService(repository)
+    since = datetime(2026, 8, 1, tzinfo=timezone.utc)
+
+    count = await service.count_tasks_completed_since(1, since)
+
+    assert count == 3
+    repository.count_completed_since.assert_awaited_once_with(1, since)

@@ -68,6 +68,8 @@ class TaskService:
             task.due_date = due_date
         if status is not None:
             task.status = status
+            if status == COMPLETED:
+                task.completed_at = datetime.now(timezone.utc)
         if priority is not None:
             task.priority = priority
         return await self._repository.save(task)
@@ -95,6 +97,7 @@ class TaskService:
             return None
         task = matches[0]
         task.status = COMPLETED
+        task.completed_at = datetime.now(timezone.utc)
         return await self._repository.save(task)
 
     async def delete_task_by_title(
@@ -121,3 +124,10 @@ class TaskService:
             return None
         task.reminded_at = datetime.now(timezone.utc)
         return await self._repository.save(task)
+
+    async def count_tasks_completed_since(
+        self, telegram_user_id: int, since: datetime
+    ) -> int:
+        """Сколько задач завершено с момента `since` — для еженедельного
+        дайджеста (см. app/scheduler/weekly_digest.py)."""
+        return await self._repository.count_completed_since(telegram_user_id, since)

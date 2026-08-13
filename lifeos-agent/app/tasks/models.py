@@ -71,3 +71,15 @@ class Task(Base):
         nullable=True,
         comment="Когда отправлено напоминание (NULL — ещё не отправлено)",
     )
+
+    recurrence: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True,
+        comment="Периодичность: daily | weekly | monthly | NULL (не повторяется)",
+    )
+
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Момент завершения задачи (NULL — ещё не завершена)",
+    )

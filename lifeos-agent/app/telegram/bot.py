@@ -25,8 +25,10 @@ from app.telegram.handlers import (
 from app.telegram.jobs import (
     send_evening_reflection_job,
     send_morning_briefing_job,
+    send_nudges_job,
     send_proactive_prompt_job,
     send_task_reminders_job,
+    send_weekly_digest_job,
 )
 
 
@@ -53,6 +55,8 @@ def build_application() -> Application:
     _register_evening_reflection(application, settings)
     _register_task_reminders(application, settings)
     _register_proactive_prompts(application, settings)
+    _register_weekly_digest(application, settings)
+    _register_nudges(application, settings)
 
     return application
 
@@ -129,3 +133,37 @@ def _register_proactive_prompts(application: Application, settings: Settings) ->
             time=time(hour=hour, minute=minute, tzinfo=local_tz),
             name=name,
         )
+
+
+_SUNDAY = (6,)  # PTB: 0=понедельник..6=воскресенье, как date.weekday()
+
+
+def _register_weekly_digest(application: Application, settings: Settings) -> None:
+    if not settings.weekly_digest_enabled or not settings.owner_telegram_user_id:
+        return
+
+    local_tz = datetime.now().astimezone().tzinfo
+    application.job_queue.run_daily(
+        send_weekly_digest_job,
+        time=time(
+            hour=settings.weekly_digest_hour,
+            minute=settings.weekly_digest_minute,
+            tzinfo=local_tz,
+        ),
+        days=_SUNDAY,
+        name="weekly_digest",
+    )
+
+
+def _register_nudges(application: Application, settings: Settings) -> None:
+    if not settings.nudges_enabled or not settings.owner_telegram_user_id:
+        return
+
+    local_tz = datetime.now().astimezone().tzinfo
+    application.job_queue.run_daily(
+        send_nudges_job,
+        time=time(
+            hour=settings.nudges_hour, minute=settings.nudges_minute, tzinfo=local_tz
+        ),
+        name="nudges",
+    )

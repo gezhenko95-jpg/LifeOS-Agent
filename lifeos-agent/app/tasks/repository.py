@@ -8,7 +8,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.tasks.models import Task
@@ -59,3 +59,20 @@ class TaskRepository:
         )
         result = await self._session.execute(query)
         return list(result.scalars().all())
+
+    async def count_completed_since(
+        self, telegram_user_id: int, since: datetime
+    ) -> int:
+        """Сколько задач пользователя завершено, начиная с `since`.
+
+        Без фильтра по telegram_user_id не обойтись здесь (в отличие от
+        list_due_unreminded) — дайджест персональный, а не общесистемный.
+        """
+        query = select(func.count()).where(
+            Task.telegram_user_id == telegram_user_id,
+            Task.status == "completed",
+            Task.completed_at.is_not(None),
+            Task.completed_at >= since,
+        )
+        result = await self._session.execute(query)
+        return result.scalar_one()

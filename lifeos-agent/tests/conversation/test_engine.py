@@ -293,6 +293,35 @@ async def test_habit_done_found(task_service, habit_service, memory_service):
     habit_service.mark_done_today.assert_awaited_once_with(1, "читать")
 
 
+async def test_habit_done_celebrates_streak_milestone(
+    task_service, habit_service, memory_service
+):
+    habit = SimpleNamespace(title="Читать", id=1)
+    habit_service.find_active_by_title.return_value = [habit]
+    habit_service.mark_done_today.return_value = habit
+    habit_service.get_streak.return_value = 7
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Привычка читать")
+
+    assert "🎉" in reply
+    assert "солидная серия" in reply
+
+
+async def test_habit_done_no_celebration_outside_milestone(
+    task_service, habit_service, memory_service
+):
+    habit = SimpleNamespace(title="Читать", id=1)
+    habit_service.find_active_by_title.return_value = [habit]
+    habit_service.mark_done_today.return_value = habit
+    habit_service.get_streak.return_value = 8
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Привычка читать")
+
+    assert "🎉" not in reply
+
+
 async def test_habit_done_not_found(task_service, habit_service, memory_service):
     habit_service.find_active_by_title.return_value = []
     engine = ConversationEngine(task_service, habit_service, memory_service)

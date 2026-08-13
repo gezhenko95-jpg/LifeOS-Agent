@@ -47,6 +47,7 @@ _HELP_TEXT = (
 )
 
 _MAX_RECALL_RESULTS = 5
+_STREAK_MILESTONES = {7, 30, 100}
 
 
 class ConversationEngine:
@@ -263,7 +264,12 @@ class ConversationEngine:
             return f"Не нашёл активную привычку «{title_query}»."
         streak = await self._habits.get_streak(habit.id)
         note = _ambiguity_note(matches, title_query)
-        return f"Готово: «{habit.title}» — 🔥 {streak} дней подряд.{note}"
+        celebration = (
+            f"\n\n🎉 {streak} дней подряд — солидная серия!"
+            if streak in _STREAK_MILESTONES
+            else ""
+        )
+        return f"Готово: «{habit.title}» — 🔥 {streak} дней подряд.{celebration}{note}"
 
     async def _journal_entry(self, telegram_user_id: int, content: str) -> str:
         if not content:
