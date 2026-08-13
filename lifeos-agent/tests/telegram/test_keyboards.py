@@ -4,9 +4,11 @@ from app.goals.models import Goal
 from app.habits.models import Habit
 from app.tasks.models import Task
 from app.telegram.keyboards import (
+    MENU_ADD_TASK,
     MENU_GOALS,
     MENU_HABITS,
     MENU_HELP,
+    MENU_JOURNAL,
     MENU_TASKS,
     build_goals_message,
     build_habits_message,
@@ -174,13 +176,16 @@ def test_main_menu_has_expected_buttons_in_rows():
         MENU_TASKS,
         MENU_HABITS,
         MENU_GOALS,
+        MENU_ADD_TASK,
+        MENU_JOURNAL,
         MENU_HELP,
     ]
     # Первая и последняя строка — по одной кнопке (во всю ширину),
-    # средняя — две в один ряд (как на скрине-референсе пользователя).
+    # средние — по две в ряд (как на скрине-референсе пользователя).
     assert len(rows[0]) == 1
     assert len(rows[1]) == 2
-    assert len(rows[2]) == 1
+    assert len(rows[2]) == 2
+    assert len(rows[3]) == 1
 
 
 def test_main_menu_resizes_to_fit():

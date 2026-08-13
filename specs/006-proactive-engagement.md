@@ -84,6 +84,23 @@ class PendingPrompt(Base):
 
 ---
 
+# Категория "journal" — быстрый ввод без AI
+
+Отдельная категория `pending_prompts.category == "journal"` — для
+дневниковых вопросов (сон/факт/итоги дня — см. flows/009-daily-rhythm.md)
+и кнопки «📝 Дневник» (`app/telegram/handlers.py::_open_journal_prompt`,
+ставит pending вручную, без gap-detection). Обрабатывается
+`ConversationEngine._try_capture_journal` — **до** `parse_intent`, а не
+только для `ADD_TASK`, как остальные категории ниже: иначе длинная
+дневниковая проза со случайным словом «выполнил»/«привычка» внутри
+предложения улетела бы в `COMPLETE_TASK`/`HABIT_DONE` вместо дневника.
+Весь текст ответа сохраняется как есть (`MemoryType.JOURNAL`) — AI не
+вызывается вообще, разбирать нечего. Устаревший (> 30 минут) journal-
+pending тихо игнорируется, без пометки "не понял" — дневниковое
+приглашение необязательное, в отличие от structured-вопросов ниже.
+
+---
+
 # AI-разбор ответа (`app/proactive/ai_extract.py`)
 
 `extract_prompt_answer(category, question_text, user_reply, ai_client)` —

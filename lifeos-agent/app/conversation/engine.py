@@ -42,9 +42,10 @@ _HELP_TEXT = (
     "• вспомнить — «напомни, что я говорил про отпуск»\n"
     "• повторяющиеся задачи — «каждый понедельник оплатить интернет», "
     "«каждый день пить воду»\n"
-    "• дневник — «дневник: как прошёл день» (запомню в памяти)\n"
-    "• иногда я сам спрашиваю о целях/привычках/проектах — просто "
-    "ответьте текстом, и я запомню это как надо\n"
+    "• дневник — «дневник: как прошёл день» (запомню в памяти), или "
+    "нажмите «📝 Дневник» в меню — и пишите без префикса\n"
+    "• иногда я сам спрашиваю о целях/привычках/проектах или прошу "
+    "дневник — просто ответьте текстом, и я запомню это как надо\n"
     "• /tasks, /habits, /goals — списки с кнопками прямо под сообщением"
 )
 
@@ -76,6 +77,11 @@ class ConversationEngine:
         self._pending_prompts = pending_prompt_service
 
     async def handle_message(self, telegram_user_id: int, text: str) -> str:
+        if self._pending_prompts is not None:
+            journal_reply = await self._try_capture_journal(telegram_user_id, text)
+            if journal_reply is not None:
+                return journal_reply
+
         parsed = parse_intent(text)
         unanswered_question: str | None = None
 
@@ -106,6 +112,42 @@ class ConversationEngine:
                 "если хотел ответить, напиши ещё раз.)"
             )
         return reply
+
+    async def _try_capture_journal(
+        self, telegram_user_id: int, text: str
+    ) -> str | None:
+        """Если открыт дневниковый вопрос (сон/факт/итоги дня, или кнопка
+        «📝 Дневник» — см. app/telegram/handlers.py) — сохранить text как
+        есть, БЕЗ разбора через parse_intent/AI.
+
+        Проверяется РАНЬШЕ parse_intent (не только для ADD_TASK, как
+        structured-вопросы про цели/привычки ниже) — иначе длинная
+        дневниковая проза со случайным словом вроде "сделал"/"привычка"
+        внутри предложения улетела бы в COMPLETE_TASK/HABIT_DONE вместо
+        дневника. Весь ответ ЦЕЛИКОМ — это и есть запись, разбирать нечего.
+
+        Если вопрос устарел (> _UNANSWERED_PROMPT_NOTE_WINDOW) — тихо не
+        перехватываем: дневниковое приглашение необязательное, в отличие
+        от structured-вопросов не считаем это "промахом" пользователя
+        (без пометки "не понял").
+        """
+        assert self._pending_prompts is not None
+
+        pending = await self._pending_prompts.get_open(telegram_user_id)
+        if pending is None or pending.category != "journal":
+            return None
+
+        is_fresh = (
+            datetime.now(timezone.utc) - pending.asked_at
+        ) <= _UNANSWERED_PROMPT_NOTE_WINDOW
+        if not is_fresh:
+            return None
+
+        await self._pending_prompts.clear(telegram_user_id)
+        await self._memory.save(
+            telegram_user_id, MemoryType.JOURNAL, text, source="quick_capture"
+        )
+        return "Записал в дневник. 📝"
 
     async def _try_answer_pending_prompt(
         self, telegram_user_id: int, text: str

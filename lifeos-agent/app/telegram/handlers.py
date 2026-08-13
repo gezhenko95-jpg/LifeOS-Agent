@@ -31,9 +31,11 @@ from app.proactive.service import PendingPromptService
 from app.tasks.repository import TaskRepository
 from app.tasks.service import TaskService
 from app.telegram.keyboards import (
+    MENU_ADD_TASK,
     MENU_GOALS,
     MENU_HABITS,
     MENU_HELP,
+    MENU_JOURNAL,
     MENU_TASKS,
     build_goals_message,
     build_habits_message,
@@ -41,6 +43,9 @@ from app.telegram.keyboards import (
     build_task_quick_actions_keyboard,
     build_tasks_message,
 )
+
+_ADD_TASK_HINT = "Окей, пиши, что за задача — с датой или без, я пойму."
+_JOURNAL_PROMPT = "Что запишем в дневник? Пиши как есть — сохраню без изменений."
 
 # Реплика ConversationEngine._add_task ("«{prefix}Добавил задачу: «{title}»…»")
 # — по этому паттерну распознаём "движок только что создал задачу", чтобы
@@ -71,6 +76,8 @@ _MENU_ACTIONS = {
     MENU_TASKS: "tasks",
     MENU_HABITS: "habits",
     MENU_GOALS: "goals",
+    MENU_ADD_TASK: "add_task",
+    MENU_JOURNAL: "journal",
     MENU_HELP: "help",
 }
 
@@ -118,6 +125,12 @@ async def handle_text_message(
         return
     if menu_action == "help":
         await _reply_via_engine(update, context, "/help")
+        return
+    if menu_action == "add_task":
+        await update.message.reply_text(_ADD_TASK_HINT)
+        return
+    if menu_action == "journal":
+        await _open_journal_prompt(update)
         return
 
     intent = parse_intent(text).intent
@@ -169,6 +182,24 @@ async def _send_goals_keyboard(update: Update) -> None:
         text, markup = build_goals_message(goals)
 
     await update.message.reply_text(text, reply_markup=markup)
+
+
+async def _open_journal_prompt(update: Update) -> None:
+    """Кнопка «📝 Дневник» — вручную открывает дневниковый pending
+    (в отличие от проактивных вопросов, здесь нет gap-detection выбора
+    категории — пользователь сам решил писать в дневник прямо сейчас).
+    Следующее сообщение уйдёт в дневник без префикса "дневник:" — см.
+    ConversationEngine._try_capture_journal."""
+    if update.message is None or update.effective_user is None:
+        return
+    telegram_user_id = update.effective_user.id
+
+    async with AsyncSessionLocal() as session:
+        await PendingPromptRepository(session).upsert(
+            telegram_user_id, "journal", _JOURNAL_PROMPT
+        )
+
+    await update.message.reply_text(_JOURNAL_PROMPT)
 
 
 async def _reply_via_engine(

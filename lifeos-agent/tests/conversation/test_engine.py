@@ -689,6 +689,107 @@ async def test_pending_prompt_service_not_configured_keeps_old_behavior(
     called.assert_not_called()
 
 
+async def test_journal_capture_fresh_pending_saves_verbatim(
+    task_service, habit_service, memory_service, goal_service, pending_prompt_service
+):
+    from app.memory.models import MemoryType
+
+    pending_prompt_service.get_open.return_value = SimpleNamespace(
+        category="journal",
+        question_text="Что запишем в дневник?",
+        asked_at=datetime.now(timezone.utc),
+    )
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        goal_service=goal_service,
+        pending_prompt_service=pending_prompt_service,
+    )  # ai_client не передан — журнал не должен его требовать вообще
+
+    reply = await engine.handle_message(1, "Сегодня выполнил кучу дел, устал")
+
+    assert reply == "Записал в дневник. 📝"
+    memory_service.save.assert_awaited_once_with(
+        1,
+        MemoryType.JOURNAL,
+        "Сегодня выполнил кучу дел, устал",
+        source="quick_capture",
+    )
+    pending_prompt_service.clear.assert_awaited_once_with(1)
+    task_service.create_task.assert_not_awaited()
+
+
+async def test_journal_capture_intercepts_before_keyword_matching(
+    task_service, habit_service, memory_service, goal_service, pending_prompt_service
+):
+    """Регрессия: текст со словом 'выполнил' внутри длинной фразы раньше
+    (до перехвата ДО parse_intent) улетал бы в COMPLETE_TASK вместо
+    дневника — см. specs/006-proactive-engagement.md."""
+    pending_prompt_service.get_open.return_value = SimpleNamespace(
+        category="journal",
+        question_text="Что тебе снилось?",
+        asked_at=datetime.now(timezone.utc),
+    )
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        goal_service=goal_service,
+        pending_prompt_service=pending_prompt_service,
+    )
+
+    reply = await engine.handle_message(
+        1, "Мне снилось, что я выполнил привычка какую-то марафонскую дистанцию"
+    )
+
+    assert reply == "Записал в дневник. 📝"
+    memory_service.save.assert_awaited_once()
+    task_service.complete_task_by_title.assert_not_awaited()
+
+
+async def test_journal_capture_stale_pending_falls_back_to_normal_processing(
+    task_service, habit_service, memory_service, goal_service, pending_prompt_service
+):
+    pending_prompt_service.get_open.return_value = SimpleNamespace(
+        category="journal",
+        question_text="Что тебе снилось?",
+        asked_at=datetime.now(timezone.utc) - timedelta(hours=5),
+    )
+    task_service.create_task.return_value = SimpleNamespace(
+        title="Купить молоко", due_date=None, priority="normal", recurrence=None
+    )
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        goal_service=goal_service,
+        pending_prompt_service=pending_prompt_service,
+    )
+
+    reply = await engine.handle_message(1, "Купить молоко")
+
+    assert "Добавил задачу" in reply
+    assert "Записал в дневник" not in reply
+    task_service.create_task.assert_awaited_once()
+    memory_service.save.assert_not_awaited()
+    pending_prompt_service.clear.assert_not_awaited()
+
+
+async def test_journal_category_ignored_when_no_pending_service(
+    task_service, habit_service, memory_service
+):
+    task_service.create_task.return_value = SimpleNamespace(
+        title="Купить молоко", due_date=None, priority="normal", recurrence=None
+    )
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Купить молоко")
+
+    assert "Добавил задачу" in reply
+    memory_service.save.assert_not_awaited()
+
+
 async def test_ai_fallback_failure_keeps_old_message(
     task_service, habit_service, memory_service, monkeypatch
 ):

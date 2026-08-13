@@ -37,6 +37,8 @@ _LABEL_LIMIT = 45
 MENU_TASKS = "📋 Задачи"
 MENU_HABITS = "🔁 Привычки"
 MENU_GOALS = "🎯 Цели"
+MENU_ADD_TASK = "➕ Задача"
+MENU_JOURNAL = "📝 Дневник"
 MENU_HELP = "❓ Помощь"
 
 
@@ -45,6 +47,7 @@ def build_main_menu() -> ReplyKeyboardMarkup:
     keyboard = [
         [KeyboardButton(MENU_TASKS)],
         [KeyboardButton(MENU_HABITS), KeyboardButton(MENU_GOALS)],
+        [KeyboardButton(MENU_ADD_TASK), KeyboardButton(MENU_JOURNAL)],
         [KeyboardButton(MENU_HELP)],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
