@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+from app.ai.client import AIServiceError
 from app.memory.models import MemoryEntry
 from app.scheduler.briefing import build_morning_briefing
 from app.tasks.models import Task
@@ -222,3 +223,85 @@ async def test_habits_section_absent_without_habits():
     )
 
     assert "Привычки на сегодня:" not in text
+
+
+async def test_ai_insight_appended_when_ai_client_returns_text():
+    task_service = AsyncMock()
+    task_service.list_active_tasks.return_value = []
+    memory_service = AsyncMock()
+    memory_service.list_entries.return_value = []
+
+    ai_client = AsyncMock()
+    ai_client.complete.return_value = "  Начните с самого сложного дела.  "
+
+    text = await build_morning_briefing(
+        1,
+        task_service,
+        memory_service,
+        _empty_habit_service(),
+        _empty_goal_service(),
+        ai_client=ai_client,
+    )
+
+    assert "💡 Начните с самого сложного дела." in text
+    ai_client.complete.assert_awaited_once()
+
+
+async def test_ai_insight_absent_without_ai_client():
+    task_service = AsyncMock()
+    task_service.list_active_tasks.return_value = []
+    memory_service = AsyncMock()
+    memory_service.list_entries.return_value = []
+
+    text = await build_morning_briefing(
+        1,
+        task_service,
+        memory_service,
+        _empty_habit_service(),
+        _empty_goal_service(),
+    )
+
+    assert "💡" not in text
+
+
+async def test_ai_insight_error_is_swallowed_and_briefing_still_sent():
+    task_service = AsyncMock()
+    task_service.list_active_tasks.return_value = []
+    memory_service = AsyncMock()
+    memory_service.list_entries.return_value = []
+
+    ai_client = AsyncMock()
+    ai_client.complete.side_effect = AIServiceError("boom")
+
+    text = await build_morning_briefing(
+        1,
+        task_service,
+        memory_service,
+        _empty_habit_service(),
+        _empty_goal_service(),
+        ai_client=ai_client,
+    )
+
+    assert "На сегодня активных задач нет." in text
+    assert "💡" not in text
+
+
+async def test_ai_insight_empty_response_is_ignored():
+    task_service = AsyncMock()
+    task_service.list_active_tasks.return_value = []
+    memory_service = AsyncMock()
+    memory_service.list_entries.return_value = []
+
+    ai_client = AsyncMock()
+    ai_client.complete.return_value = "   "
+
+    text = await build_morning_briefing(
+        1,
+        task_service,
+        memory_service,
+        _empty_habit_service(),
+        _empty_goal_service(),
+        ai_client=ai_client,
+    )
+
+    assert "💡" not in text

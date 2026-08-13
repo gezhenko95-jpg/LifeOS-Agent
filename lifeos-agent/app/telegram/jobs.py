@@ -6,6 +6,7 @@ import logging
 
 from telegram.ext import ContextTypes
 
+from app.ai.client import get_ai_client
 from app.core.config import get_settings
 from app.db.session import AsyncSessionLocal
 from app.goals.repository import GoalRepository
@@ -41,6 +42,7 @@ async def send_morning_briefing_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             memory_service,
             habit_service,
             goal_service,
+            ai_client=get_ai_client(settings),
         )
 
     await context.bot.send_message(chat_id=telegram_user_id, text=text)
