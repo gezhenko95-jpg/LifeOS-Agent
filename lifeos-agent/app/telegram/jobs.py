@@ -15,6 +15,8 @@ from app.habits.repository import HabitRepository
 from app.habits.service import HabitService
 from app.memory.repository import MemoryRepository
 from app.memory.service import MemoryService
+from app.proactive.repository import PendingPromptRepository
+from app.proactive.service import PendingPromptService
 from app.scheduler.briefing import build_morning_briefing
 from app.tasks.repository import TaskRepository
 from app.tasks.service import TaskService
@@ -67,6 +69,35 @@ async def send_evening_reflection_job(context: ContextTypes.DEFAULT_TYPE) -> Non
     await context.bot.send_message(
         chat_id=telegram_user_id, text=_EVENING_REFLECTION_TEXT
     )
+
+
+async def send_proactive_prompt_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Одна проактивная подсказка (см. specs/006-proactive-engagement.md).
+
+    Регистрируется 3 раза (утро/день/вечер, см. app/telegram/bot.py) с
+    одним и тем же телом job — вопрос каждый раз выбирается заново.
+    Без AI-ключа отвечать на свободный текст всё равно нечем, поэтому в
+    этом случае молча ничего не отправляем.
+    """
+    settings = get_settings()
+    telegram_user_id = settings.owner_telegram_user_id
+    if not telegram_user_id:
+        return
+
+    ai_client = get_ai_client(settings)
+    if ai_client is None:
+        return
+
+    async with AsyncSessionLocal() as session:
+        service = PendingPromptService(
+            PendingPromptRepository(session),
+            GoalService(GoalRepository(session)),
+            HabitService(HabitRepository(session)),
+            MemoryService(MemoryRepository(session)),
+        )
+        question = await service.pick_and_open(telegram_user_id)
+
+    await context.bot.send_message(chat_id=telegram_user_id, text=question)
 
 
 async def send_task_reminders_job(context: ContextTypes.DEFAULT_TYPE) -> None:

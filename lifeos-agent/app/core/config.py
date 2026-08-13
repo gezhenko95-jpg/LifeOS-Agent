@@ -39,6 +39,19 @@ class Settings(BaseSettings):
     task_reminders_enabled: bool = True
     task_reminders_interval_seconds: int = 60
 
+    # Проактивные вопросы 3 раза в день (см.
+    # specs/006-proactive-engagement.md). Отдельные сообщения, не встроены
+    # в брифинг/рефлексию — чтобы не путаться с парсингом "дневник: ...".
+    # Реально работают только если задан openrouter_api_key (без AI ответ
+    # пользователя не разобрать) — см. app/telegram/jobs.py.
+    proactive_prompts_enabled: bool = True
+    proactive_prompt_morning_hour: int = 10
+    proactive_prompt_morning_minute: int = 30
+    proactive_prompt_midday_hour: int = 14
+    proactive_prompt_midday_minute: int = 0
+    proactive_prompt_evening_hour: int = 19
+    proactive_prompt_evening_minute: int = 0
+
     # AI Service (OpenRouter) — фолбэк для Conversation Engine,
     # см. specs/003-conversation.md. Пусто = фолбэк выключен.
     openrouter_api_key: str = ""

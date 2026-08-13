@@ -25,6 +25,7 @@ from app.telegram.handlers import (
 from app.telegram.jobs import (
     send_evening_reflection_job,
     send_morning_briefing_job,
+    send_proactive_prompt_job,
     send_task_reminders_job,
 )
 
@@ -51,6 +52,7 @@ def build_application() -> Application:
     _register_morning_briefing(application, settings)
     _register_evening_reflection(application, settings)
     _register_task_reminders(application, settings)
+    _register_proactive_prompts(application, settings)
 
     return application
 
@@ -97,3 +99,33 @@ def _register_task_reminders(application: Application, settings: Settings) -> No
         first=10,
         name="task_reminders",
     )
+
+
+def _register_proactive_prompts(application: Application, settings: Settings) -> None:
+    if not settings.proactive_prompts_enabled or not settings.owner_telegram_user_id:
+        return
+
+    local_tz = datetime.now().astimezone().tzinfo
+    slots = (
+        (
+            "proactive_prompt_morning",
+            settings.proactive_prompt_morning_hour,
+            settings.proactive_prompt_morning_minute,
+        ),
+        (
+            "proactive_prompt_midday",
+            settings.proactive_prompt_midday_hour,
+            settings.proactive_prompt_midday_minute,
+        ),
+        (
+            "proactive_prompt_evening",
+            settings.proactive_prompt_evening_hour,
+            settings.proactive_prompt_evening_minute,
+        ),
+    )
+    for name, hour, minute in slots:
+        application.job_queue.run_daily(
+            send_proactive_prompt_job,
+            time=time(hour=hour, minute=minute, tzinfo=local_tz),
+            name=name,
+        )

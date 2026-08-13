@@ -1,11 +1,17 @@
 """
 Conversation Engine.
 
-Связывает разбор намерения с Tasks Service. Основной путь — rule-based
-parser.py (быстро, бесплатно, предсказуемо). Если он не смог понять
-сообщение (ADD_TASK с пустым title) и передан ai_client — делается
-одна попытка через AI Service (ai_fallback.py, см.
-specs/003-conversation.md) перед тем, как признать сообщение непонятым.
+Связывает разбор намерения с Tasks/Habits/Goals/Memory Service. Основной
+путь — rule-based parser.py (быстро, бесплатно, предсказуемо).
+
+Два AI-фолбэка для ADD_TASK-подобного (нераспознанного правилами) текста,
+в порядке проверки:
+1. Если есть открытый проактивный вопрос (pending_prompt_service, см.
+   specs/006-proactive-engagement.md) — попытка понять text как ответ на
+   него (_try_answer_pending_prompt).
+2. Если ADD_TASK с пустым title — попытка через AI Service разобрать
+   намерение целиком (ai_fallback.py, см. specs/003-conversation.md).
+Оба — тихий fallback: любая ошибка AI не показывается пользователю.
 """
 
 from datetime import datetime
@@ -14,10 +20,13 @@ from app.ai.client import AIClient
 from app.conversation.ai_fallback import parse_intent_with_ai
 from app.conversation.intent import Intent, ParsedIntent
 from app.conversation.parser import parse_intent
+from app.goals.service import GoalService
 from app.habits.models import Habit
 from app.habits.service import HabitService
 from app.memory.models import MemoryType
 from app.memory.service import MemoryService
+from app.proactive.ai_extract import extract_prompt_answer
+from app.proactive.service import PendingPromptService
 from app.tasks.models import Task
 from app.tasks.service import TaskService
 
@@ -31,6 +40,8 @@ _HELP_TEXT = (
     "(отметить сегодня)\n"
     "• спросить про день — «что на завтра», «какие задачи в пятницу»\n"
     "• дневник — «дневник: как прошёл день» (запомню в памяти)\n"
+    "• иногда я сам спрашиваю о целях/привычках/проектах — просто "
+    "ответьте текстом, и я запомню это как надо\n"
     "• /tasks, /habits, /goals — списки с кнопками прямо под сообщением"
 )
 
@@ -42,14 +53,27 @@ class ConversationEngine:
         habit_service: HabitService,
         memory_service: MemoryService,
         ai_client: AIClient | None = None,
+        goal_service: GoalService | None = None,
+        pending_prompt_service: PendingPromptService | None = None,
     ) -> None:
         self._tasks = task_service
         self._habits = habit_service
         self._memory = memory_service
         self._ai_client = ai_client
+        self._goals = goal_service
+        self._pending_prompts = pending_prompt_service
 
     async def handle_message(self, telegram_user_id: int, text: str) -> str:
         parsed = parse_intent(text)
+
+        if (
+            parsed.intent is Intent.ADD_TASK
+            and self._pending_prompts is not None
+            and self._ai_client is not None
+        ):
+            prompt_reply = await self._try_answer_pending_prompt(telegram_user_id, text)
+            if prompt_reply is not None:
+                return prompt_reply
 
         if (
             parsed.intent is Intent.ADD_TASK
@@ -61,6 +85,57 @@ class ConversationEngine:
                 parsed = ai_parsed
 
         return await self._dispatch(telegram_user_id, parsed)
+
+    async def _try_answer_pending_prompt(
+        self, telegram_user_id: int, text: str
+    ) -> str | None:
+        """Если открыт проактивный вопрос — попробовать понять text как ответ.
+
+        None означает "не обработано как ответ" — вызывающий код должен
+        продолжить обычную обработку text (в т.ч. создать задачу, если это
+        и правда просто новая задача, а не ответ на вопрос). Pending
+        намеренно НЕ чистится при None — вопрос остаётся открытым до
+        следующего успешного ответа или следующего запланированного
+        вопроса (см. PendingPromptService.pick_and_open).
+        """
+        assert self._pending_prompts is not None and self._ai_client is not None
+
+        pending = await self._pending_prompts.get_open(telegram_user_id)
+        if pending is None:
+            return None
+
+        answer = await extract_prompt_answer(
+            pending.category, pending.question_text, text, self._ai_client
+        )
+        if answer is None or answer.action == "unrelated":
+            return None
+
+        # Клиру откладываем до момента, когда точно знаем, что можем
+        # обработать action — иначе при "action верный, но title/content
+        # пустые" вопрос потерялся бы без результата (см. ai_extract.py).
+        if answer.action == "create_goal" and answer.title and self._goals:
+            await self._pending_prompts.clear(telegram_user_id)
+            goal = await self._goals.create_goal(
+                telegram_user_id, answer.title, answer.target_date
+            )
+            return f"Добавил цель «{goal.title}» 🎯"
+
+        if answer.action == "create_habit" and answer.title:
+            await self._pending_prompts.clear(telegram_user_id)
+            habit = await self._habits.create_habit(telegram_user_id, answer.title)
+            return f"Добавил привычку «{habit.title}» 🔁"
+
+        if answer.action == "save_memory" and answer.memory_type and answer.content:
+            await self._pending_prompts.clear(telegram_user_id)
+            await self._memory.save(
+                telegram_user_id,
+                MemoryType(answer.memory_type),
+                answer.content,
+                source="proactive_prompt",
+            )
+            return f"Запомнил: {answer.content} 📝"
+
+        return None
 
     async def _dispatch(self, telegram_user_id: int, parsed: ParsedIntent) -> str:
         if parsed.intent is Intent.HELP:

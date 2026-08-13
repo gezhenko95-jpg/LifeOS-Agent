@@ -23,6 +23,8 @@ from app.habits.repository import HabitRepository
 from app.habits.service import HabitService
 from app.memory.repository import MemoryRepository
 from app.memory.service import MemoryService
+from app.proactive.repository import PendingPromptRepository
+from app.proactive.service import PendingPromptService
 from app.tasks.repository import TaskRepository
 from app.tasks.service import TaskService
 from app.telegram.keyboards import (
@@ -165,6 +167,13 @@ async def _reply_via_engine(update: Update, text: str) -> None:
             HabitService(HabitRepository(session)),
             MemoryService(MemoryRepository(session)),
             ai_client=get_ai_client(),
+            goal_service=GoalService(GoalRepository(session)),
+            pending_prompt_service=PendingPromptService(
+                PendingPromptRepository(session),
+                GoalService(GoalRepository(session)),
+                HabitService(HabitRepository(session)),
+                MemoryService(MemoryRepository(session)),
+            ),
         )
         reply = await engine.handle_message(telegram_user_id, text)
 

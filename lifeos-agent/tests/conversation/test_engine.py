@@ -22,6 +22,16 @@ def memory_service():
     return AsyncMock()
 
 
+@pytest.fixture
+def goal_service():
+    return AsyncMock()
+
+
+@pytest.fixture
+def pending_prompt_service():
+    return AsyncMock()
+
+
 async def test_add_task_without_date(task_service, habit_service, memory_service):
     task_service.create_task.return_value = SimpleNamespace(
         title="Купить молоко", due_date=None, priority="normal"
@@ -329,6 +339,208 @@ async def test_ai_fallback_used_when_rule_based_fails(
         1, "День рождения сестры", None, "normal"
     )
     assert "День рождения сестры" in reply
+
+
+async def test_pending_prompt_answer_creates_goal(
+    task_service,
+    habit_service,
+    memory_service,
+    goal_service,
+    pending_prompt_service,
+    monkeypatch,
+):
+    from app.proactive.ai_extract import PromptAnswer
+
+    pending_prompt_service.get_open.return_value = SimpleNamespace(
+        category="goal", question_text="Какая у тебя цель?"
+    )
+    monkeypatch.setattr(
+        "app.conversation.engine.extract_prompt_answer",
+        AsyncMock(return_value=PromptAnswer(action="create_goal", title="Марафон")),
+    )
+    goal_service.create_goal.return_value = SimpleNamespace(title="Марафон")
+    ai_client = AsyncMock()
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        ai_client=ai_client,
+        goal_service=goal_service,
+        pending_prompt_service=pending_prompt_service,
+    )
+
+    reply = await engine.handle_message(1, "Хочу пробежать марафон")
+
+    assert "Марафон" in reply
+    goal_service.create_goal.assert_awaited_once_with(1, "Марафон", None)
+    pending_prompt_service.clear.assert_awaited_once_with(1)
+    task_service.create_task.assert_not_awaited()
+
+
+async def test_pending_prompt_answer_creates_habit(
+    task_service,
+    habit_service,
+    memory_service,
+    goal_service,
+    pending_prompt_service,
+    monkeypatch,
+):
+    from app.proactive.ai_extract import PromptAnswer
+
+    pending_prompt_service.get_open.return_value = SimpleNamespace(
+        category="habit", question_text="Какую привычку хочешь завести?"
+    )
+    monkeypatch.setattr(
+        "app.conversation.engine.extract_prompt_answer",
+        AsyncMock(return_value=PromptAnswer(action="create_habit", title="Медитация")),
+    )
+    habit_service.create_habit.return_value = SimpleNamespace(title="Медитация")
+    ai_client = AsyncMock()
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        ai_client=ai_client,
+        goal_service=goal_service,
+        pending_prompt_service=pending_prompt_service,
+    )
+
+    reply = await engine.handle_message(1, "Хочу медитировать")
+
+    assert "Медитация" in reply
+    habit_service.create_habit.assert_awaited_once_with(1, "Медитация")
+    pending_prompt_service.clear.assert_awaited_once_with(1)
+
+
+async def test_pending_prompt_answer_saves_memory(
+    task_service,
+    habit_service,
+    memory_service,
+    goal_service,
+    pending_prompt_service,
+    monkeypatch,
+):
+    from app.memory.models import MemoryType
+    from app.proactive.ai_extract import PromptAnswer
+
+    pending_prompt_service.get_open.return_value = SimpleNamespace(
+        category="preference", question_text="Что мне о тебе запомнить?"
+    )
+    monkeypatch.setattr(
+        "app.conversation.engine.extract_prompt_answer",
+        AsyncMock(
+            return_value=PromptAnswer(
+                action="save_memory",
+                memory_type="preference",
+                content="Утренний человек",
+            )
+        ),
+    )
+    ai_client = AsyncMock()
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        ai_client=ai_client,
+        goal_service=goal_service,
+        pending_prompt_service=pending_prompt_service,
+    )
+
+    reply = await engine.handle_message(1, "Я лучше работаю утром")
+
+    assert "Утренний человек" in reply
+    memory_service.save.assert_awaited_once_with(
+        1, MemoryType.PREFERENCE, "Утренний человек", source="proactive_prompt"
+    )
+    pending_prompt_service.clear.assert_awaited_once_with(1)
+
+
+async def test_pending_prompt_unrelated_falls_back_to_add_task(
+    task_service,
+    habit_service,
+    memory_service,
+    goal_service,
+    pending_prompt_service,
+    monkeypatch,
+):
+    from app.proactive.ai_extract import PromptAnswer
+
+    pending_prompt_service.get_open.return_value = SimpleNamespace(
+        category="goal", question_text="Какая у тебя цель?"
+    )
+    monkeypatch.setattr(
+        "app.conversation.engine.extract_prompt_answer",
+        AsyncMock(return_value=PromptAnswer(action="unrelated")),
+    )
+    task_service.create_task.return_value = SimpleNamespace(
+        title="Купить молоко", due_date=None, priority="normal"
+    )
+    ai_client = AsyncMock()
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        ai_client=ai_client,
+        goal_service=goal_service,
+        pending_prompt_service=pending_prompt_service,
+    )
+
+    reply = await engine.handle_message(1, "Купить молоко")
+
+    assert "Купить молоко" in reply
+    task_service.create_task.assert_awaited_once()
+    pending_prompt_service.clear.assert_not_awaited()
+
+
+async def test_no_open_pending_prompt_behaves_normally(
+    task_service,
+    habit_service,
+    memory_service,
+    goal_service,
+    pending_prompt_service,
+    monkeypatch,
+):
+    called = AsyncMock()
+    monkeypatch.setattr("app.conversation.engine.extract_prompt_answer", called)
+    pending_prompt_service.get_open.return_value = None
+    task_service.create_task.return_value = SimpleNamespace(
+        title="Купить молоко", due_date=None, priority="normal"
+    )
+    ai_client = AsyncMock()
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        ai_client=ai_client,
+        goal_service=goal_service,
+        pending_prompt_service=pending_prompt_service,
+    )
+
+    reply = await engine.handle_message(1, "Купить молоко")
+
+    assert "Купить молоко" in reply
+    called.assert_not_called()
+
+
+async def test_pending_prompt_service_not_configured_keeps_old_behavior(
+    task_service,
+    habit_service,
+    memory_service,
+    monkeypatch,
+):
+    called = AsyncMock()
+    monkeypatch.setattr("app.conversation.engine.extract_prompt_answer", called)
+    task_service.create_task.return_value = SimpleNamespace(
+        title="Купить молоко", due_date=None, priority="normal"
+    )
+    engine = ConversationEngine(
+        task_service, habit_service, memory_service, ai_client=AsyncMock()
+    )  # pending_prompt_service не передан — как в проде до этой фичи
+
+    reply = await engine.handle_message(1, "Купить молоко")
+
+    assert "Купить молоко" in reply
+    called.assert_not_called()
 
 
 async def test_ai_fallback_failure_keeps_old_message(
