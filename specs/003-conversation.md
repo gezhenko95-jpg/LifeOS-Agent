@@ -29,6 +29,7 @@
 | `ADD_TASK` | не подошло ни одно из ключевых слов ниже — весь текст (минус дата, минус «важно»/«срочно») считается названием задачи | «Завтра купить молоко» |
 | `LIST_TASKS` | фраза начинается/содержит «покажи», «список задач», «мои задачи», «/tasks» | «Покажи задачи» |
 | `QUERY_TASKS_BY_DATE` | содержит «что на», «что у меня на», «что было на», «что запланировано», «какие задачи», «какие дела», «что я собирался», «что я планировал» **и** в тексте нашлась дата (`date_parser`) | «Что я собирался сделать завтра?» |
+| `RECALL` | содержит «напомни», «вспомни», «что я говорил (про/о)», «что ты знаешь (про/о)» | «Напомни, что я говорил про отпуск» |
 | `LIST_HABITS` | содержит «привычки» | «Привычки» |
 | `HABIT_DONE` | содержит «привычка » (со пробелом — отличает команду от разговорного упоминания слова) | «Привычка чтение» |
 | `COMPLETE_TASK` | содержит «выполнил», «сделал», «готово», «закрой» | «Выполнил купить молоко» |
@@ -36,10 +37,11 @@
 | `JOURNAL_ENTRY` | начинается с «дневник», «рефлексия» или «итоги дня» | «Дневник: продуктивный день» |
 | `HELP` | «/help», «помощь», «что ты умеешь» | «/help» |
 
-Порядок проверки: HELP → LIST_TASKS → QUERY_TASKS_BY_DATE → LIST_HABITS →
-HABIT_DONE → COMPLETE_TASK → DELETE_TASK → JOURNAL_ENTRY → иначе ADD_TASK.
-Привычки проверяются раньше COMPLETE_TASK, чтобы «привычка сделал зарядку»
-не матчилось как задача (см. `specs/004-habits.md`).
+Порядок проверки: HELP → LIST_TASKS → QUERY_TASKS_BY_DATE → RECALL →
+LIST_HABITS → HABIT_DONE → COMPLETE_TASK → DELETE_TASK → JOURNAL_ENTRY →
+иначе ADD_TASK. Привычки проверяются раньше COMPLETE_TASK, чтобы
+«привычка сделал зарядку» не матчилось как задача (см.
+`specs/004-habits.md`).
 
 `QUERY_TASKS_BY_DATE` — если одна из ключевых фраз есть, но дату в тексте
 `date_parser.extract_due_date` не нашёл (например «какие задачи вообще?»),
@@ -47,6 +49,12 @@ HABIT_DONE → COMPLETE_TASK → DELETE_TASK → JOURNAL_ENTRY → иначе AD
 список. `ConversationEngine._list_tasks_by_date` берёт все активные задачи
 через уже существующий `TaskService.list_active_tasks` и фильтрует по
 `task.due_date.date() == due_date.date()` — Tasks Service не меняется.
+
+`RECALL` — `ConversationEngine._recall` вызывает уже существующий
+`MemoryService.search(telegram_user_id, query)` (случайно не был
+подключён к чату) и возвращает до 5 совпадений. Query собирается вырезкой
+ВСЕХ найденных триггерных фраз (не только первой — «напомни, что я
+говорил про X» содержит две) плюс висящего предлога «про/о/об».
 
 `ADD_TASK` дополнительно распознаёт приоритет: «важно»/«срочно» в
 сообщении → `priority="high"` (см. `specs/002-tasks.md`).
@@ -66,6 +74,11 @@ HABIT_DONE → COMPLETE_TASK → DELETE_TASK → JOURNAL_ENTRY → иначе AD
 
 Если дата не найдена — `due_date = None`, текст не меняется.
 
+`date_parser.py::extract_recurrence` — отдельно распознаёт признак
+повторения задачи («каждый день», «каждую неделю», «каждый месяц»,
+«каждый/каждую <день недели>»); вызывается в `parser.py` ПЕРЕД
+`extract_due_date` (см. `specs/002-tasks.md`, раздел Recurring Tasks).
+
 ---
 
 # Результат разбора
@@ -74,9 +87,10 @@ HABIT_DONE → COMPLETE_TASK → DELETE_TASK → JOURNAL_ENTRY → иначе AD
 @dataclass
 class ParsedIntent:
     intent: Intent
-    title: str | None       # для ADD_TASK / COMPLETE_TASK / DELETE_TASK / HABIT_DONE / JOURNAL_ENTRY
-    due_date: datetime | None  # только для ADD_TASK
+    title: str | None       # для ADD_TASK / COMPLETE_TASK / DELETE_TASK / HABIT_DONE / JOURNAL_ENTRY / RECALL
+    due_date: datetime | None  # только для ADD_TASK / QUERY_TASKS_BY_DATE
     priority: str = "normal"   # только для ADD_TASK: "normal" | "high"
+    recurrence: str | None = None  # только для ADD_TASK: "daily"|"weekly"|"monthly"
 ```
 
 ---

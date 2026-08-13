@@ -5,7 +5,7 @@ Rule-based разбор намерения пользователя (без LLM,
 import re
 from typing import Optional
 
-from app.conversation.date_parser import extract_due_date
+from app.conversation.date_parser import extract_due_date, extract_recurrence
 from app.conversation.intent import Intent, ParsedIntent
 
 _HELP_KEYWORDS = ("/help", "помощь", "что ты умеешь")
@@ -95,12 +95,14 @@ def parse_intent(text: str) -> ParsedIntent:
         return ParsedIntent(intent=Intent.JOURNAL_ENTRY, title=journal_content or None)
 
     priority, without_priority = _extract_priority(stripped)
-    due_date, remaining = extract_due_date(without_priority)
+    recurrence, without_recurrence = extract_recurrence(without_priority)
+    due_date, remaining = extract_due_date(without_recurrence)
     return ParsedIntent(
         intent=Intent.ADD_TASK,
         title=remaining.strip(),
         due_date=due_date,
         priority=priority,
+        recurrence=recurrence,
     )
 
 

@@ -1,6 +1,6 @@
 from datetime import date, datetime, timedelta
 
-from app.conversation.date_parser import extract_due_date
+from app.conversation.date_parser import extract_due_date, extract_recurrence
 
 
 def test_relative_minutes():
@@ -125,3 +125,59 @@ def test_invalid_numeric_date_is_ignored():
 
     assert due is None
     assert remaining == "32.13 странная дата"
+
+
+def test_recurrence_daily():
+    recurrence, remaining = extract_recurrence("каждый день пить воду")
+
+    assert recurrence == "daily"
+    assert remaining == "пить воду"
+
+
+def test_recurrence_daily_alternate_form():
+    recurrence, remaining = extract_recurrence("ежедневно проверять почту")
+
+    assert recurrence == "daily"
+    assert remaining == "проверять почту"
+
+
+def test_recurrence_monthly():
+    recurrence, remaining = extract_recurrence("каждый месяц оплатить аренду")
+
+    assert recurrence == "monthly"
+    assert remaining == "оплатить аренду"
+
+
+def test_recurrence_weekly_generic():
+    recurrence, remaining = extract_recurrence("каждую неделю делать уборку")
+
+    assert recurrence == "weekly"
+    assert remaining == "делать уборку"
+
+
+def test_recurrence_weekday_substitutes_due_date_phrase():
+    recurrence, remaining = extract_recurrence("каждый понедельник оплатить интернет")
+
+    assert recurrence == "weekly"
+    # "каждый понедельник" заменяется на "в понедельник" — чтобы
+    # extract_due_date следующим шагом сам нашёл дату
+    assert remaining == "в понедельник оплатить интернет"
+
+
+def test_recurrence_weekday_then_due_date_finds_the_day():
+    recurrence, without_recurrence = extract_recurrence(
+        "каждый понедельник оплатить интернет"
+    )
+    due, remaining = extract_due_date(without_recurrence)
+
+    assert recurrence == "weekly"
+    assert due is not None
+    assert due.weekday() == 0  # понедельник
+    assert remaining == "оплатить интернет"
+
+
+def test_no_recurrence_found():
+    recurrence, remaining = extract_recurrence("купить молоко")
+
+    assert recurrence is None
+    assert remaining == "купить молоко"

@@ -17,6 +17,43 @@ def test_add_task_without_date():
     assert result.title == "Купить молоко"
     assert result.due_date is None
     assert result.priority == "normal"
+    assert result.recurrence is None
+
+
+def test_add_task_recurring_weekday():
+    result = parse_intent("Каждый понедельник оплатить интернет")
+
+    assert result.intent is Intent.ADD_TASK
+    assert result.title == "оплатить интернет"
+    assert result.recurrence == "weekly"
+    assert result.due_date is not None
+    assert result.due_date.weekday() == 0
+
+
+def test_add_task_recurring_daily_without_explicit_date():
+    result = parse_intent("Каждый день пить воду")
+
+    assert result.intent is Intent.ADD_TASK
+    assert result.title == "пить воду"
+    assert result.recurrence == "daily"
+    assert result.due_date is None  # дата подставляется в TaskService
+
+
+def test_add_task_recurring_monthly():
+    result = parse_intent("Каждый месяц оплатить аренду")
+
+    assert result.intent is Intent.ADD_TASK
+    assert result.title == "оплатить аренду"
+    assert result.recurrence == "monthly"
+
+
+def test_add_task_recurring_with_priority():
+    result = parse_intent("Важно каждый день пить таблетки")
+
+    assert result.intent is Intent.ADD_TASK
+    assert result.title == "пить таблетки"
+    assert result.recurrence == "daily"
+    assert result.priority == "high"
 
 
 def test_add_task_with_high_priority_keyword():

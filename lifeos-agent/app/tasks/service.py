@@ -5,7 +5,8 @@ Tasks Service.
 API/Conversation — только вызывают этот сервис.
 """
 
-from datetime import datetime, timezone
+import calendar
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from app.tasks.models import Task
@@ -15,6 +16,26 @@ ACTIVE = "active"
 COMPLETED = "completed"
 
 _PRIORITY_ORDER = {"high": 0, "normal": 1, "low": 2}
+_RECURRENCE_INTERVALS = {"daily", "weekly", "monthly"}
+
+
+def _advance_date(due_date: datetime, recurrence: str) -> datetime:
+    if recurrence == "daily":
+        return due_date + timedelta(days=1)
+    if recurrence == "weekly":
+        return due_date + timedelta(days=7)
+    if recurrence == "monthly":
+        return _add_month(due_date)
+    raise ValueError(f"Неизвестная периодичность: {recurrence}")
+
+
+def _add_month(dt: datetime) -> datetime:
+    month = dt.month + 1
+    year = dt.year + (month - 1) // 12
+    month = (month - 1) % 12 + 1
+    last_day_of_target_month = calendar.monthrange(year, month)[1]
+    day = min(dt.day, last_day_of_target_month)
+    return dt.replace(year=year, month=month, day=day)
 
 
 class TaskService:
@@ -27,12 +48,22 @@ class TaskService:
         title: str,
         due_date: Optional[datetime] = None,
         priority: str = "normal",
+        recurrence: Optional[str] = None,
     ) -> Task:
         title = title.strip()
         if not title:
             raise ValueError("Название задачи не может быть пустым")
         if priority not in _PRIORITY_ORDER:
             raise ValueError(f"Неизвестный приоритет: {priority}")
+        if recurrence is not None and recurrence not in _RECURRENCE_INTERVALS:
+            raise ValueError(f"Неизвестная периодичность: {recurrence}")
+
+        if recurrence is not None and due_date is None:
+            # "каждый день"/"каждый месяц" без конкретной даты (в отличие
+            # от "каждый понедельник", где день уже определён парсером) —
+            # стартуем с ближайшего повторения, а не оставляем без даты,
+            # иначе повторяющаяся задача никогда не наступит.
+            due_date = _advance_date(datetime.now(timezone.utc), recurrence)
 
         task = Task(
             telegram_user_id=telegram_user_id,
@@ -40,6 +71,7 @@ class TaskService:
             due_date=due_date,
             status=ACTIVE,
             priority=priority,
+            recurrence=recurrence,
         )
         return await self._repository.add(task)
 
@@ -55,13 +87,18 @@ class TaskService:
         due_date: Optional[datetime] = None,
         status: Optional[str] = None,
         priority: Optional[str] = None,
+        recurrence: Optional[str] = None,
     ) -> Optional[Task]:
         if priority is not None and priority not in _PRIORITY_ORDER:
             raise ValueError(f"Неизвестный приоритет: {priority}")
+        if recurrence is not None and recurrence not in _RECURRENCE_INTERVALS:
+            raise ValueError(f"Неизвестная периодичность: {recurrence}")
 
         task = await self._repository.get_by_id(task_id)
         if task is None:
             return None
+
+        was_active = task.status == ACTIVE
         if title is not None:
             task.title = title
         if due_date is not None:
@@ -72,7 +109,13 @@ class TaskService:
                 task.completed_at = datetime.now(timezone.utc)
         if priority is not None:
             task.priority = priority
-        return await self._repository.save(task)
+        if recurrence is not None:
+            task.recurrence = recurrence
+
+        saved = await self._repository.save(task)
+        if was_active and status == COMPLETED:
+            await self._maybe_create_next_occurrence(saved)
+        return saved
 
     async def delete_task(self, task_id: int) -> Optional[Task]:
         task = await self._repository.get_by_id(task_id)
@@ -98,7 +141,26 @@ class TaskService:
         task = matches[0]
         task.status = COMPLETED
         task.completed_at = datetime.now(timezone.utc)
-        return await self._repository.save(task)
+        saved = await self._repository.save(task)
+        await self._maybe_create_next_occurrence(saved)
+        return saved
+
+    async def _maybe_create_next_occurrence(self, task: Task) -> None:
+        """Если задача повторяющаяся — создать следующее вхождение с
+        датой, отсчитанной от ИСХОДНОГО due_date (а не от даты
+        завершения) — так серия не "плывёт", если задачу отметили
+        выполненной с опозданием."""
+        if not task.recurrence or task.due_date is None:
+            return
+        next_task = Task(
+            telegram_user_id=task.telegram_user_id,
+            title=task.title,
+            due_date=_advance_date(task.due_date, task.recurrence),
+            status=ACTIVE,
+            priority=task.priority,
+            recurrence=task.recurrence,
+        )
+        await self._repository.add(next_task)
 
     async def delete_task_by_title(
         self, telegram_user_id: int, title_query: str

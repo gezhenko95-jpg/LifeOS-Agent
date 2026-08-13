@@ -34,7 +34,7 @@ def pending_prompt_service():
 
 async def test_add_task_without_date(task_service, habit_service, memory_service):
     task_service.create_task.return_value = SimpleNamespace(
-        title="Купить молоко", due_date=None, priority="normal"
+        title="Купить молоко", due_date=None, priority="normal", recurrence=None
     )
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
@@ -43,7 +43,7 @@ async def test_add_task_without_date(task_service, habit_service, memory_service
     assert "Купить молоко" in reply
     assert "❗" not in reply
     task_service.create_task.assert_awaited_once_with(
-        1, "Купить молоко", None, "normal"
+        1, "Купить молоко", None, "normal", None
     )
 
 
@@ -54,7 +54,7 @@ async def test_add_task_with_date_shown_in_reply(
 
     due = datetime(2026, 8, 13, 9, 0)
     task_service.create_task.return_value = SimpleNamespace(
-        title="Купить молоко", due_date=due, priority="normal"
+        title="Купить молоко", due_date=due, priority="normal", recurrence=None
     )
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
@@ -67,7 +67,7 @@ async def test_add_task_with_high_priority_marker(
     task_service, habit_service, memory_service
 ):
     task_service.create_task.return_value = SimpleNamespace(
-        title="Позвонить в банк", due_date=None, priority="high"
+        title="Позвонить в банк", due_date=None, priority="high", recurrence=None
     )
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
@@ -75,8 +75,29 @@ async def test_add_task_with_high_priority_marker(
 
     assert "❗" in reply
     task_service.create_task.assert_awaited_once_with(
-        1, "позвонить в банк", None, "high"
+        1, "позвонить в банк", None, "high", None
     )
+
+
+async def test_add_recurring_task_shows_recurrence_marker(
+    task_service, habit_service, memory_service
+):
+    from datetime import datetime
+
+    task_service.create_task.return_value = SimpleNamespace(
+        title="Оплатить интернет",
+        due_date=datetime(2026, 8, 17, 9, 0),
+        priority="normal",
+        recurrence="weekly",
+    )
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Каждый понедельник оплатить интернет")
+
+    assert "🔁" in reply
+    task_service.create_task.assert_awaited_once()
+    args = task_service.create_task.await_args.args
+    assert args[4] == "weekly"
 
 
 async def test_add_task_empty_title_does_not_call_service(
@@ -188,7 +209,7 @@ async def test_recall_empty_query_asks_what(
 
 
 async def test_complete_task_found(task_service, habit_service, memory_service):
-    task = SimpleNamespace(title="Купить молоко")
+    task = SimpleNamespace(title="Купить молоко", recurrence=None)
     task_service.find_active_by_title.return_value = [task]
     task_service.complete_task_by_title.return_value = task
     engine = ConversationEngine(task_service, habit_service, memory_service)
@@ -198,6 +219,20 @@ async def test_complete_task_found(task_service, habit_service, memory_service):
     assert "Готово" in reply
     assert "Под «" not in reply
     task_service.complete_task_by_title.assert_awaited_once_with(1, "молоко")
+
+
+async def test_complete_recurring_task_mentions_next_occurrence(
+    task_service, habit_service, memory_service
+):
+    task = SimpleNamespace(title="Пить воду", recurrence="daily")
+    task_service.find_active_by_title.return_value = [task]
+    task_service.complete_task_by_title.return_value = task
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Выполнил пить воду")
+
+    assert "Готово" in reply
+    assert "повторится автоматически" in reply
 
 
 async def test_complete_task_not_found(task_service, habit_service, memory_service):
@@ -213,7 +248,7 @@ async def test_complete_task_not_found(task_service, habit_service, memory_servi
 async def test_complete_task_ambiguous_lists_other_matches(
     task_service, habit_service, memory_service
 ):
-    task = SimpleNamespace(title="Купить молоко")
+    task = SimpleNamespace(title="Купить молоко", recurrence=None)
     other = SimpleNamespace(title="Купить молоко и хлеб")
     task_service.find_active_by_title.return_value = [task, other]
     task_service.complete_task_by_title.return_value = task
@@ -388,7 +423,7 @@ async def test_ai_fallback_used_when_rule_based_fails(
         ),
     )
     task_service.create_task.return_value = SimpleNamespace(
-        title="День рождения сестры", due_date=None, priority="normal"
+        title="День рождения сестры", due_date=None, priority="normal", recurrence=None
     )
     engine = ConversationEngine(
         task_service, habit_service, memory_service, ai_client=fake_ai_client
@@ -397,7 +432,7 @@ async def test_ai_fallback_used_when_rule_based_fails(
     reply = await engine.handle_message(1, "Завтра")
 
     task_service.create_task.assert_awaited_once_with(
-        1, "День рождения сестры", None, "normal"
+        1, "День рождения сестры", None, "normal", None
     )
     assert "День рождения сестры" in reply
 
@@ -534,7 +569,7 @@ async def test_pending_prompt_unrelated_falls_back_to_add_task(
         AsyncMock(return_value=PromptAnswer(action="unrelated")),
     )
     task_service.create_task.return_value = SimpleNamespace(
-        title="Купить молоко", due_date=None, priority="normal"
+        title="Купить молоко", due_date=None, priority="normal", recurrence=None
     )
     ai_client = AsyncMock()
     engine = ConversationEngine(
@@ -565,7 +600,7 @@ async def test_no_open_pending_prompt_behaves_normally(
     monkeypatch.setattr("app.conversation.engine.extract_prompt_answer", called)
     pending_prompt_service.get_open.return_value = None
     task_service.create_task.return_value = SimpleNamespace(
-        title="Купить молоко", due_date=None, priority="normal"
+        title="Купить молоко", due_date=None, priority="normal", recurrence=None
     )
     ai_client = AsyncMock()
     engine = ConversationEngine(
@@ -592,7 +627,7 @@ async def test_pending_prompt_service_not_configured_keeps_old_behavior(
     called = AsyncMock()
     monkeypatch.setattr("app.conversation.engine.extract_prompt_answer", called)
     task_service.create_task.return_value = SimpleNamespace(
-        title="Купить молоко", due_date=None, priority="normal"
+        title="Купить молоко", due_date=None, priority="normal", recurrence=None
     )
     engine = ConversationEngine(
         task_service, habit_service, memory_service, ai_client=AsyncMock()

@@ -42,6 +42,21 @@ _WEEKDAY_PATTERN = re.compile(
 
 _DATE_PATTERN = re.compile(r"\b(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?\b")
 
+_RECURRENCE_DAILY_PATTERN = re.compile(
+    r"\bкаждый\s+день\b|\bежедневно\b", re.IGNORECASE
+)
+_RECURRENCE_MONTHLY_PATTERN = re.compile(
+    r"\bкаждый\s+месяц\b|\bежемесячно\b", re.IGNORECASE
+)
+_RECURRENCE_WEEKLY_GENERIC_PATTERN = re.compile(
+    r"\bкажд\w*\s+недел\w*\b|\bеженедельно\b", re.IGNORECASE
+)
+_RECURRENCE_WEEKDAY_PATTERN = re.compile(
+    r"\bкажд\w*\s+(понедельник|вторник|сред[ауеы]?|четверг|пятниц[ауеы]?"
+    r"|суббот[ауеы]?|воскресень[еяию]?)\b",
+    re.IGNORECASE,
+)
+
 
 def extract_due_date(text: str) -> tuple[Optional[datetime], str]:
     """Найти дату в тексте, вернуть (дата | None, текст без упоминания даты)."""
@@ -91,6 +106,39 @@ def extract_due_date(text: str) -> tuple[Optional[datetime], str]:
         except ValueError:
             return None, text
         return _at_default_time(parsed_date), _remove_span(text, date_match.span())
+
+    return None, text
+
+
+def extract_recurrence(text: str) -> tuple[Optional[str], str]:
+    """Найти признак повторения задачи (см. specs/002-tasks.md, Recurring
+    Tasks), вернуть ("daily"|"weekly"|"monthly"|None, остаток текста).
+
+    Для "каждый/каждую <день недели>" (например «каждый понедельник»)
+    остаток текста содержит НЕ вырезанную фразу, а подмену на "в <день
+    недели>" — чтобы вызывающий код (parser.py), передав остаток в
+    extract_due_date следующим шагом, сам нашёл дату этого дня недели
+    через уже существующий _WEEKDAY_PATTERN. Так day-of-week логика не
+    дублируется.
+    """
+    match = _RECURRENCE_DAILY_PATTERN.search(text)
+    if match:
+        return "daily", _remove_span(text, match.span())
+
+    match = _RECURRENCE_MONTHLY_PATTERN.search(text)
+    if match:
+        return "monthly", _remove_span(text, match.span())
+
+    match = _RECURRENCE_WEEKLY_GENERIC_PATTERN.search(text)
+    if match:
+        return "weekly", _remove_span(text, match.span())
+
+    match = _RECURRENCE_WEEKDAY_PATTERN.search(text)
+    if match:
+        weekday_word = match.group(1)
+        start, end = match.span()
+        replaced = text[:start] + f"в {weekday_word}" + text[end:]
+        return "weekly", _clean(replaced)
 
     return None, text
 

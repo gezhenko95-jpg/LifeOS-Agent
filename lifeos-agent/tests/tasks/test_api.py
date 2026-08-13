@@ -5,6 +5,8 @@
 не требовали поднятого Docker/БД. В проде используется asyncpg/Postgres.
 """
 
+from datetime import datetime
+
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -126,3 +128,44 @@ async def test_delete_nonexistent_task_returns_404(client):
     response = await client.delete("/tasks/999999")
 
     assert response.status_code == 404
+
+
+async def test_create_recurring_task_returns_recurrence(client):
+    response = await client.post(
+        "/tasks",
+        json={
+            "telegram_user_id": 5,
+            "title": "Оплатить интернет",
+            "due_date": "2026-08-17T09:00:00Z",
+            "recurrence": "weekly",
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["recurrence"] == "weekly"
+    assert body["due_date"] is not None
+
+
+async def test_completing_recurring_task_creates_next_occurrence(client):
+    create_resp = await client.post(
+        "/tasks",
+        json={
+            "telegram_user_id": 6,
+            "title": "Пить воду",
+            "due_date": "2026-08-13T09:00:00Z",
+            "recurrence": "daily",
+        },
+    )
+    task_id = create_resp.json()["id"]
+
+    patch_resp = await client.patch(f"/tasks/{task_id}", json={"status": "completed"})
+    assert patch_resp.status_code == 200
+    assert patch_resp.json()["completed_at"] is not None
+
+    list_resp = await client.get("/tasks", params={"telegram_user_id": 6})
+    active_tasks = list_resp.json()
+    assert len(active_tasks) == 1
+    assert active_tasks[0]["title"] == "Пить воду"
+    next_due = datetime.fromisoformat(active_tasks[0]["due_date"])
+    assert (next_due.year, next_due.month, next_due.day) == (2026, 8, 14)

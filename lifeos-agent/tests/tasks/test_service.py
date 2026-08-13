@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -224,8 +225,6 @@ async def test_update_task_status_to_active_does_not_set_completed_at(repository
 
 
 async def test_count_tasks_completed_since_delegates_to_repository(repository):
-    from datetime import datetime, timezone
-
     repository.count_completed_since.return_value = 3
     service = TaskService(repository)
     since = datetime(2026, 8, 1, tzinfo=timezone.utc)
@@ -234,3 +233,139 @@ async def test_count_tasks_completed_since_delegates_to_repository(repository):
 
     assert count == 3
     repository.count_completed_since.assert_awaited_once_with(1, since)
+
+
+# --- Recurring tasks ---------------------------------------------------
+
+
+def _dt(*args) -> datetime:
+    return datetime(*args, tzinfo=timezone.utc)
+
+
+async def test_create_task_with_recurrence_and_due_date(repository):
+    service = TaskService(repository)
+
+    task = await service.create_task(
+        telegram_user_id=1,
+        title="Оплатить интернет",
+        due_date=_dt(2026, 8, 17),
+        recurrence="weekly",
+    )
+
+    assert task.recurrence == "weekly"
+    assert task.due_date == _dt(2026, 8, 17)
+
+
+async def test_create_task_with_recurrence_without_due_date_gets_auto_date(
+    repository,
+):
+    service = TaskService(repository)
+
+    task = await service.create_task(
+        telegram_user_id=1, title="Пить воду", recurrence="daily"
+    )
+
+    assert task.recurrence == "daily"
+    assert task.due_date is not None
+
+
+async def test_create_task_invalid_recurrence_raises(repository):
+    service = TaskService(repository)
+
+    with pytest.raises(ValueError):
+        await service.create_task(telegram_user_id=1, title="X", recurrence="yearly")
+
+
+async def test_complete_recurring_task_creates_next_daily_occurrence(repository):
+    repository.list_by_user.return_value = [
+        Task(
+            telegram_user_id=1,
+            title="Пить таблетки",
+            status="active",
+            due_date=_dt(2026, 8, 13),
+            recurrence="daily",
+        )
+    ]
+    service = TaskService(repository)
+
+    await service.complete_task_by_title(1, "таблетки")
+
+    assert repository.add.await_count == 1
+    next_task = repository.add.await_args.args[0]
+    assert next_task.due_date == _dt(2026, 8, 14)
+    assert next_task.status == "active"
+    assert next_task.recurrence == "daily"
+    assert next_task.title == "Пить таблетки"
+
+
+async def test_complete_recurring_task_weekly(repository):
+    repository.list_by_user.return_value = [
+        Task(
+            telegram_user_id=1,
+            title="Оплатить интернет",
+            status="active",
+            due_date=_dt(2026, 8, 17),
+            recurrence="weekly",
+        )
+    ]
+    service = TaskService(repository)
+
+    await service.complete_task_by_title(1, "интернет")
+
+    next_task = repository.add.await_args.args[0]
+    assert next_task.due_date == _dt(2026, 8, 24)
+
+
+async def test_complete_recurring_task_monthly_clamps_month_end(repository):
+    repository.list_by_user.return_value = [
+        Task(
+            telegram_user_id=1,
+            title="Отчёт",
+            status="active",
+            due_date=_dt(2026, 1, 31),
+            recurrence="monthly",
+        )
+    ]
+    service = TaskService(repository)
+
+    await service.complete_task_by_title(1, "отчёт")
+
+    next_task = repository.add.await_args.args[0]
+    assert next_task.due_date == _dt(2026, 2, 28)
+
+
+async def test_complete_non_recurring_task_does_not_create_next_occurrence(
+    repository,
+):
+    repository.list_by_user.return_value = [
+        Task(telegram_user_id=1, title="Купить молоко", status="active")
+    ]
+    service = TaskService(repository)
+
+    await service.complete_task_by_title(1, "молоко")
+
+    repository.add.assert_not_awaited()
+
+
+async def test_update_task_to_completed_also_creates_next_occurrence(repository):
+    task = Task(
+        telegram_user_id=1,
+        title="Пить воду",
+        status="active",
+        due_date=_dt(2026, 8, 13),
+        recurrence="daily",
+    )
+    repository.get_by_id.return_value = task
+    service = TaskService(repository)
+
+    await service.update_task(task_id=1, status="completed")
+
+    next_task = repository.add.await_args.args[0]
+    assert next_task.due_date == _dt(2026, 8, 14)
+
+
+async def test_update_task_invalid_recurrence_raises(repository):
+    service = TaskService(repository)
+
+    with pytest.raises(ValueError):
+        await service.update_task(task_id=1, recurrence="yearly")

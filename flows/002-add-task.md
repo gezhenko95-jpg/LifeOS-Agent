@@ -16,10 +16,10 @@ LIST/COMPLETE/DELETE/HELP.
 # Последовательность
 
 1. Telegram Service принимает сообщение и передает текст + `telegram_user_id` в Conversation Engine.
-2. Conversation Engine вызывает `parse_intent`, получает `Intent.ADD_TASK`, название и (опционально) дату.
-3. Conversation Engine вызывает `TaskService.create_task(telegram_user_id, title, due_date)`.
-4. Task Service создает запись через Task Repository.
-5. Conversation Engine формирует ответ («Добавил задачу: … на …» либо без даты).
+2. Conversation Engine вызывает `parse_intent`, получает `Intent.ADD_TASK`, название, (опционально) дату и (опционально) признак повторения («каждый день»/«каждую неделю»/«каждый месяц»/«каждый понедельник» и т.п. — см. `specs/002-tasks.md`, раздел Recurring Tasks).
+3. Conversation Engine вызывает `TaskService.create_task(telegram_user_id, title, due_date, priority, recurrence)`.
+4. Task Service создает запись через Task Repository (если задача повторяющаяся, но дата не распознана — подставляет ближайшее повторение от текущего момента).
+5. Conversation Engine формирует ответ («Добавил задачу: … на …» либо без даты, с пометкой 🔁 для повторяющихся).
 6. Telegram Service отправляет ответ пользователю.
 
 ---

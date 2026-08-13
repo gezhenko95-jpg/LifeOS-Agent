@@ -31,3 +31,4 @@ class ParsedIntent:
     title: Optional[str] = None
     due_date: Optional[datetime] = None
     priority: str = "normal"
+    recurrence: Optional[str] = None  # только для ADD_TASK: daily|weekly|monthly

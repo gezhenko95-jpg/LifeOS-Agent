@@ -40,6 +40,8 @@ _HELP_TEXT = (
     "(отметить сегодня)\n"
     "• спросить про день — «что на завтра», «какие задачи в пятницу»\n"
     "• вспомнить — «напомни, что я говорил про отпуск»\n"
+    "• повторяющиеся задачи — «каждый понедельник оплатить интернет», "
+    "«каждый день пить воду»\n"
     "• дневник — «дневник: как прошёл день» (запомню в памяти)\n"
     "• иногда я сам спрашиваю о целях/привычках/проектах — просто "
     "ответьте текстом, и я запомню это как надо\n"
@@ -169,12 +171,20 @@ class ConversationEngine:
                 "Напишите, например: «Завтра купить молоко»."
             )
         task = await self._tasks.create_task(
-            telegram_user_id, parsed.title, parsed.due_date, parsed.priority
+            telegram_user_id,
+            parsed.title,
+            parsed.due_date,
+            parsed.priority,
+            parsed.recurrence,
         )
         prefix = "❗ " if task.priority == "high" else ""
+        suffix = " 🔁" if task.recurrence else ""
         if task.due_date:
-            return f"{prefix}Добавил задачу: «{task.title}» на {task.due_date:%d.%m.%Y}"
-        return f"{prefix}Добавил задачу: «{task.title}»"
+            return (
+                f"{prefix}Добавил задачу: «{task.title}» "
+                f"на {task.due_date:%d.%m.%Y}{suffix}"
+            )
+        return f"{prefix}Добавил задачу: «{task.title}»{suffix}"
 
     async def _list_tasks(self, telegram_user_id: int) -> str:
         tasks = await self._tasks.list_active_tasks(telegram_user_id)
@@ -228,7 +238,12 @@ class ConversationEngine:
         if task is None:
             return f"Не нашёл активную задачу «{title_query}»."
         note = _ambiguity_note(matches, title_query)
-        return f"Готово: «{task.title}» отмечена выполненной.{note}"
+        recurrence_note = (
+            "\n\nСоздал следующую — она повторится автоматически."
+            if task.recurrence
+            else ""
+        )
+        return f"Готово: «{task.title}» отмечена выполненной.{recurrence_note}{note}"
 
     async def _delete_task(self, telegram_user_id: int, title_query: str) -> str:
         if not title_query:

@@ -17,6 +17,7 @@ class TaskCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     due_date: Optional[datetime] = None
     priority: str = "normal"
+    recurrence: Optional[str] = None
 
 
 class TaskUpdate(BaseModel):
@@ -26,6 +27,7 @@ class TaskUpdate(BaseModel):
     due_date: Optional[datetime] = None
     status: Optional[str] = None
     priority: Optional[str] = None
+    recurrence: Optional[str] = None
 
 
 class TaskRead(BaseModel):
@@ -39,4 +41,6 @@ class TaskRead(BaseModel):
     due_date: Optional[datetime]
     status: str
     priority: str
+    recurrence: Optional[str]
+    completed_at: Optional[datetime]
     created_at: datetime
