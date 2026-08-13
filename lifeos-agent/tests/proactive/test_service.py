@@ -7,6 +7,7 @@ specs/006-proactive-engagement.md). Репозитории/сервисы — As
 from unittest.mock import AsyncMock
 
 from app.proactive.questions import (
+    DREAM_QUESTIONS,
     GOAL_QUESTIONS,
     HABIT_QUESTIONS,
     MUSING_QUESTIONS,
@@ -139,6 +140,55 @@ async def test_musing_not_appended_when_chance_misses(monkeypatch):
 
     assert "🤔" not in question
     repository.upsert.assert_awaited_once_with(1, "goal", question)
+
+
+async def test_morning_reflection_journal_branch(monkeypatch):
+    # random() >= _MORNING_JOURNAL_CHANCE (0.7) выбирает gap-ветку —
+    # значение НИЖЕ 0.7 должно давать дневниковый вопрос
+    monkeypatch.setattr("app.proactive.service.random.random", lambda: 0.1)
+    service, repository = _service()  # гэп по цели точно есть
+
+    question = await service.pick_morning_reflection(1)
+
+    assert question in DREAM_QUESTIONS
+    repository.upsert.assert_awaited_once_with(1, "journal", question)
+
+
+async def test_morning_reflection_gap_branch_when_gap_exists(monkeypatch):
+    monkeypatch.setattr("app.proactive.service.random.random", lambda: 0.99)
+    service, repository = _service()  # нет целей — есть гэп
+
+    question = await service.pick_morning_reflection(1)
+
+    assert question in GOAL_QUESTIONS
+    repository.upsert.assert_awaited_once_with(1, "goal", question)
+
+
+async def test_morning_reflection_falls_back_to_journal_when_no_gap(monkeypatch):
+    monkeypatch.setattr("app.proactive.service.random.random", lambda: 0.99)
+    service, repository = _service(
+        goals=[object()],
+        habits=[object()],
+        projects=[object()],
+        preferences=[object(), object(), object()],
+    )  # профиль полностью заполнен — _pick_question вернул бы "reflect"
+
+    question = await service.pick_morning_reflection(1)
+
+    assert question in DREAM_QUESTIONS
+    repository.upsert.assert_awaited_once_with(1, "journal", question)
+
+
+async def test_morning_reflection_allow_gap_false_always_journal(monkeypatch):
+    # Даже когда жребий выпал бы на gap-ветку — allow_gap=False (нет
+    # AI-ключа) должен всегда отдавать дневниковый вопрос
+    monkeypatch.setattr("app.proactive.service.random.random", lambda: 0.99)
+    service, repository = _service()  # гэп по цели есть
+
+    question = await service.pick_morning_reflection(1, allow_gap=False)
+
+    assert question in DREAM_QUESTIONS
+    repository.upsert.assert_awaited_once_with(1, "journal", question)
 
 
 async def test_get_open_delegates_to_repository():

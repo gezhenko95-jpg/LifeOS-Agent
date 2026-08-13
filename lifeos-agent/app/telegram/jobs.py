@@ -53,8 +53,9 @@ async def send_morning_briefing_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             goal_service,
             ai_client=get_ai_client(settings),
         )
+        chart = await _try_build_chart(telegram_user_id, task_service, habit_service)
 
-    await context.bot.send_message(chat_id=telegram_user_id, text=text)
+    await _send_text_or_photo(context, telegram_user_id, text, chart)
 
 
 _EVENING_REFLECTION_TEXT = (
@@ -78,13 +79,46 @@ async def send_evening_reflection_job(context: ContextTypes.DEFAULT_TYPE) -> Non
     )
 
 
-async def send_proactive_prompt_job(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Одна проактивная подсказка (см. specs/006-proactive-engagement.md).
+async def send_morning_reflection_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Утренний рефлексивный слот 10:30 (см. flows/009-daily-rhythm.md) —
+    сон, факт/экзистенциальный вопрос, или (если есть реальный гэп в
+    профиле) обычный проактивный вопрос про цель/привычку/проект.
 
-    Регистрируется 3 раза (утро/день/вечер, см. app/telegram/bot.py) с
-    одним и тем же телом job — вопрос каждый раз выбирается заново.
-    Без AI-ключа отвечать на свободный текст всё равно нечем, поэтому в
-    этом случае молча ничего не отправляем.
+    Дневниковая ветка (сон) не зависит от AI-ключа (нечего разбирать) и
+    работает всегда; gap-ветка (вопрос про цель/привычку/проект) требует
+    AI для разбора ответа (ConversationEngine._try_answer_pending_prompt)
+    — без ключа передаём allow_gap=False, чтобы не открывать вопрос, на
+    который бот сам же не сможет распознать ответ.
+    """
+    settings = get_settings()
+    telegram_user_id = settings.owner_telegram_user_id
+    if not telegram_user_id:
+        return
+
+    ai_client = get_ai_client(settings)
+
+    async with AsyncSessionLocal() as session:
+        service = PendingPromptService(
+            PendingPromptRepository(session),
+            GoalService(GoalRepository(session)),
+            HabitService(HabitRepository(session)),
+            MemoryService(MemoryRepository(session)),
+        )
+        question = await service.pick_morning_reflection(
+            telegram_user_id, allow_gap=ai_client is not None
+        )
+
+    await context.bot.send_message(chat_id=telegram_user_id, text=question)
+
+
+async def send_proactive_prompt_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Generic gap-вопрос про цель/привычку/проект/предпочтение (см.
+    specs/006-proactive-engagement.md) — временно используется для
+    дневного/вечернего слотов (14:00/19:00), пока их не заменят
+    send_midday_checkin_job / send_evening_checkin_job (см.
+    flows/009-daily-rhythm.md, части C и D). Без AI-ключа отвечать на
+    свободный текст всё равно нечем, поэтому в этом случае молча ничего
+    не отправляем.
     """
     settings = get_settings()
     telegram_user_id = settings.owner_telegram_user_id
@@ -126,19 +160,30 @@ async def send_weekly_digest_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             GoalService(GoalRepository(session)),
             ai_client=get_ai_client(settings),
         )
+        chart = await _try_build_chart(telegram_user_id, task_service, habit_service)
 
-        chart = None
-        try:
-            chart_data = await gather_chart_data(
-                telegram_user_id, task_service, habit_service
-            )
-            chart = render_chart(chart_data)
-        except Exception:
-            # Картинка — бонус, а не критичная часть дайджеста; сбой
-            # рендера (например, из-за шрифтов) не должен срывать отправку
-            # (тот же принцип, что и у AI-инсайтов везде в проекте).
-            logger.exception("Не удалось построить график для дайджеста")
+    await _send_text_or_photo(context, telegram_user_id, text, chart)
 
+
+async def _try_build_chart(
+    telegram_user_id: int, task_service: TaskService, habit_service: HabitService
+):
+    """Картинка — бонус, а не критичная часть сообщения; сбой рендера
+    (например, из-за шрифтов) не должен срывать отправку текста (тот же
+    принцип, что и у AI-инсайтов везде в проекте)."""
+    try:
+        chart_data = await gather_chart_data(
+            telegram_user_id, task_service, habit_service
+        )
+        return render_chart(chart_data)
+    except Exception:
+        logger.exception("Не удалось построить график")
+        return None
+
+
+async def _send_text_or_photo(
+    context: ContextTypes.DEFAULT_TYPE, telegram_user_id: int, text: str, chart
+) -> None:
     if chart is None:
         await context.bot.send_message(chat_id=telegram_user_id, text=text)
         return

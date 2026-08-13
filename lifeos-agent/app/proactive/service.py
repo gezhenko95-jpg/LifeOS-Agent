@@ -22,6 +22,7 @@ from app.proactive.models import PendingPrompt
 from app.proactive.questions import (
     _MIN_PREFERENCES,
     _MUSING_CHANCE,
+    DREAM_QUESTIONS,
     GOAL_QUESTIONS,
     HABIT_QUESTIONS,
     MUSING_QUESTIONS,
@@ -30,6 +31,10 @@ from app.proactive.questions import (
     REFLECT_QUESTIONS,
 )
 from app.proactive.repository import PendingPromptRepository
+
+# Утренний слот 10:30 (см. pick_morning_reflection): доля дневникового
+# вопроса про сон против обычного gap-вопроса о профиле.
+_MORNING_JOURNAL_CHANCE = 0.7
 
 
 class PendingPromptService:
@@ -56,6 +61,33 @@ class PendingPromptService:
         # specs/006-proactive-engagement.md).
         await self._repository.upsert(telegram_user_id, category, question_text)
         return _with_musing(question_text)
+
+    async def pick_morning_reflection(
+        self, telegram_user_id: int, allow_gap: bool = True
+    ) -> str:
+        """Утренний слот 10:30 (см. flows/009-daily-rhythm.md): ~70% —
+        дневниковый вопрос про сон (category="journal", ответ ловится без
+        AI — ConversationEngine._try_capture_journal), иначе — обычный
+        gap-вопрос о профиле, но только если гэп реально есть.
+        "reflect" от _pick_question как раз и значит "гэпа нет" — в этом
+        случае тоже отдаём дневниковый вопрос, гэпить нечего.
+
+        `allow_gap=False` (передаётся из jobs.py, когда openrouter_api_key
+        не задан) полностью отключает gap-ветку: без AI ответ на неё
+        всё равно не поймается (ConversationEngine требует ai_client для
+        _try_answer_pending_prompt) — открывать неотвечаемый вопрос
+        бессмысленно, дневниковая ветка не зависит от AI и работает
+        всегда.
+        """
+        if allow_gap and random.random() >= _MORNING_JOURNAL_CHANCE:
+            category, question_text = await self._pick_question(telegram_user_id)
+            if category != "reflect":
+                await self._repository.upsert(telegram_user_id, category, question_text)
+                return _with_musing(question_text)
+
+        question = random.choice(DREAM_QUESTIONS)
+        await self._repository.upsert(telegram_user_id, "journal", question)
+        return question
 
     async def get_open(self, telegram_user_id: int) -> PendingPrompt | None:
         return await self._repository.get_for_user(telegram_user_id)
