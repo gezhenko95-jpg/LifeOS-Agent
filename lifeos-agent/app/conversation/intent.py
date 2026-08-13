@@ -15,6 +15,7 @@ from typing import Optional
 class Intent(str, Enum):
     ADD_TASK = "add_task"
     LIST_TASKS = "list_tasks"
+    QUERY_TASKS_BY_DATE = "query_tasks_by_date"
     COMPLETE_TASK = "complete_task"
     DELETE_TASK = "delete_task"
     LIST_HABITS = "list_habits"

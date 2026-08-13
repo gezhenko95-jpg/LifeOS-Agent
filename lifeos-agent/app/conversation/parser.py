@@ -10,6 +10,19 @@ from app.conversation.intent import Intent, ParsedIntent
 
 _HELP_KEYWORDS = ("/help", "помощь", "что ты умеешь")
 _LIST_KEYWORDS = ("/tasks", "покажи", "список задач", "мои задачи")
+# Вопрос про конкретный день («что на завтра») — не путать с ADD_TASK: дата
+# в тексте есть, но это вопрос, а не новое дело. Без даты в тексте — просто
+# LIST_TASKS (см. QUERY_BY_DATE-ветку в parse_intent).
+_QUERY_BY_DATE_KEYWORDS = (
+    "что на",
+    "что у меня на",
+    "что было на",
+    "что запланировано",
+    "какие задачи",
+    "какие дела",
+    "что я собирался",
+    "что я планировал",
+)
 _COMPLETE_KEYWORDS = ("выполнил", "сделал", "готово", "закрой")
 _DELETE_KEYWORDS = ("удали", "убери", "отмени")
 _HIGH_PRIORITY_KEYWORDS = ("важно", "срочно")
@@ -30,6 +43,12 @@ def parse_intent(text: str) -> ParsedIntent:
         return ParsedIntent(intent=Intent.HELP)
 
     if _contains_any(lowered, _LIST_KEYWORDS):
+        return ParsedIntent(intent=Intent.LIST_TASKS)
+
+    if _contains_any(lowered, _QUERY_BY_DATE_KEYWORDS):
+        due_date, _ = extract_due_date(stripped)
+        if due_date is not None:
+            return ParsedIntent(intent=Intent.QUERY_TASKS_BY_DATE, due_date=due_date)
         return ParsedIntent(intent=Intent.LIST_TASKS)
 
     if _contains_any(lowered, _LIST_HABITS_KEYWORDS):

@@ -140,3 +140,33 @@ def test_journal_keyword_in_the_middle_is_not_journal_entry():
     result = parse_intent("Купить дневник для дочери")
 
     assert result.intent is Intent.ADD_TASK
+
+
+def test_query_tasks_by_date_tomorrow():
+    result = parse_intent("Что на завтра?")
+
+    assert result.intent is Intent.QUERY_TASKS_BY_DATE
+    assert result.due_date is not None
+
+
+def test_query_tasks_by_date_literal_mvp_phrase():
+    # Буквальный acceptance-тест из MVP.md
+    result = parse_intent("Что я собирался сделать завтра?")
+
+    assert result.intent is Intent.QUERY_TASKS_BY_DATE
+    assert result.due_date is not None
+
+
+def test_query_tasks_by_date_weekday():
+    # date_parser понимает предлог "в"/"во" перед днём недели (см.
+    # test_date_parser.py) — не "на", поэтому здесь именно "в пятницу"
+    result = parse_intent("Какие задачи в пятницу")
+
+    assert result.intent is Intent.QUERY_TASKS_BY_DATE
+    assert result.due_date is not None
+
+
+def test_query_by_date_keyword_without_date_falls_back_to_list_tasks():
+    result = parse_intent("Какие задачи вообще у меня есть")
+
+    assert result.intent is Intent.LIST_TASKS

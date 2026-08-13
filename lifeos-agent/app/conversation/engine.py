@@ -8,6 +8,8 @@ parser.py (быстро, бесплатно, предсказуемо). Если
 specs/003-conversation.md) перед тем, как признать сообщение непонятым.
 """
 
+from datetime import datetime
+
 from app.ai.client import AIClient
 from app.conversation.ai_fallback import parse_intent_with_ai
 from app.conversation.intent import Intent, ParsedIntent
@@ -27,6 +29,7 @@ _HELP_TEXT = (
     "• удалить — «удали купить молоко»\n"
     "• привычки — «привычки» (список со стриком), «привычка чтение» "
     "(отметить сегодня)\n"
+    "• спросить про день — «что на завтра», «какие задачи в пятницу»\n"
     "• дневник — «дневник: как прошёл день» (запомню в памяти)\n"
     "• /tasks, /habits, /goals — списки с кнопками прямо под сообщением"
 )
@@ -64,6 +67,8 @@ class ConversationEngine:
             return _HELP_TEXT
         if parsed.intent is Intent.LIST_TASKS:
             return await self._list_tasks(telegram_user_id)
+        if parsed.intent is Intent.QUERY_TASKS_BY_DATE:
+            return await self._list_tasks_by_date(telegram_user_id, parsed.due_date)
         if parsed.intent is Intent.COMPLETE_TASK:
             return await self._complete_task(telegram_user_id, parsed.title or "")
         if parsed.intent is Intent.DELETE_TASK:
@@ -99,6 +104,25 @@ class ConversationEngine:
             prefix = "❗ " if task.priority == "high" else ""
             suffix = f" — {task.due_date:%d.%m.%Y}" if task.due_date else ""
             lines.append(f"{index}. {prefix}{task.title}{suffix}")
+        return "\n".join(lines)
+
+    async def _list_tasks_by_date(
+        self, telegram_user_id: int, due_date: datetime | None
+    ) -> str:
+        if due_date is None:
+            return await self._list_tasks(telegram_user_id)
+
+        tasks = await self._tasks.list_active_tasks(telegram_user_id)
+        target = due_date.date()
+        matches = [t for t in tasks if t.due_date and t.due_date.date() == target]
+        label = f"{target:%d.%m.%Y}"
+        if not matches:
+            return f"На {label} задач нет."
+
+        lines = [f"Задачи на {label}:"]
+        for index, task in enumerate(matches, start=1):
+            prefix = "❗ " if task.priority == "high" else ""
+            lines.append(f"{index}. {prefix}{task.title}")
         return "\n".join(lines)
 
     async def _complete_task(self, telegram_user_id: int, title_query: str) -> str:

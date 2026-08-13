@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -99,6 +100,49 @@ async def test_list_tasks_with_items(task_service, habit_service, memory_service
 
     assert "1. ❗ Купить молоко" in reply
     assert "2. Позвонить маме" in reply
+
+
+async def test_query_tasks_by_date_filters_only_matching_date(
+    task_service, habit_service, memory_service
+):
+    tomorrow = datetime.now().astimezone() + timedelta(days=1)
+    other_day = datetime.now().astimezone() + timedelta(days=5)
+    task_service.list_active_tasks.return_value = [
+        SimpleNamespace(title="Купить молоко", due_date=tomorrow, priority="normal"),
+        SimpleNamespace(title="Сдать отчёт", due_date=other_day, priority="normal"),
+        SimpleNamespace(title="Без даты", due_date=None, priority="normal"),
+    ]
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Что на завтра?")
+
+    assert "Купить молоко" in reply
+    assert "Сдать отчёт" not in reply
+    assert "Без даты" not in reply
+    assert f"{tomorrow:%d.%m.%Y}" in reply
+
+
+async def test_query_tasks_by_date_empty(task_service, habit_service, memory_service):
+    task_service.list_active_tasks.return_value = []
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Что я собирался сделать завтра?")
+
+    assert "задач нет" in reply
+
+
+async def test_query_tasks_by_date_shows_priority_marker(
+    task_service, habit_service, memory_service
+):
+    tomorrow = datetime.now().astimezone() + timedelta(days=1)
+    task_service.list_active_tasks.return_value = [
+        SimpleNamespace(title="Позвонить в банк", due_date=tomorrow, priority="high"),
+    ]
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Что на завтра?")
+
+    assert "❗ Позвонить в банк" in reply
 
 
 async def test_complete_task_found(task_service, habit_service, memory_service):
