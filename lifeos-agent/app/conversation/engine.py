@@ -14,7 +14,7 @@ Conversation Engine.
 Оба — тихий fallback: любая ошибка AI не показывается пользователю.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from app.ai.client import AIClient
 from app.conversation.ai_fallback import parse_intent_with_ai
@@ -50,6 +50,12 @@ _HELP_TEXT = (
 
 _MAX_RECALL_RESULTS = 5
 _STREAK_MILESTONES = {7, 30, 100}
+# Если AI не смог связать ответ с открытым вопросом, а вопрос был задан
+# недавно — пользователю стоит подсказать, что ответ "потерялся", а не
+# молча создавать задачу без объяснений. Если вопрос уже старый — скорее
+# всего пользователь и не пытался на него отвечать, подсказка будет
+# только раздражать (см. историю с "Сохрани лес" → задача без объяснений).
+_UNANSWERED_PROMPT_NOTE_WINDOW = timedelta(minutes=30)
 
 
 class ConversationEngine:
@@ -71,13 +77,16 @@ class ConversationEngine:
 
     async def handle_message(self, telegram_user_id: int, text: str) -> str:
         parsed = parse_intent(text)
+        unanswered_question: str | None = None
 
         if (
             parsed.intent is Intent.ADD_TASK
             and self._pending_prompts is not None
             and self._ai_client is not None
         ):
-            prompt_reply = await self._try_answer_pending_prompt(telegram_user_id, text)
+            prompt_reply, unanswered_question = await self._try_answer_pending_prompt(
+                telegram_user_id, text
+            )
             if prompt_reply is not None:
                 return prompt_reply
 
@@ -90,31 +99,48 @@ class ConversationEngine:
             if ai_parsed is not None:
                 parsed = ai_parsed
 
-        return await self._dispatch(telegram_user_id, parsed)
+        reply = await self._dispatch(telegram_user_id, parsed)
+        if unanswered_question is not None:
+            reply += (
+                f"\n\n(Не понял это как ответ на «{unanswered_question}» — "
+                "если хотел ответить, напиши ещё раз.)"
+            )
+        return reply
 
     async def _try_answer_pending_prompt(
         self, telegram_user_id: int, text: str
-    ) -> str | None:
+    ) -> tuple[str | None, str | None]:
         """Если открыт проактивный вопрос — попробовать понять text как ответ.
 
-        None означает "не обработано как ответ" — вызывающий код должен
-        продолжить обычную обработку text (в т.ч. создать задачу, если это
-        и правда просто новая задача, а не ответ на вопрос). Pending
-        намеренно НЕ чистится при None — вопрос остаётся открытым до
-        следующего успешного ответа или следующего запланированного
-        вопроса (см. PendingPromptService.pick_and_open).
+        Возвращает (handled_reply, unanswered_question):
+        - handled_reply не None → ответ успешно распознан, вернуть его как
+          финальный ответ пользователю.
+        - unanswered_question не None → был открытый вопрос, но text не
+          удалось связать с ним (и вопрос задан недавно — см.
+          _UNANSWERED_PROMPT_NOTE_WINDOW); вызывающий код допишет к
+          обычному ответу пояснение, чтобы пользователь не терялся в
+          догадках, почему бот "не услышал" его ответ (см. историю с
+          "Сохрани лес" → тихое создание задачи).
+
+        Pending намеренно НЕ чистится, если ответ не распознан — вопрос
+        остаётся открытым до следующего успешного ответа или следующего
+        запланированного вопроса (см. PendingPromptService.pick_and_open).
         """
         assert self._pending_prompts is not None and self._ai_client is not None
 
         pending = await self._pending_prompts.get_open(telegram_user_id)
         if pending is None:
-            return None
+            return None, None
+
+        is_fresh = (
+            datetime.now(timezone.utc) - pending.asked_at
+        ) <= _UNANSWERED_PROMPT_NOTE_WINDOW
 
         answer = await extract_prompt_answer(
             pending.category, pending.question_text, text, self._ai_client
         )
         if answer is None or answer.action == "unrelated":
-            return None
+            return None, (pending.question_text if is_fresh else None)
 
         # Клиру откладываем до момента, когда точно знаем, что можем
         # обработать action — иначе при "action верный, но title/content
@@ -124,12 +150,12 @@ class ConversationEngine:
             goal = await self._goals.create_goal(
                 telegram_user_id, answer.title, answer.target_date
             )
-            return f"Добавил цель «{goal.title}» 🎯"
+            return f"Добавил цель «{goal.title}» 🎯", None
 
         if answer.action == "create_habit" and answer.title:
             await self._pending_prompts.clear(telegram_user_id)
             habit = await self._habits.create_habit(telegram_user_id, answer.title)
-            return f"Добавил привычку «{habit.title}» 🔁"
+            return f"Добавил привычку «{habit.title}» 🔁", None
 
         if answer.action == "save_memory" and answer.memory_type and answer.content:
             await self._pending_prompts.clear(telegram_user_id)
@@ -139,9 +165,9 @@ class ConversationEngine:
                 answer.content,
                 source="proactive_prompt",
             )
-            return f"Запомнил: {answer.content} 📝"
+            return f"Запомнил: {answer.content} 📝", None
 
-        return None
+        return None, (pending.question_text if is_fresh else None)
 
     async def _dispatch(self, telegram_user_id: int, parsed: ParsedIntent) -> str:
         if parsed.intent is Intent.HELP:

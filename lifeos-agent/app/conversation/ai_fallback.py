@@ -16,20 +16,27 @@ from app.conversation.intent import Intent, ParsedIntent
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM_PROMPT = (
-    "Ты разбираешь сообщение пользователя личного ассистента задач на русском "
-    "языке. Верни СТРОГО JSON без пояснений: "
-    '{"intent": "add_task|list_tasks|complete_task|delete_task|help", '
-    '"title": строка или null, "due_date": "YYYY-MM-DD" или null}. '
-    "intent=add_task — если сообщение похоже на просьбу запомнить дело; "
-    "title — краткое название дела без даты; "
-    "due_date — если в сообщении есть срок, иначе null."
-)
+
+def _system_prompt() -> str:
+    # Дата подставляется на каждый вызов (не константа) — без неё модель
+    # не знает "сегодня" и может додумать произвольный год для due_date
+    # (баг, найденный в проактивных подсказках, см. ai_extract.py).
+    return (
+        f"Сегодня {date.today().isoformat()}. "
+        "Ты разбираешь сообщение пользователя личного ассистента задач на русском "
+        "языке. Верни СТРОГО JSON без пояснений: "
+        '{"intent": "add_task|list_tasks|complete_task|delete_task|help", '
+        '"title": строка или null, "due_date": "YYYY-MM-DD" или null}. '
+        "intent=add_task — если сообщение похоже на просьбу запомнить дело; "
+        "title — краткое название дела без даты; "
+        "due_date — если в сообщении есть срок (относительно сегодняшней даты "
+        "выше), иначе null."
+    )
 
 
 async def parse_intent_with_ai(text: str, ai_client: AIClient) -> ParsedIntent | None:
     messages = [
-        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "system", "content": _system_prompt()},
         {"role": "user", "content": text},
     ]
 

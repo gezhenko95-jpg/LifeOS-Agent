@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -448,7 +448,9 @@ async def test_pending_prompt_answer_creates_goal(
     from app.proactive.ai_extract import PromptAnswer
 
     pending_prompt_service.get_open.return_value = SimpleNamespace(
-        category="goal", question_text="Какая у тебя цель?"
+        category="goal",
+        question_text="Какая у тебя цель?",
+        asked_at=datetime.now(timezone.utc),
     )
     monkeypatch.setattr(
         "app.conversation.engine.extract_prompt_answer",
@@ -484,7 +486,9 @@ async def test_pending_prompt_answer_creates_habit(
     from app.proactive.ai_extract import PromptAnswer
 
     pending_prompt_service.get_open.return_value = SimpleNamespace(
-        category="habit", question_text="Какую привычку хочешь завести?"
+        category="habit",
+        question_text="Какую привычку хочешь завести?",
+        asked_at=datetime.now(timezone.utc),
     )
     monkeypatch.setattr(
         "app.conversation.engine.extract_prompt_answer",
@@ -520,7 +524,9 @@ async def test_pending_prompt_answer_saves_memory(
     from app.proactive.ai_extract import PromptAnswer
 
     pending_prompt_service.get_open.return_value = SimpleNamespace(
-        category="preference", question_text="Что мне о тебе запомнить?"
+        category="preference",
+        question_text="Что мне о тебе запомнить?",
+        asked_at=datetime.now(timezone.utc),
     )
     monkeypatch.setattr(
         "app.conversation.engine.extract_prompt_answer",
@@ -562,7 +568,9 @@ async def test_pending_prompt_unrelated_falls_back_to_add_task(
     from app.proactive.ai_extract import PromptAnswer
 
     pending_prompt_service.get_open.return_value = SimpleNamespace(
-        category="goal", question_text="Какая у тебя цель?"
+        category="goal",
+        question_text="Какая у тебя цель?",
+        asked_at=datetime.now(timezone.utc),
     )
     monkeypatch.setattr(
         "app.conversation.engine.extract_prompt_answer",
@@ -586,6 +594,48 @@ async def test_pending_prompt_unrelated_falls_back_to_add_task(
     assert "Купить молоко" in reply
     task_service.create_task.assert_awaited_once()
     pending_prompt_service.clear.assert_not_awaited()
+    # Вопрос задан только что — пользователь должен узнать, что бот не
+    # понял его ответ (см. историю с "Сохрани лес")
+    assert "Не понял это как ответ на «Какая у тебя цель?»" in reply
+
+
+async def test_pending_prompt_unrelated_stale_question_no_note(
+    task_service,
+    habit_service,
+    memory_service,
+    goal_service,
+    pending_prompt_service,
+    monkeypatch,
+):
+    from app.proactive.ai_extract import PromptAnswer
+
+    pending_prompt_service.get_open.return_value = SimpleNamespace(
+        category="goal",
+        question_text="Какая у тебя цель?",
+        asked_at=datetime.now(timezone.utc) - timedelta(hours=5),
+    )
+    monkeypatch.setattr(
+        "app.conversation.engine.extract_prompt_answer",
+        AsyncMock(return_value=PromptAnswer(action="unrelated")),
+    )
+    task_service.create_task.return_value = SimpleNamespace(
+        title="Купить молоко", due_date=None, priority="normal", recurrence=None
+    )
+    ai_client = AsyncMock()
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        ai_client=ai_client,
+        goal_service=goal_service,
+        pending_prompt_service=pending_prompt_service,
+    )
+
+    reply = await engine.handle_message(1, "Купить молоко")
+
+    assert "Купить молоко" in reply
+    # Вопрос давно неактуален — не нагружаем пользователя пояснением
+    assert "Не понял это как ответ" not in reply
 
 
 async def test_no_open_pending_prompt_behaves_normally(

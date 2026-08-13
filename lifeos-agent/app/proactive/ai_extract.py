@@ -24,26 +24,33 @@ _VALID_MEMORY_TYPES = {
     MemoryType.PROJECT.value,
 }
 
-_SYSTEM_PROMPT = (
-    "Ты помогаешь личному ассистенту разобрать ответ пользователя на "
-    "заданный ботом вопрос. Тебе дана категория вопроса, сам вопрос и "
-    "ответ пользователя на русском языке. Реши, что сделать с ответом, "
-    "ИСХОДЯ ИЗ ЕГО СОДЕРЖАНИЯ (категория — только подсказка, не жёсткое "
-    "правило). Верни СТРОГО JSON без пояснений:\n"
-    '{"action": "create_goal|create_habit|save_memory|unrelated", '
-    '"title": строка или null, "target_date": "YYYY-MM-DD" или null, '
-    '"memory_type": "fact|preference|project" или null, '
-    '"content": строка или null}\n'
-    "action=create_goal — ответ описывает цель; title — короткое "
-    "название, target_date — дедлайн, если назван, иначе null.\n"
-    "action=create_habit — ответ описывает привычку; title — короткое "
-    "название.\n"
-    "action=save_memory — ответ это факт/предпочтение/описание проекта, "
-    "не тянущий на цель или привычку; memory_type — какой из трёх; "
-    "content — сам факт кратко.\n"
-    "action=unrelated — ответ не связан с вопросом (например, это новая "
-    "задача или команда боту, а не ответ)."
-)
+
+def _system_prompt() -> str:
+    # Дата подставляется на каждый вызов (не константа) — без неё модель
+    # не знает "сегодня" и может додумать произвольный год для target_date
+    # (реальный найденный баг: цель с дедлайном в 2023).
+    return (
+        f"Сегодня {date.today().isoformat()}. "
+        "Ты помогаешь личному ассистенту разобрать ответ пользователя на "
+        "заданный ботом вопрос. Тебе дана категория вопроса, сам вопрос и "
+        "ответ пользователя на русском языке. Реши, что сделать с ответом, "
+        "ИСХОДЯ ИЗ ЕГО СОДЕРЖАНИЯ (категория — только подсказка, не жёсткое "
+        "правило). Верни СТРОГО JSON без пояснений:\n"
+        '{"action": "create_goal|create_habit|save_memory|unrelated", '
+        '"title": строка или null, "target_date": "YYYY-MM-DD" или null, '
+        '"memory_type": "fact|preference|project" или null, '
+        '"content": строка или null}\n'
+        "action=create_goal — ответ описывает цель; title — короткое "
+        "название, target_date — дедлайн относительно сегодняшней даты "
+        "выше, если назван, иначе null.\n"
+        "action=create_habit — ответ описывает привычку; title — короткое "
+        "название.\n"
+        "action=save_memory — ответ это факт/предпочтение/описание проекта, "
+        "не тянущий на цель или привычку; memory_type — какой из трёх; "
+        "content — сам факт кратко.\n"
+        "action=unrelated — ответ не связан с вопросом (например, это новая "
+        "задача или команда боту, а не ответ)."
+    )
 
 
 @dataclass
@@ -62,7 +69,7 @@ async def extract_prompt_answer(
         f"Категория вопроса: {category}\nВопрос: {question_text}\nОтвет: {user_reply}"
     )
     messages = [
-        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "system", "content": _system_prompt()},
         {"role": "user", "content": user_content},
     ]
 

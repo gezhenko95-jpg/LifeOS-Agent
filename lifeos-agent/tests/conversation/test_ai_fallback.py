@@ -1,3 +1,4 @@
+from datetime import date
 from unittest.mock import AsyncMock
 
 from app.ai.client import AIServiceError
@@ -81,3 +82,19 @@ async def test_invalid_due_date_format_returns_none():
     result = await parse_intent_with_ai("что-то странное", ai_client)
 
     assert result is None
+
+
+async def test_system_prompt_includes_todays_date():
+    # Баг: AI без текущей даты в промпте додумывал произвольный год для
+    # due_date (см. историю с целью "Протестировать работу бота" и
+    # дедлайном 2023). Дата должна быть в system-сообщении на каждый вызов.
+    ai_client = AsyncMock()
+    ai_client.complete.return_value = (
+        '{"intent": "add_task", "title": "X", "due_date": null}'
+    )
+
+    await parse_intent_with_ai("что-то", ai_client)
+
+    messages = ai_client.complete.await_args.args[0]
+    system_message = next(m["content"] for m in messages if m["role"] == "system")
+    assert date.today().isoformat() in system_message

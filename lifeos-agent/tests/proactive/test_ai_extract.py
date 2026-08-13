@@ -1,3 +1,4 @@
+from datetime import date
 from unittest.mock import AsyncMock
 
 from app.ai.client import AIServiceError
@@ -131,3 +132,20 @@ async def test_missing_action_key_returns_none():
     result = await extract_prompt_answer("goal", "Вопрос?", "ответ", ai_client)
 
     assert result is None
+
+
+async def test_system_prompt_includes_todays_date():
+    # Баг: цель "Протестировать работу бота" получила дедлайн 2023 —
+    # AI додумал год, не зная текущей даты. Дата должна быть в
+    # system-сообщении на каждый вызов.
+    ai_client = AsyncMock()
+    ai_client.complete.return_value = (
+        '{"action": "unrelated", "title": null, "target_date": null, '
+        '"memory_type": null, "content": null}'
+    )
+
+    await extract_prompt_answer("goal", "Вопрос?", "ответ", ai_client)
+
+    messages = ai_client.complete.await_args.args[0]
+    system_message = next(m["content"] for m in messages if m["role"] == "system")
+    assert date.today().isoformat() in system_message
