@@ -3,6 +3,7 @@
 """
 
 import logging
+import random
 
 from telegram.ext import ContextTypes
 
@@ -19,6 +20,8 @@ from app.proactive.repository import PendingPromptRepository
 from app.proactive.service import PendingPromptService
 from app.scheduler.briefing import build_morning_briefing
 from app.scheduler.charts import gather_chart_data, render_chart
+from app.scheduler.evening_checkin import build_evening_checkin_text
+from app.scheduler.evening_reflection import build_evening_reflection_prompt
 from app.scheduler.nudges import build_nudges
 from app.scheduler.weekly_digest import build_weekly_digest
 from app.tasks.repository import TaskRepository
@@ -33,6 +36,10 @@ _PHOTO_CAPTION_LIMIT = 1024
 
 _MIDDAY_TEXT = "Как проходит твой день? 🌤 Отметь, что уже успел:"
 _MIDDAY_TEXT_NO_HABITS = "Как проходит твой день? 🌤"
+
+# Вечерний итоговый слот 19:00: доля сообщений, к которым снизу
+# добавляется gap-вопрос про профиль (только если гэп реально есть).
+_EVENING_GAP_CHANCE = 0.5
 
 
 async def send_morning_briefing_job(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -62,25 +69,26 @@ async def send_morning_briefing_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     await _send_text_or_photo(context, telegram_user_id, text, chart)
 
 
-_EVENING_REFLECTION_TEXT = (
-    "Как прошёл день? 🌙\n"
-    "Напишите «дневник: ...» (или «рефлексия: ...», «итоги дня: ...») — "
-    "и я запомню."
-)
-
-
 async def send_evening_reflection_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Вечерний слот 21:00 (см. flows/009-daily-rhythm.md) — глубокий
+    AI-вопрос для дневника (заменяет прежний статичный текст с просьбой
+    напечатать "дневник: ..."). Открывает category="journal" — ответ
+    ловится ConversationEngine._try_capture_journal без префикса."""
     settings = get_settings()
     telegram_user_id = settings.owner_telegram_user_id
     if not telegram_user_id:
         logger.warning(
-            "owner_telegram_user_id не задан — напоминание о рефлексии не отправлено"
+            "owner_telegram_user_id не задан — вечерняя рефлексия не отправлена"
         )
         return
 
-    await context.bot.send_message(
-        chat_id=telegram_user_id, text=_EVENING_REFLECTION_TEXT
-    )
+    async with AsyncSessionLocal() as session:
+        question = await build_evening_reflection_prompt(get_ai_client(settings))
+        await PendingPromptRepository(session).upsert(
+            telegram_user_id, "journal", question
+        )
+
+    await context.bot.send_message(chat_id=telegram_user_id, text=question)
 
 
 async def send_morning_reflection_job(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -141,33 +149,37 @@ async def send_midday_checkin_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
-async def send_proactive_prompt_job(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Generic gap-вопрос про цель/привычку/проект/предпочтение (см.
-    specs/006-proactive-engagement.md) — временно используется для
-    вечернего слота (19:00), пока его не заменит send_evening_checkin_job
-    (см. flows/009-daily-rhythm.md, часть D). Без AI-ключа отвечать на
-    свободный текст всё равно нечем, поэтому в этом случае молча ничего
-    не отправляем.
-    """
+async def send_evening_checkin_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Вечерний итоговый слот 19:00 (см. flows/009-daily-rhythm.md) —
+    что сделано сегодня (задачи/привычки) + иногда, если есть реальный
+    гэп в профиле, gap-вопрос про цель/привычку/проект снизу. Вопрос —
+    необязательное дополнение здесь, не главное содержание сообщения."""
     settings = get_settings()
     telegram_user_id = settings.owner_telegram_user_id
     if not telegram_user_id:
         return
 
     ai_client = get_ai_client(settings)
-    if ai_client is None:
-        return
 
     async with AsyncSessionLocal() as session:
-        service = PendingPromptService(
-            PendingPromptRepository(session),
-            GoalService(GoalRepository(session)),
-            HabitService(HabitRepository(session)),
-            MemoryService(MemoryRepository(session)),
+        task_service = TaskService(TaskRepository(session))
+        habit_service = HabitService(HabitRepository(session))
+        text = await build_evening_checkin_text(
+            telegram_user_id, task_service, habit_service
         )
-        question = await service.pick_and_open(telegram_user_id)
 
-    await context.bot.send_message(chat_id=telegram_user_id, text=question)
+        if ai_client is not None and random.random() < _EVENING_GAP_CHANCE:
+            service = PendingPromptService(
+                PendingPromptRepository(session),
+                GoalService(GoalRepository(session)),
+                habit_service,
+                MemoryService(MemoryRepository(session)),
+            )
+            gap_question = await service.pick_gap_question_if_any(telegram_user_id)
+            if gap_question:
+                text = f"{text}\n\n{gap_question}"
+
+    await context.bot.send_message(chat_id=telegram_user_id, text=text)
 
 
 async def send_weekly_digest_job(context: ContextTypes.DEFAULT_TYPE) -> None:

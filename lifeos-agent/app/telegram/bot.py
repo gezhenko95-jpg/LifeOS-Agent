@@ -23,12 +23,12 @@ from app.telegram.handlers import (
     tasks_command,
 )
 from app.telegram.jobs import (
+    send_evening_checkin_job,
     send_evening_reflection_job,
     send_midday_checkin_job,
     send_morning_briefing_job,
     send_morning_reflection_job,
     send_nudges_job,
-    send_proactive_prompt_job,
     send_task_reminders_job,
     send_weekly_digest_job,
 )
@@ -110,9 +110,8 @@ def _register_task_reminders(application: Application, settings: Settings) -> No
 def _register_proactive_prompts(application: Application, settings: Settings) -> None:
     """Утро/день/вечер (см. flows/009-daily-rhythm.md) — три разных job-
     функции на трёх старых слотах (имена настроек не переименовывали,
-    чтобы не задеть уже настроенный .env). Утро и день уже переосмыслены
-    (send_morning_reflection_job / send_midday_checkin_job); вечер пока
-    на generic send_proactive_prompt_job — заменится в части D."""
+    чтобы не задеть уже настроенный .env): send_morning_reflection_job,
+    send_midday_checkin_job, send_evening_checkin_job."""
     if not settings.proactive_prompts_enabled or not settings.owner_telegram_user_id:
         return
 
@@ -136,7 +135,7 @@ def _register_proactive_prompts(application: Application, settings: Settings) ->
         name="proactive_prompt_midday",
     )
     application.job_queue.run_daily(
-        send_proactive_prompt_job,
+        send_evening_checkin_job,
         time=time(
             hour=settings.proactive_prompt_evening_hour,
             minute=settings.proactive_prompt_evening_minute,

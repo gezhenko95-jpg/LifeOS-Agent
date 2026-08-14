@@ -191,6 +191,29 @@ async def test_morning_reflection_allow_gap_false_always_journal(monkeypatch):
     repository.upsert.assert_awaited_once_with(1, "journal", question)
 
 
+async def test_pick_gap_question_if_any_returns_question_when_gap_exists():
+    service, repository = _service()  # нет целей — гэп есть
+
+    question = await service.pick_gap_question_if_any(1)
+
+    assert question in GOAL_QUESTIONS
+    repository.upsert.assert_awaited_once_with(1, "goal", question)
+
+
+async def test_pick_gap_question_if_any_returns_none_when_no_gap():
+    service, repository = _service(
+        goals=[object()],
+        habits=[object()],
+        projects=[object()],
+        preferences=[object(), object(), object()],
+    )  # профиль полностью заполнен
+
+    question = await service.pick_gap_question_if_any(1)
+
+    assert question is None
+    repository.upsert.assert_not_awaited()
+
+
 async def test_get_open_delegates_to_repository():
     service, repository = _service()
     repository.get_for_user.return_value = "pending"

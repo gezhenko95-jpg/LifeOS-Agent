@@ -89,6 +89,19 @@ class PendingPromptService:
         await self._repository.upsert(telegram_user_id, "journal", question)
         return question
 
+    async def pick_gap_question_if_any(self, telegram_user_id: int) -> str | None:
+        """Gap-вопрос про цель/привычку/проект/предпочтение, если гэп
+        реально есть — иначе None ("reflect" от _pick_question — сигнал
+        "гэпа нет", вызывающий код сам решает, что делать при пустоте).
+        Используется вечерним итоговым слотом 19:00 (см.
+        flows/009-daily-rhythm.md) — там вопрос необязательное дополнение
+        к итогам дня, а не главное содержание сообщения."""
+        category, question_text = await self._pick_question(telegram_user_id)
+        if category == "reflect":
+            return None
+        await self._repository.upsert(telegram_user_id, category, question_text)
+        return question_text
+
     async def get_open(self, telegram_user_id: int) -> PendingPrompt | None:
         return await self._repository.get_for_user(telegram_user_id)
 
