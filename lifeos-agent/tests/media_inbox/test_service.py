@@ -4,6 +4,8 @@ classify_image (замокана целиком, отдельно протест
 test_classify.py). См. specs/010-media-inbox.md (Фаза 2).
 """
 
+import asyncio
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 from app.drive.client import DriveServiceError
@@ -126,3 +128,38 @@ async def test_drive_error_returns_graceful_message(monkeypatch):
     assert saved is False
     assert "не получилось" in reply.lower()
     watchlist.create_item.assert_not_called()
+
+
+async def test_drive_calls_do_not_block_the_event_loop():
+    """google-api-python-client блокирующий: пока он грузит фото
+    (несколько секунд), event loop должен оставаться живым, иначе бот не
+    отвечает никому и джобы стоят (см. AUDIT.md, B-9).
+
+    Проверяем не "вызвали to_thread", а сам эффект: во время
+    «загрузки» другая корутина продолжает выполняться.
+    """
+    loop_ticks = 0
+
+    def slow_blocking_upload(*args, **kwargs):
+        time.sleep(0.2)  # блокирует ПОТОК, в котором его вызвали
+        return "https://drive/file"
+
+    drive = MagicMock()
+    drive.ensure_folder.return_value = "folder1"
+    drive.upload_file.side_effect = slow_blocking_upload
+
+    service = MediaInboxService(drive, AsyncMock(), None)
+
+    async def keep_ticking():
+        nonlocal loop_ticks
+        while True:
+            await asyncio.sleep(0.01)
+            loop_ticks += 1
+
+    ticker = asyncio.create_task(keep_ticking())
+    saved, _ = await service.handle_photo(1, "photo.jpg", b"bytes", "image/jpeg")
+    ticker.cancel()
+
+    assert saved is True
+    # Если бы upload шёл прямо в event loop, тикер не сдвинулся бы вообще.
+    assert loop_ticks > 5, f"event loop стоял во время загрузки ({loop_ticks} тиков)"

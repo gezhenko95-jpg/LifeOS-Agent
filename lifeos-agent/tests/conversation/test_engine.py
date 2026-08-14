@@ -977,3 +977,58 @@ async def test_list_watchlist_without_service(
     reply = await engine.handle_message(1, "список фильмов")
 
     assert "нечего" in reply
+
+
+async def test_command_is_not_swallowed_by_open_journal_prompt(
+    task_service, habit_service, memory_service, goal_service, pending_prompt_service
+):
+    """Регрессия из боевой БД: при открытом дневниковом вопросе /help
+    сохранялся как запись {"type": "journal", "content": "/help"}, а
+    справка не показывалась вообще (см. AUDIT.md, B-1)."""
+    pending_prompt_service.get_open.return_value = SimpleNamespace(
+        category="journal",
+        question_text="Что запишем в дневник?",
+        asked_at=datetime.now(timezone.utc),
+    )
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        goal_service=goal_service,
+        pending_prompt_service=pending_prompt_service,
+    )
+
+    reply = await engine.handle_message(1, "/help")
+
+    assert "Я умею" in reply
+    memory_service.save.assert_not_awaited()
+    # Вопрос остаётся открытым: пользователь спросил справку, а не
+    # отказался отвечать на дневник.
+    pending_prompt_service.clear.assert_not_awaited()
+
+
+async def test_journal_still_captures_text_that_merely_contains_a_slash(
+    task_service, habit_service, memory_service, goal_service, pending_prompt_service
+):
+    """Слэш внутри фразы — не команда, это обычная дневниковая запись."""
+    from app.memory.models import MemoryType
+
+    pending_prompt_service.get_open.return_value = SimpleNamespace(
+        category="journal",
+        question_text="Как прошёл день?",
+        asked_at=datetime.now(timezone.utc),
+    )
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        goal_service=goal_service,
+        pending_prompt_service=pending_prompt_service,
+    )
+
+    reply = await engine.handle_message(1, "Работал 9/10 часов, вымотался")
+
+    assert reply == "Записал в дневник. 📝"
+    memory_service.save.assert_awaited_once_with(
+        1, MemoryType.JOURNAL, "Работал 9/10 часов, вымотался", source="quick_capture"
+    )

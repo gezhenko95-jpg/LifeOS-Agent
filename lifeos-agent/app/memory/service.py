@@ -50,8 +50,13 @@ class MemoryService:
         entry = await self._repository.get_by_id(entry_id)
         if entry is None:
             return None
-        if content is not None:
+        if content is not None and content != entry.content:
             entry.content = content
+            # Старый вектор описывает СТАРЫЙ текст: без сброса
+            # семантический поиск продолжал бы вечно находить запись по
+            # её прежнему смыслу (см. AUDIT.md, B-5). None — фоновая job
+            # пересчитает (app/telegram/jobs.py::embed_pending_memories_job).
+            entry.embedding = None
         if archived is not None:
             entry.archived = archived
         entry.updated_at = datetime.now(timezone.utc)

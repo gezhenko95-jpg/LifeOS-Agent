@@ -7,6 +7,7 @@ specs/010-media-inbox.md (Фаза 2).
 InsightsService — своей таблицы нет.
 """
 
+import asyncio
 import logging
 
 from app.ai.client import AIClient
@@ -60,9 +61,9 @@ class MediaInboxService:
 
         folder_name = _FOLDER_BY_CATEGORY[category]
         try:
-            root_id = self._drive.ensure_folder(_ROOT_FOLDER)
-            folder_id = self._drive.ensure_folder(folder_name, parent_id=root_id)
-            file_url = self._drive.upload_file(folder_id, filename, content, mime_type)
+            file_url = await asyncio.to_thread(
+                self._upload_to_drive, folder_name, filename, content, mime_type
+            )
         except DriveServiceError as exc:
             logger.warning("Не удалось сохранить файл на Drive: %s", exc)
             return (
@@ -82,3 +83,18 @@ class MediaInboxService:
             note = f"\nДобавил в список: «{item.title}»."
 
         return True, f"Сохранил в «{_ROOT_FOLDER}/{folder_name}» на Диске.{note}"
+
+    def _upload_to_drive(
+        self, folder_name: str, filename: str, content: bytes, mime_type: str
+    ) -> str:
+        """Синхронная часть: google-api-python-client построен на httplib2
+        и блокирующий. Вызывается ТОЛЬКО через asyncio.to_thread — иначе
+        на время загрузки фото (несколько секунд) встаёт весь event loop:
+        бот не отвечает никому и джобы не выполняются (см. AUDIT.md, B-9).
+
+        Три вызова живут в одной функции, чтобы уйти в поток один раз, а
+        не три раза подряд.
+        """
+        root_id = self._drive.ensure_folder(_ROOT_FOLDER)
+        folder_id = self._drive.ensure_folder(folder_name, parent_id=root_id)
+        return self._drive.upload_file(folder_id, filename, content, mime_type)

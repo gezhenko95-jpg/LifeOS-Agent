@@ -207,3 +207,46 @@ async def test_list_journal_entries_since_delegates_to_repository(repository):
 
     assert entries == [entry]
     repository.list_by_type_since.assert_awaited_once_with(1, MemoryType.JOURNAL, since)
+
+
+def _stored_entry(repository, content: str = "Люблю кофе") -> MemoryEntry:
+    """Положить в мок-репозиторий готовую запись с уже посчитанным
+    вектором — get_by_id по умолчанию возвращает AsyncMock, у которого
+    любое сравнение content даёт "не равно"."""
+    entry = MemoryEntry(
+        id=1, telegram_user_id=1, type="fact", content=content, source="manual"
+    )
+    entry.embedding = [0.1, 0.2, 0.3]
+    repository.get_by_id.return_value = entry
+    return entry
+
+
+async def test_editing_content_resets_embedding(repository):
+    """Старый вектор описывает старый текст: без сброса семантический
+    поиск вечно находил бы запись по её прежнему смыслу (AUDIT.md, B-5)."""
+    entry = _stored_entry(repository)
+
+    updated = await MemoryService(repository).update(entry.id, content="Перешёл на чай")
+
+    assert updated.content == "Перешёл на чай"
+    assert updated.embedding is None
+
+
+async def test_editing_only_archived_keeps_embedding(repository):
+    """Архивация не меняет смысл текста — пересчитывать вектор незачем,
+    это лишний платный вызов к AI."""
+    entry = _stored_entry(repository)
+
+    updated = await MemoryService(repository).update(entry.id, archived=True)
+
+    assert updated.archived is True
+    assert updated.embedding == [0.1, 0.2, 0.3]
+
+
+async def test_saving_identical_content_keeps_embedding(repository):
+    """Текст не изменился — вектор всё ещё верен."""
+    entry = _stored_entry(repository)
+
+    updated = await MemoryService(repository).update(entry.id, content="Люблю кофе")
+
+    assert updated.embedding == [0.1, 0.2, 0.3]

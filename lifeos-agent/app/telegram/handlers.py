@@ -9,6 +9,7 @@ inline-кнопками (app/telegram/keyboards.py) — ConversationEngine не
 должен знать про Telegram-специфичные типы.
 """
 
+import asyncio
 import logging
 import re
 
@@ -140,7 +141,9 @@ async def handle_photo_message(
         return
     telegram_user_id = update.effective_user.id
 
-    drive_client = get_drive_client()
+    # Построение клиента читает token.json с диска — блокирующая операция,
+    # как и сами вызовы Drive API (см. MediaInboxService._upload_to_drive).
+    drive_client = await asyncio.to_thread(get_drive_client)
     if drive_client is None:
         await update.message.reply_text(
             "Media Inbox ещё не настроен (нет token.json на сервере)."

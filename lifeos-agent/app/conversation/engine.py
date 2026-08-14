@@ -136,8 +136,17 @@ class ConversationEngine:
         перехватываем: дневниковое приглашение необязательное, в отличие
         от structured-вопросов не считаем это "промахом" пользователя
         (без пометки "не понял").
+
+        Команды (текст с "/") не перехватываются никогда: пользователь,
+        нажавший /help при открытом дневниковом вопросе, хочет справку, а
+        не запись "/help" в дневнике. Именно так в боевой БД и появилась
+        запись {"type": "journal", "content": "/help"} — справка при этом
+        не показывалась вообще (см. AUDIT.md, B-1).
         """
         assert self._pending_prompts is not None
+
+        if text.lstrip().startswith("/"):
+            return None
 
         pending = await self._pending_prompts.get_open(telegram_user_id)
         if pending is None or pending.category != "journal":
