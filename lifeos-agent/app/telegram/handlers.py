@@ -217,7 +217,13 @@ async def handle_text_message(
         await _reply_via_engine(update, context, "/help")
         return
     if menu_action == "add_task":
-        await update.message.reply_text(_ADD_TASK_HINT)
+        # Заодно переотправляем меню: ReplyKeyboardMarkup живёт на
+        # клиенте, пока его не заменят, поэтому кнопка, добавленная после
+        # последнего /start, у пользователя просто не появляется — так и
+        # не появилась «🌐 Сайт». Этот ответ не несёт inline-кнопок, а
+        # значит место под клавиатуру свободно (две разом Telegram не
+        # принимает).
+        await update.message.reply_text(_ADD_TASK_HINT, reply_markup=build_main_menu())
         return
     if menu_action == "journal":
         await _open_journal_prompt(update)
@@ -399,4 +405,9 @@ async def _reply_via_engine(
                 newest = max(matches, key=lambda t: t.created_at)
                 markup = build_task_quick_actions_keyboard(newest)
 
-    await update.message.reply_text(reply, reply_markup=markup)
+    # Если inline-кнопок нет, место под клавиатуру свободно — освежаем
+    # постоянное меню. Telegram не принимает inline- и reply-клавиатуру в
+    # одном сообщении, поэтому только в этой ветке. Пользователь разницы
+    # не видит (меню заменяется таким же), зато новые кнопки появляются
+    # сами, без /start и /menu.
+    await update.message.reply_text(reply, reply_markup=markup or build_main_menu())

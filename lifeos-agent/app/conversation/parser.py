@@ -186,6 +186,18 @@ def _remove_keyword(text: str, keyword: str) -> str:
     return cleaned.strip(" ,:—-")
 
 
+# Слова, которые обращены к боту, а не к делу: «напомни МНЕ позвонить» —
+# «мне» в названии задачи не нужно («мне запустить стиралку» — реальный
+# результат до этой правки). Вырезаются только в начале, после команды.
+_FILLER_PATTERN = re.compile(
+    r"^(?:мне|меня|мне\s+пожалуйста|пожалуйста|плиз|пж)\b[\s,]*", re.IGNORECASE
+)
+
+
+def _strip_filler(text: str) -> str:
+    return _FILLER_PATTERN.sub("", text).strip(" ,:—-")
+
+
 def _try_reminder_task(stripped: str, lowered: str) -> Optional[ParsedIntent]:
     """«напомни в 19:00 позвонить маме» — это ЗАДАЧА, а не поиск в памяти.
 
@@ -206,7 +218,7 @@ def _try_reminder_task(stripped: str, lowered: str) -> Optional[ParsedIntent]:
     if _contains_any(lowered, _EXPLICIT_RECALL_PHRASES):
         return None
 
-    without_keyword = _remove_keyword(stripped, "напомни")
+    without_keyword = _strip_filler(_remove_keyword(stripped, "напомни"))
     if not without_keyword:
         return None
 

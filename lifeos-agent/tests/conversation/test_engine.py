@@ -1066,7 +1066,9 @@ async def test_add_task_reply_names_the_time(
         id=1,
         telegram_user_id=1,
         title="позвонить маме",
-        due_date=datetime(2026, 8, 16, 19, 0, tzinfo=timezone.utc),
+        # Наивная дата: to_local оставляет её как есть, поэтому тест
+        # не зависит от таймзоны машины, на которой запущен.
+        due_date=datetime(2026, 8, 16, 19, 0),
         status="active",
         priority="normal",
     )
