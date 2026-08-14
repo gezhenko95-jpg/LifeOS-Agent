@@ -56,6 +56,40 @@ async def test_complete_raises_on_network_error():
             await _client().complete([{"role": "user", "content": "hi"}])
 
 
+async def test_embed_returns_vector_on_success():
+    fake_response = _response(200, json_body={"data": [{"embedding": [0.1, 0.2, 0.3]}]})
+
+    with patch("httpx.AsyncClient.post", new=AsyncMock(return_value=fake_response)):
+        result = await _client().embed("тестовая фраза")
+
+    assert result == [0.1, 0.2, 0.3]
+
+
+async def test_embed_raises_on_non_200():
+    fake_response = _response(500, text="server error")
+
+    with patch("httpx.AsyncClient.post", new=AsyncMock(return_value=fake_response)):
+        with pytest.raises(AIServiceError):
+            await _client().embed("текст")
+
+
+async def test_embed_raises_on_malformed_response_body():
+    fake_response = _response(200, json_body={"unexpected": "shape"})
+
+    with patch("httpx.AsyncClient.post", new=AsyncMock(return_value=fake_response)):
+        with pytest.raises(AIServiceError):
+            await _client().embed("текст")
+
+
+async def test_embed_raises_on_network_error():
+    with patch(
+        "httpx.AsyncClient.post",
+        new=AsyncMock(side_effect=httpx.ConnectError("boom")),
+    ):
+        with pytest.raises(AIServiceError):
+            await _client().embed("текст")
+
+
 def test_get_ai_client_returns_none_without_key():
     settings = Settings(telegram_bot_token="x", openrouter_api_key="")
 

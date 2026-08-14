@@ -213,6 +213,54 @@ async def test_recall_empty_query_asks_what(
     memory_service.search.assert_not_awaited()
 
 
+async def test_recall_falls_back_to_semantic_search_when_literal_empty(
+    task_service, habit_service, memory_service
+):
+    memory_service.search.return_value = []
+    memory_service.semantic_search.return_value = [
+        SimpleNamespace(content="Думаю уволиться и сменить сферу"),
+    ]
+    ai_client = AsyncMock()
+    engine = ConversationEngine(
+        task_service, habit_service, memory_service, ai_client=ai_client
+    )
+
+    reply = await engine.handle_message(1, "Напомни про смену работы")
+
+    assert "Думаю уволиться и сменить сферу" in reply
+    assert "Точных совпадений" in reply
+    memory_service.semantic_search.assert_awaited_once_with(
+        1, "смену работы", ai_client
+    )
+
+
+async def test_recall_skips_semantic_search_when_literal_found_results(
+    task_service, habit_service, memory_service
+):
+    memory_service.search.return_value = [SimpleNamespace(content="Найдено буквально")]
+    ai_client = AsyncMock()
+    engine = ConversationEngine(
+        task_service, habit_service, memory_service, ai_client=ai_client
+    )
+
+    reply = await engine.handle_message(1, "Напомни про отпуск")
+
+    assert "Найдено буквально" in reply
+    memory_service.semantic_search.assert_not_awaited()
+
+
+async def test_recall_no_semantic_fallback_without_ai_client(
+    task_service, habit_service, memory_service
+):
+    memory_service.search.return_value = []
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "Напомни про единорогов")
+
+    assert "Ничего не нашёл" in reply
+    memory_service.semantic_search.assert_not_awaited()
+
+
 async def test_complete_task_found(task_service, habit_service, memory_service):
     task = SimpleNamespace(title="Купить молоко", recurrence=None)
     task_service.find_active_by_title.return_value = [task]

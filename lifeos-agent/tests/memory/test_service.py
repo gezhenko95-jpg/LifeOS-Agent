@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.ai.client import AIServiceError
 from app.memory.models import MemoryEntry, MemoryType
 from app.memory.service import MemoryService
 
@@ -115,6 +116,85 @@ async def test_get_context_sorted_and_limited(repository):
 
     assert len(context) == 1
     assert context[0].content == "B"
+
+
+async def test_semantic_search_no_entries_with_embedding_returns_empty(repository):
+    repository.list_with_embeddings.return_value = []
+    service = MemoryService(repository)
+    ai_client = AsyncMock()
+
+    result = await service.semantic_search(1, "отпуск", ai_client)
+
+    assert result == []
+    ai_client.embed.assert_not_called()
+
+
+async def test_semantic_search_ranks_by_similarity(repository):
+    close = MemoryEntry(id=1, telegram_user_id=1, type="fact", embedding=[1.0, 0.0])
+    far = MemoryEntry(id=2, telegram_user_id=1, type="fact", embedding=[0.0, 1.0])
+    repository.list_with_embeddings.return_value = [far, close]
+    service = MemoryService(repository)
+    ai_client = AsyncMock()
+    ai_client.embed.return_value = [1.0, 0.0]
+
+    result = await service.semantic_search(1, "отпуск", ai_client)
+
+    assert [entry.id for entry in result] == [1, 2]
+
+
+async def test_semantic_search_ai_error_returns_empty(repository):
+    repository.list_with_embeddings.return_value = [
+        MemoryEntry(id=1, telegram_user_id=1, type="fact", embedding=[1.0])
+    ]
+    service = MemoryService(repository)
+    ai_client = AsyncMock()
+    ai_client.embed.side_effect = AIServiceError("boom")
+
+    result = await service.semantic_search(1, "отпуск", ai_client)
+
+    assert result == []
+
+
+async def test_backfill_embeddings_saves_computed_vectors(repository):
+    entry = MemoryEntry(id=1, telegram_user_id=1, type="fact", content="X")
+    repository.list_missing_embeddings.return_value = [entry]
+    service = MemoryService(repository)
+    ai_client = AsyncMock()
+    ai_client.embed.return_value = [0.1, 0.2]
+
+    count = await service.backfill_embeddings(ai_client)
+
+    assert count == 1
+    assert entry.embedding == [0.1, 0.2]
+    repository.save.assert_awaited_once_with(entry)
+
+
+async def test_backfill_embeddings_skips_failed_entry_without_stopping_batch(
+    repository,
+):
+    ok_entry = MemoryEntry(id=1, telegram_user_id=1, type="fact", content="A")
+    failing_entry = MemoryEntry(id=2, telegram_user_id=1, type="fact", content="B")
+    repository.list_missing_embeddings.return_value = [failing_entry, ok_entry]
+    service = MemoryService(repository)
+    ai_client = AsyncMock()
+    ai_client.embed.side_effect = [AIServiceError("boom"), [0.1]]
+
+    count = await service.backfill_embeddings(ai_client)
+
+    assert count == 1
+    assert ok_entry.embedding == [0.1]
+    repository.save.assert_awaited_once_with(ok_entry)
+
+
+async def test_backfill_embeddings_nothing_to_do_returns_zero(repository):
+    repository.list_missing_embeddings.return_value = []
+    service = MemoryService(repository)
+    ai_client = AsyncMock()
+
+    count = await service.backfill_embeddings(ai_client)
+
+    assert count == 0
+    repository.save.assert_not_awaited()
 
 
 async def test_list_journal_entries_since_delegates_to_repository(repository):

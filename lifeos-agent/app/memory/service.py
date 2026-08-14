@@ -6,11 +6,16 @@ Repository — только БД, API/будущий AI Service — только
 См. specs/001-memory.md.
 """
 
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+from app.ai.client import AIClient, AIServiceError
+from app.memory.embeddings import rank_by_similarity
 from app.memory.models import MemoryEntry, MemoryType
 from app.memory.repository import MemoryRepository
+
+logger = logging.getLogger(__name__)
 
 
 class MemoryService:
@@ -82,6 +87,54 @@ class MemoryService:
         needle = query.strip().lower()
         entries = await self._repository.list_by_user(telegram_user_id, type=type)
         return [entry for entry in entries if needle in entry.content.lower()]
+
+    async def semantic_search(
+        self,
+        telegram_user_id: int,
+        query: str,
+        ai_client: AIClient,
+        type: Optional[MemoryType] = None,
+        limit: int = 5,
+    ) -> list[MemoryEntry]:
+        """Смысловой поиск-fallback, когда буквальный search() ничего не
+        нашёл (см. ConversationEngine._recall, specs/011-semantic-memory-
+        search.md). Пустой список — нет записей с embedding ЛИБО AI
+        недоступна/ошиблась (тихий фолбэк, тот же принцип, что и везде
+        в проекте)."""
+        entries = await self._repository.list_with_embeddings(
+            telegram_user_id, type=type
+        )
+        if not entries:
+            return []
+
+        try:
+            query_embedding = await ai_client.embed(query)
+        except AIServiceError as exc:
+            logger.warning("Не удалось получить embedding запроса: %s", exc)
+            return []
+
+        return rank_by_similarity(query_embedding, entries, limit=limit)
+
+    async def backfill_embeddings(
+        self, ai_client: AIClient, batch_size: int = 20
+    ) -> int:
+        """Досчитать embedding для записей, у которых его ещё нет — для
+        фоновой job (см. app/telegram/jobs.py::embed_pending_memories_job).
+        Возвращает, сколько реально досчитано. Ошибка AI на одной записи
+        не прерывает батч — пробуем на следующий заход job."""
+        entries = await self._repository.list_missing_embeddings(batch_size)
+        embedded = 0
+        for entry in entries:
+            try:
+                entry.embedding = await ai_client.embed(entry.content)
+            except AIServiceError as exc:
+                logger.warning(
+                    "Не удалось получить embedding для записи %s: %s", entry.id, exc
+                )
+                continue
+            await self._repository.save(entry)
+            embedded += 1
+        return embedded
 
     async def get_context(
         self, telegram_user_id: int, limit: int = 10

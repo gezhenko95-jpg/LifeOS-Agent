@@ -296,10 +296,21 @@ class ConversationEngine:
             return "Что напомнить? Например: «напомни, что я говорил про отпуск»."
 
         entries = await self._memory.search(telegram_user_id, query)
+        header = f"Нашёл по «{query}»:"
+
+        if not entries and self._ai_client is not None:
+            # Буквальный поиск ничего не нашёл — пробуем смысловой (см.
+            # specs/011-semantic-memory-search.md). Другая вводная фраза —
+            # чтобы не выдавать смысловое совпадение за точное.
+            entries = await self._memory.semantic_search(
+                telegram_user_id, query, self._ai_client
+            )
+            header = f"Точных совпадений с «{query}» нет, но вот похожее:"
+
         if not entries:
             return f"Ничего не нашёл про «{query}»."
 
-        lines = [f"Нашёл по «{query}»:"]
+        lines = [header]
         lines.extend(f"• {entry.content}" for entry in entries[:_MAX_RECALL_RESULTS])
         return "\n".join(lines)
 

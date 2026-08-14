@@ -20,10 +20,17 @@ class AIServiceError(Exception):
 
 
 class AIClient:
-    def __init__(self, api_key: str, model: str, base_url: str) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        base_url: str,
+        embedding_model: str = "openai/text-embedding-3-small",
+    ) -> None:
         self._api_key = api_key
         self._model = model
         self._base_url = base_url.rstrip("/")
+        self._embedding_model = embedding_model
 
     async def complete(
         self,
@@ -58,6 +65,33 @@ class AIClient:
         except (KeyError, IndexError, ValueError) as exc:
             raise AIServiceError(f"Некорректный ответ AI Service: {exc}") from exc
 
+    async def embed(self, text: str) -> list[float]:
+        """Вектор embedding для текста (см. specs/011-semantic-memory-
+        search.md) — отдельная модель (embedding_model), не chat-модель."""
+        payload = {"model": self._embedding_model, "input": text}
+        headers = {"Authorization": f"Bearer {self._api_key}"}
+
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
+                response = await client.post(
+                    f"{self._base_url}/embeddings",
+                    json=payload,
+                    headers=headers,
+                )
+        except httpx.HTTPError as exc:
+            raise AIServiceError(f"Ошибка сети при вызове AI Service: {exc}") from exc
+
+        if response.status_code != 200:
+            raise AIServiceError(
+                f"AI Service вернул статус {response.status_code}: {response.text}"
+            )
+
+        try:
+            data = response.json()
+            return data["data"][0]["embedding"]
+        except (KeyError, IndexError, ValueError) as exc:
+            raise AIServiceError(f"Некорректный ответ AI Service: {exc}") from exc
+
 
 def get_ai_client(settings: Settings | None = None) -> AIClient | None:
     """Собрать AIClient из настроек, либо None, если ключ не задан."""
@@ -68,4 +102,5 @@ def get_ai_client(settings: Settings | None = None) -> AIClient | None:
         api_key=settings.openrouter_api_key,
         model=settings.openrouter_model,
         base_url=settings.openrouter_base_url,
+        embedding_model=settings.openrouter_embedding_model,
     )

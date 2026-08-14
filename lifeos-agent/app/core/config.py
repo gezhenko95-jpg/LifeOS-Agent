@@ -80,6 +80,13 @@ class Settings(BaseSettings):
     openrouter_api_key: str = ""
     openrouter_model: str = "openai/gpt-4o-mini"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_embedding_model: str = "openai/text-embedding-3-small"
+
+    # Семантический поиск по памяти (см. specs/011-semantic-memory-
+    # search.md) — фоновая доливка embedding для новых записей.
+    memory_embeddings_enabled: bool = True
+    memory_embedding_batch_size: int = 20
+    memory_embedding_interval_seconds: int = 300
 
     # Google Drive (Фаза 2 Media Inbox, см. specs/010-media-inbox.md).
     # token.json — разовая локальная авторизация (scripts/drive_auth.py),

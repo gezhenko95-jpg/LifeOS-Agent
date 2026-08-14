@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Text, func
+from sqlalchemy import JSON, Boolean, DateTime, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import BigInteger, String
 
@@ -86,4 +86,18 @@ class MemoryEntry(Base):
         DateTime(timezone=True),
         nullable=True,
         comment="Дата и время последнего обновления записи",
+    )
+
+    embedding: Mapped[Optional[list[float]]] = mapped_column(
+        # none_as_null=True — иначе Python None сохраняется как JSON-
+        # литерал "null", а не SQL NULL, и все IS NULL/IS NOT NULL
+        # запросы (list_with_embeddings/list_missing_embeddings) молча
+        # ломаются.
+        JSON(none_as_null=True),
+        nullable=True,
+        comment=(
+            "Вектор embedding для семантического поиска (см. "
+            "specs/011-semantic-memory-search.md), NULL — ещё не "
+            "посчитан (доливается фоновой job)"
+        ),
     )

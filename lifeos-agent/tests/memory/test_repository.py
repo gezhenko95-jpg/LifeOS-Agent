@@ -74,3 +74,55 @@ async def test_empty_when_nothing_matches(session):
     entries = await repository.list_by_type_since(1, MemoryType.JOURNAL, WEEK_AGO)
 
     assert entries == []
+
+
+# --- list_with_embeddings / list_missing_embeddings ------------------
+
+
+async def test_list_with_embeddings_only_returns_entries_that_have_one(session):
+    with_embedding = await _add(session, created_at=NOW, embedding=[0.1, 0.2])
+    await _add(session, created_at=NOW, embedding=None)
+
+    repository = MemoryRepository(session)
+    entries = await repository.list_with_embeddings(1)
+
+    assert [entry.id for entry in entries] == [with_embedding.id]
+
+
+async def test_list_with_embeddings_filters_by_type(session):
+    await _add(session, type=MemoryType.JOURNAL, created_at=NOW, embedding=[0.1])
+    fact = await _add(session, type=MemoryType.FACT, created_at=NOW, embedding=[0.2])
+
+    repository = MemoryRepository(session)
+    entries = await repository.list_with_embeddings(1, type=MemoryType.FACT)
+
+    assert [entry.id for entry in entries] == [fact.id]
+
+
+async def test_list_with_embeddings_excludes_archived(session):
+    await _add(session, created_at=NOW, embedding=[0.1], archived=True)
+
+    repository = MemoryRepository(session)
+    entries = await repository.list_with_embeddings(1)
+
+    assert entries == []
+
+
+async def test_list_missing_embeddings_returns_entries_without_one(session):
+    missing = await _add(session, created_at=NOW, embedding=None)
+    await _add(session, created_at=NOW, embedding=[0.1])
+
+    repository = MemoryRepository(session)
+    entries = await repository.list_missing_embeddings(limit=10)
+
+    assert [entry.id for entry in entries] == [missing.id]
+
+
+async def test_list_missing_embeddings_respects_limit(session):
+    for _ in range(5):
+        await _add(session, created_at=NOW, embedding=None)
+
+    repository = MemoryRepository(session)
+    entries = await repository.list_missing_embeddings(limit=2)
+
+    assert len(entries) == 2

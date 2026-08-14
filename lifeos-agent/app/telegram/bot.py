@@ -24,6 +24,7 @@ from app.telegram.handlers import (
     tasks_command,
 )
 from app.telegram.jobs import (
+    embed_pending_memories_job,
     send_evening_checkin_job,
     send_evening_reflection_job,
     send_midday_checkin_job,
@@ -63,6 +64,7 @@ def build_application() -> Application:
     _register_weekly_digest(application, settings)
     _register_nudges(application, settings)
     _register_monthly_insights(application, settings)
+    _register_memory_embeddings(application, settings)
 
     return application
 
@@ -180,6 +182,22 @@ def _register_nudges(application: Application, settings: Settings) -> None:
             hour=settings.nudges_hour, minute=settings.nudges_minute, tzinfo=local_tz
         ),
         name="nudges",
+    )
+
+
+def _register_memory_embeddings(application: Application, settings: Settings) -> None:
+    """Доливка embedding для семантического поиска (см.
+    specs/011-semantic-memory-search.md) — раз в
+    memory_embedding_interval_seconds, сама job тихо пропускает шаг без
+    AI-ключа (см. app/telegram/jobs.py::embed_pending_memories_job)."""
+    if not settings.memory_embeddings_enabled or not settings.owner_telegram_user_id:
+        return
+
+    application.job_queue.run_repeating(
+        embed_pending_memories_job,
+        interval=settings.memory_embedding_interval_seconds,
+        first=30,
+        name="memory_embeddings",
     )
 
 

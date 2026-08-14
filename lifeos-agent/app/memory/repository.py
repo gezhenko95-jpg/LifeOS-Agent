@@ -59,6 +59,35 @@ class MemoryRepository:
         result = await self._session.execute(query)
         return list(result.scalars().all())
 
+    async def list_with_embeddings(
+        self, telegram_user_id: int, type: Optional[MemoryType] = None
+    ) -> list[MemoryEntry]:
+        """Записи пользователя, для которых уже посчитан embedding — для
+        семантического поиска (см. app/memory/service.py::semantic_search,
+        specs/011-semantic-memory-search.md)."""
+        query = select(MemoryEntry).where(
+            MemoryEntry.telegram_user_id == telegram_user_id,
+            MemoryEntry.embedding.is_not(None),
+            MemoryEntry.archived.is_(False),
+        )
+        if type is not None:
+            query = query.where(MemoryEntry.type == type.value)
+        result = await self._session.execute(query)
+        return list(result.scalars().all())
+
+    async def list_missing_embeddings(self, limit: int) -> list[MemoryEntry]:
+        """Через всех пользователей — проект single-user (PROJECT.md),
+        как и list_due_unreminded у задач. Для фоновой доливки embedding
+        (см. app/telegram/jobs.py::embed_pending_memories_job)."""
+        query = (
+            select(MemoryEntry)
+            .where(MemoryEntry.embedding.is_(None), MemoryEntry.archived.is_(False))
+            .order_by(MemoryEntry.created_at)
+            .limit(limit)
+        )
+        result = await self._session.execute(query)
+        return list(result.scalars().all())
+
     async def save(self, entry: MemoryEntry) -> MemoryEntry:
         """Сохранить изменения существующей записи (update)."""
         await self._session.commit()

@@ -306,6 +306,26 @@ async def send_nudges_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     await context.bot.send_message(chat_id=telegram_user_id, text="\n\n".join(lines))
 
 
+async def embed_pending_memories_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Фоновая доливка embedding для записей памяти без него — семантический
+    поиск (см. specs/011-semantic-memory-search.md). Не привязана к
+    telegram_user_id — single-user проект (PROJECT.md), как и напоминания
+    о задачах. Без ключа AI просто ничего не делает (тихий пропуск)."""
+    settings = get_settings()
+    ai_client = get_ai_client(settings)
+    if ai_client is None:
+        return
+
+    async with AsyncSessionLocal() as session:
+        service = MemoryService(MemoryRepository(session))
+        embedded = await service.backfill_embeddings(
+            ai_client, batch_size=settings.memory_embedding_batch_size
+        )
+
+    if embedded:
+        logger.info("Проэмбеддено %d записей памяти", embedded)
+
+
 async def send_task_reminders_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     settings = get_settings()
     telegram_user_id = settings.owner_telegram_user_id
