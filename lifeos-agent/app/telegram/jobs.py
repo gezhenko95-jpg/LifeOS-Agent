@@ -159,7 +159,9 @@ async def send_midday_checkin_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
     await context.bot.send_message(
-        chat_id=telegram_user_id, text=_MIDDAY_TEXT, reply_markup=markup
+        chat_id=telegram_user_id,
+        text=_MIDDAY_TEXT,
+        reply_markup=markup,
     )
 
 

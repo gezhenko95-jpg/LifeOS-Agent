@@ -14,7 +14,7 @@ import logging
 import re
 
 from telegram import Update
-from telegram.constants import ChatAction
+from telegram.constants import ChatAction, ParseMode
 from telegram.ext import ContextTypes
 
 from app.ai.client import get_ai_client
@@ -262,7 +262,9 @@ async def _send_tasks_keyboard(update: Update) -> None:
         tasks = await service.list_active_tasks(telegram_user_id)
         text, markup = build_tasks_message(tasks)
 
-    await update.message.reply_text(text, reply_markup=markup)
+    await update.message.reply_text(
+        text, reply_markup=markup, parse_mode=ParseMode.HTML
+    )
 
 
 async def _send_habits_keyboard(update: Update) -> None:
@@ -276,7 +278,9 @@ async def _send_habits_keyboard(update: Update) -> None:
         streaks = {habit.id: await service.get_streak(habit.id) for habit in habits}
         text, markup = build_habits_message(habits, streaks)
 
-    await update.message.reply_text(text, reply_markup=markup)
+    await update.message.reply_text(
+        text, reply_markup=markup, parse_mode=ParseMode.HTML
+    )
 
 
 async def _send_goals_keyboard(update: Update) -> None:
@@ -289,7 +293,9 @@ async def _send_goals_keyboard(update: Update) -> None:
         goals = await service.list_active_goals(telegram_user_id)
         text, markup = build_goals_message(goals)
 
-    await update.message.reply_text(text, reply_markup=markup)
+    await update.message.reply_text(
+        text, reply_markup=markup, parse_mode=ParseMode.HTML
+    )
 
 
 async def _send_watchlist_keyboard(update: Update) -> None:
@@ -302,7 +308,9 @@ async def _send_watchlist_keyboard(update: Update) -> None:
         items = await service.list_active_items(telegram_user_id)
         text, markup = build_watchlist_message(items)
 
-    await update.message.reply_text(text, reply_markup=markup)
+    await update.message.reply_text(
+        text, reply_markup=markup, parse_mode=ParseMode.HTML
+    )
 
 
 async def _send_site_link(update: Update) -> None:

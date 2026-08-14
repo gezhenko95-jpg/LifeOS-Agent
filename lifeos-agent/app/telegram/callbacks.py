@@ -7,6 +7,7 @@ from datetime import date, datetime, time, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import InlineKeyboardMarkup, Update
+from telegram.constants import ParseMode
 from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
@@ -114,7 +115,9 @@ async def handle_callback_query(
             return
 
     try:
-        await query.edit_message_text(text, reply_markup=markup)
+        await query.edit_message_text(
+            text, reply_markup=markup, parse_mode=ParseMode.HTML
+        )
     except BadRequest as exc:
         # "Message is not modified" — обычный двойной тап по кнопке, когда
         # результат не изменился (например, повторное «готово» на уже
