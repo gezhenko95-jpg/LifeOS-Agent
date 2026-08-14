@@ -1,0 +1,4 @@
+# Shell-скрипты всегда с LF, даже при checkout на Windows: с CRLF bash на
+# сервере падает с "bad interpreter: /usr/bin/env bash^M". Файл деплоится
+# на Linux as-is, поэтому окончания строк здесь не косметика.
+*.sh text eol=lf
