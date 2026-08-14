@@ -215,6 +215,9 @@ async def handle_text_message(
     if intent is Intent.LIST_HABITS:
         await _send_habits_keyboard(update)
         return
+    if intent is Intent.LIST_WATCHLIST:
+        await _send_watchlist_keyboard(update)
+        return
 
     await _reply_via_engine(update, context, text)
 

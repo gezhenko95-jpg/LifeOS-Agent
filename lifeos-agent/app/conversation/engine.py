@@ -45,8 +45,9 @@ _HELP_TEXT = (
     "«каждый день пить воду»\n"
     "• дневник — «дневник: как прошёл день» (запомню в памяти), или "
     "нажмите «📝 Дневник» в меню — и пишите без префикса\n"
-    "• посмотреть/прочитать позже — «посмотреть фильм Дюна», «прочитать "
-    "книгу X», или кнопка «🎬 Посмотреть» в меню — список со статусами\n"
+    "• посмотреть/прочитать позже — «посмотреть фильм Дюна», «книга X», "
+    "или кнопка «🎬 Посмотреть» в меню; «список книг»/«список фильмов»/"
+    "«полка» — показать список\n"
     "• иногда я сам спрашиваю о целях/привычках/проектах или прошу "
     "дневник — просто ответьте текстом, и я запомню это как надо\n"
     "• /tasks, /habits, /goals — списки с кнопками прямо под сообщением"
@@ -237,6 +238,8 @@ class ConversationEngine:
             return await self._journal_entry(telegram_user_id, parsed.title or "")
         if parsed.intent is Intent.ADD_WATCHLIST_ITEM:
             return await self._add_watchlist_item(telegram_user_id, parsed)
+        if parsed.intent is Intent.LIST_WATCHLIST:
+            return await self._list_watchlist(telegram_user_id)
         return await self._add_task(telegram_user_id, parsed)
 
     async def _add_task(self, telegram_user_id: int, parsed: ParsedIntent) -> str:
@@ -388,6 +391,21 @@ class ConversationEngine:
         )
         emoji = {"movie": "🎬", "book": "📖"}.get(item.media_type, "🎯")
         return f"Добавил в список: «{item.title}» {emoji}"
+
+    async def _list_watchlist(self, telegram_user_id: int) -> str:
+        """Текстовый фолбэк (без кнопок) — обычно перехватывается раньше
+        на уровне handlers.py, который вместо этого шлёт интерактивную
+        клавиатуру (см. _send_watchlist_keyboard), как и для LIST_HABITS."""
+        if self._watchlist is None:
+            return "Смотреть/читать пока нечего."
+        items = await self._watchlist.list_active_items(telegram_user_id)
+        if not items:
+            return "Смотреть/читать пока нечего."
+        lines = []
+        for index, item in enumerate(items, start=1):
+            emoji = {"movie": "🎬", "book": "📖"}.get(item.media_type, "🎯")
+            lines.append(f"{index}. {emoji} {item.title}")
+        return "\n".join(lines)
 
     async def _journal_entry(self, telegram_user_id: int, content: str) -> str:
         if not content:

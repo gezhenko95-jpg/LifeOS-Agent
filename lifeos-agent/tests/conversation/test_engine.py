@@ -928,3 +928,52 @@ async def test_add_watchlist_item_without_service_falls_back_to_task(
 
     task_service.create_task.assert_awaited_once()
     assert "Добавил задачу" in reply
+
+
+# --- LIST_WATCHLIST ------------------------------------------------------
+
+
+async def test_list_watchlist_with_items(
+    task_service, habit_service, memory_service, watchlist_service
+):
+    watchlist_service.list_active_items.return_value = [
+        SimpleNamespace(title="Дюна", media_type="movie"),
+        SimpleNamespace(title="1984", media_type="book"),
+    ]
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        watchlist_service=watchlist_service,
+    )
+
+    reply = await engine.handle_message(1, "список книг")
+
+    assert "Дюна" in reply
+    assert "1984" in reply
+
+
+async def test_list_watchlist_empty(
+    task_service, habit_service, memory_service, watchlist_service
+):
+    watchlist_service.list_active_items.return_value = []
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        watchlist_service=watchlist_service,
+    )
+
+    reply = await engine.handle_message(1, "полка")
+
+    assert "нечего" in reply
+
+
+async def test_list_watchlist_without_service(
+    task_service, habit_service, memory_service
+):
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "список фильмов")
+
+    assert "нечего" in reply

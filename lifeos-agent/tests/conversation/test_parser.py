@@ -290,6 +290,47 @@ def test_watchlist_strips_leftover_comma_after_keyword():
     assert result.title == "21 и больше"
 
 
+# --- LIST_WATCHLIST -----------------------------------------------------
+
+
+def test_list_watchlist_list_books_phrase():
+    result = parse_intent("список книг")
+
+    assert result.intent is Intent.LIST_WATCHLIST
+
+
+def test_list_watchlist_list_movies_phrase():
+    result = parse_intent("список фильмов")
+
+    assert result.intent is Intent.LIST_WATCHLIST
+
+
+def test_list_watchlist_shows_books_wins_over_generic_show():
+    # Живой баг: "покажи книги" уходило в LIST_TASKS из-за общего "покажи".
+    result = parse_intent("покажи книги")
+
+    assert result.intent is Intent.LIST_WATCHLIST
+
+
+def test_list_watchlist_bare_polka_keyword():
+    result = parse_intent("полка")
+
+    assert result.intent is Intent.LIST_WATCHLIST
+
+
+def test_list_watchlist_what_to_watch_does_not_add_item():
+    # "что посмотреть" не должно уйти в ADD_WATCHLIST_ITEM с title="что".
+    result = parse_intent("что посмотреть")
+
+    assert result.intent is Intent.LIST_WATCHLIST
+
+
+def test_generic_show_still_lists_tasks():
+    result = parse_intent("покажи задачи")
+
+    assert result.intent is Intent.LIST_TASKS
+
+
 def test_watchlist_empty_title():
     result = parse_intent("посмотреть фильм")
 

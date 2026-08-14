@@ -23,6 +23,7 @@ class Intent(str, Enum):
     HABIT_DONE = "habit_done"
     JOURNAL_ENTRY = "journal_entry"
     ADD_WATCHLIST_ITEM = "add_watchlist_item"
+    LIST_WATCHLIST = "list_watchlist"
     HELP = "help"
 
 

@@ -9,6 +9,21 @@ from app.conversation.date_parser import extract_due_date, extract_recurrence
 from app.conversation.intent import Intent, ParsedIntent
 
 _HELP_KEYWORDS = ("/help", "помощь", "что ты умеешь")
+# Проверяются РАНЬШЕ общего _LIST_KEYWORDS (там голое "покажи" перехватило
+# бы "покажи книги" как список задач) — см. живой баг с "список книг".
+_LIST_WATCHLIST_KEYWORDS = (
+    "список книг",
+    "список фильмов",
+    "список сериалов",
+    "мои книги",
+    "мои фильмы",
+    "покажи книги",
+    "покажи фильмы",
+    "покажи полку",
+    "что посмотреть",
+    "что почитать",
+    "полка",
+)
 _LIST_KEYWORDS = ("/tasks", "покажи", "список задач", "мои задачи")
 # Вопрос про конкретный день («что на завтра») — не путать с ADD_TASK: дата
 # в тексте есть, но это вопрос, а не новое дело. Без даты в тексте — просто
@@ -80,6 +95,9 @@ def parse_intent(text: str) -> ParsedIntent:
 
     if _contains_any(lowered, _HELP_KEYWORDS):
         return ParsedIntent(intent=Intent.HELP)
+
+    if _contains_any(lowered, _LIST_WATCHLIST_KEYWORDS):
+        return ParsedIntent(intent=Intent.LIST_WATCHLIST)
 
     if _contains_any(lowered, _LIST_KEYWORDS):
         return ParsedIntent(intent=Intent.LIST_TASKS)
