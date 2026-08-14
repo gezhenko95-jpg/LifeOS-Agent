@@ -23,7 +23,24 @@ async def test_create_item(repository):
     assert item.title == "Дюна"
     assert item.media_type == "movie"
     assert item.status == "to_watch"
+    assert item.source == "manual"
+    assert item.drive_file_url is None
     repository.add.assert_awaited_once()
+
+
+async def test_create_item_from_photo_source(repository):
+    service = WatchlistService(repository)
+
+    item = await service.create_item(
+        1,
+        "Дюна",
+        media_type="movie",
+        source="photo",
+        drive_file_url="https://drive.google.com/file1",
+    )
+
+    assert item.source == "photo"
+    assert item.drive_file_url == "https://drive.google.com/file1"
 
 
 async def test_create_item_defaults_to_other(repository):

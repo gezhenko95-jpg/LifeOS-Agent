@@ -17,6 +17,7 @@ from app.telegram.callbacks import handle_callback_query
 from app.telegram.handlers import (
     goals_command,
     habits_command,
+    handle_photo_message,
     handle_text_message,
     help_command,
     start_command,
@@ -52,6 +53,7 @@ def build_application() -> Application:
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message)
     )
+    application.add_handler(MessageHandler(filters.PHOTO, handle_photo_message))
     application.add_handler(CallbackQueryHandler(handle_callback_query))
 
     _register_morning_briefing(application, settings)

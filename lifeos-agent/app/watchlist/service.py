@@ -36,7 +36,12 @@ class WatchlistService:
         self._repository = repository
 
     async def create_item(
-        self, telegram_user_id: int, title: str, media_type: str = "other"
+        self,
+        telegram_user_id: int,
+        title: str,
+        media_type: str = "other",
+        source: str = "manual",
+        drive_file_url: Optional[str] = None,
     ) -> WatchlistItem:
         title = title.strip()
         if not title:
@@ -49,6 +54,8 @@ class WatchlistService:
             title=title,
             media_type=media_type,
             status=TO_WATCH,
+            source=source,
+            drive_file_url=drive_file_url,
         )
         return await self._repository.add(item)
 

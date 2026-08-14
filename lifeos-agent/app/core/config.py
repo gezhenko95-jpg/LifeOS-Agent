@@ -81,6 +81,12 @@ class Settings(BaseSettings):
     openrouter_model: str = "openai/gpt-4o-mini"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
+    # Google Drive (Фаза 2 Media Inbox, см. specs/010-media-inbox.md).
+    # token.json — разовая локальная авторизация (scripts/drive_auth.py),
+    # монтируется в контейнер только для чтения. Файла нет = фича
+    # выключена (см. app/drive/client.py::get_drive_client).
+    drive_token_file: str = "token.json"
+
     model_config = SettingsConfigDict(env_file=".env")
 
 

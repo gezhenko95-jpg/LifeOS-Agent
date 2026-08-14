@@ -10,7 +10,9 @@ import httpx
 
 from app.core.config import Settings, get_settings
 
-_TIMEOUT_SECONDS = 10.0
+# 20s, не 10 — vision-запросы (классификация изображений, см.
+# app/media_inbox/classify.py) идут дольше обычных текстовых.
+_TIMEOUT_SECONDS = 20.0
 
 
 class AIServiceError(Exception):

@@ -40,6 +40,13 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      # Google Drive OAuth-токен (Фаза 2 Media Inbox, см.
+      # specs/010-media-inbox.md) — только чтение, получен локально через
+      # scripts/drive_auth.py, в git не попадает (.gitignore). Файла нет
+      # на хосте — контейнер стартует нормально, Media Inbox просто
+      # выключен (app/drive/client.py::get_drive_client).
+      - ./token.json:/app/token.json:ro
 
 volumes:
   lifeos_db_data:

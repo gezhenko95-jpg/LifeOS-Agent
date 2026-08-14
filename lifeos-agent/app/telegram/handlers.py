@@ -20,12 +20,14 @@ from app.conversation.engine import ConversationEngine
 from app.conversation.intent import Intent
 from app.conversation.parser import parse_intent
 from app.db.session import AsyncSessionLocal
+from app.drive.client import get_drive_client
 from app.goals.repository import GoalRepository
 from app.goals.service import GoalService
 from app.habits.repository import HabitRepository
 from app.habits.service import HabitService
 from app.insights.formatting import build_insights_text
 from app.insights.service import InsightsService
+from app.media_inbox.service import MediaInboxService
 from app.memory.repository import MemoryRepository
 from app.memory.service import MemoryService
 from app.proactive.repository import PendingPromptRepository
@@ -112,6 +114,48 @@ async def habits_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def goals_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _send_goals_keyboard(update)
+
+
+async def handle_photo_message(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Фаза 2 Media Inbox (см. specs/010-media-inbox.md) — эскизы и
+    скриншоты фильмов/книг автоматически раскладываются по Google Drive.
+    Если Drive не настроен (нет token.json) — явно говорим об этом, а не
+    молчим: пользователь мог не понять, что фото вообще не обработалось."""
+    if update.message is None or not update.message.photo:
+        return
+    if update.effective_user is None:
+        return
+    telegram_user_id = update.effective_user.id
+
+    drive_client = get_drive_client()
+    if drive_client is None:
+        await update.message.reply_text(
+            "Media Inbox ещё не настроен (нет token.json на сервере)."
+        )
+        return
+
+    await context.bot.send_chat_action(
+        chat_id=telegram_user_id, action=ChatAction.UPLOAD_PHOTO
+    )
+
+    photo = update.message.photo[-1]  # последний элемент — самое большое разрешение
+    file = await context.bot.get_file(photo.file_id)
+    content = bytes(await file.download_as_bytearray())
+    filename = f"{photo.file_unique_id}.jpg"
+
+    async with AsyncSessionLocal() as session:
+        service = MediaInboxService(
+            drive_client,
+            WatchlistService(WatchlistRepository(session)),
+            get_ai_client(),
+        )
+        reply = await service.handle_photo(
+            telegram_user_id, filename, content, "image/jpeg"
+        )
+
+    await update.message.reply_text(reply)
 
 
 async def handle_text_message(

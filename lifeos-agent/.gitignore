@@ -65,3 +65,7 @@ dump.sql
 *.env.local
 *.env.production
 secrets/
+
+# Google Drive OAuth (Фаза 2 Media Inbox, см. specs/010-media-inbox.md)
+credentials.json
+token.json
