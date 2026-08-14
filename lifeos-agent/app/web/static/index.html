@@ -6,47 +6,98 @@
 <title>LifeOS Agent</title>
 <style>
   :root {
-    --bg: #f5f5f4;
+    --bg: #f4f5f7;
     --card-bg: #ffffff;
-    --text: #1c1c1c;
-    --muted: #6b6b6b;
-    --border: #e2e2e0;
-    --accent: #3a6df0;
+    --text: #14161a;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --accent: #2f6bff;
+    --accent-soft: #e8efff;
     --accent-text: #ffffff;
-    --danger: #d64545;
-    --high: #d64545;
+    --danger: #dc2626;
+    --high: #dc2626;
+    --overdue: #ef4444;
+    --today: #f59e0b;
+    --tomorrow: #eab308;
+    --later: #9ca3af;
+    --ok: #16a34a;
+    --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 12px rgba(16, 24, 40, 0.04);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #17181a;
-      --card-bg: #212226;
-      --text: #eceef0;
-      --muted: #9a9ea4;
-      --border: #33353a;
+      --bg: #0f1114;
+      --card-bg: #181b20;
+      --text: #e8eaed;
+      --muted: #9aa1ab;
+      --border: #272b32;
       --accent: #6d93ff;
+      --accent-soft: #1b2740;
       --accent-text: #0b0d10;
-      --danger: #ff6b6b;
-      --high: #ff6b6b;
+      --danger: #f87171;
+      --high: #f87171;
+      --overdue: #f87171;
+      --today: #fbbf24;
+      --tomorrow: #facc15;
+      --later: #6b7280;
+      --ok: #4ade80;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
     }
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0;
+    margin: 0 auto;
+    max-width: 1100px;
     background: var(--bg);
     color: var(--text);
-    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-    padding: 24px;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    padding: 28px 20px 56px;
   }
-  h1 { font-size: 1.4rem; margin: 0 0 4px; }
-  .subtitle { color: var(--muted); margin: 0 0 20px; font-size: 0.9rem; }
+  h1 {
+    font-size: 1.6rem;
+    margin: 0 0 2px;
+    letter-spacing: -0.02em;
+  }
+  .subtitle { color: var(--muted); margin: 0 0 22px; font-size: 0.9rem; }
+  /* Настройки нужны один раз — прячем их под спойлер, чтобы страница
+     начиналась с данных, а не с полей ввода. */
+  details.settings {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 14px;
+    margin-bottom: 22px;
+    box-shadow: var(--shadow);
+  }
+  details.settings summary {
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--muted);
+    list-style: none;
+  }
+  details.settings summary::-webkit-details-marker { display: none; }
+  details.settings summary::before { content: "⚙️ "; }
+  details.settings[open] summary { margin-bottom: 10px; }
   .id-bar {
     display: flex;
     gap: 8px;
     align-items: center;
-    margin-bottom: 20px;
+    margin: 8px 0;
     flex-wrap: wrap;
   }
   .id-bar span { color: var(--muted); font-size: 0.85rem; }
+  .status-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex: none;
+    display: inline-block;
+    background: var(--later);
+  }
+  .status-dot.overdue { background: var(--overdue); }
+  .status-dot.today { background: var(--today); }
+  .status-dot.tomorrow { background: var(--tomorrow); }
+  .meta.overdue { color: var(--overdue); }
   input, select {
     background: var(--card-bg);
     color: var(--text);
@@ -59,33 +110,49 @@
     background: var(--accent);
     color: var(--accent-text);
     border: none;
-    border-radius: 6px;
-    padding: 6px 12px;
+    border-radius: 8px;
+    padding: 7px 13px;
     font-size: 0.9rem;
+    font-weight: 500;
     cursor: pointer;
+    transition: filter 0.15s, background 0.15s;
   }
+  button:hover { filter: brightness(1.08); }
+  button:active { filter: brightness(0.94); }
   button.secondary {
     background: transparent;
-    color: var(--text);
+    color: var(--muted);
     border: 1px solid var(--border);
+    padding: 5px 10px;
   }
+  button.secondary:hover { background: var(--accent-soft); color: var(--accent); }
   button.danger {
     background: transparent;
-    color: var(--danger);
-    border: 1px solid var(--danger);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 5px 10px;
   }
+  button.danger:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 16px;
+    gap: 18px;
   }
   .card {
     background: var(--card-bg);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 16px;
+    border-radius: 14px;
+    padding: 18px 18px 14px;
+    box-shadow: var(--shadow);
   }
-  .card h2 { margin: 0 0 12px; font-size: 1.05rem; }
+  .card h2 {
+    margin: 0 0 14px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+  }
   form.add-form {
     display: flex;
     gap: 6px;
@@ -97,21 +164,30 @@
   ul.item-list li {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 0;
+    gap: 9px;
+    padding: 9px 4px;
+    margin: 0 -4px;
+    border-radius: 8px;
     border-bottom: 1px solid var(--border);
     flex-wrap: wrap;
+    transition: background 0.12s;
   }
+  ul.item-list li:hover { background: var(--accent-soft); }
   ul.item-list li:last-child { border-bottom: none; }
   .item-title { flex: 1; min-width: 120px; }
   .item-title.high { color: var(--high); font-weight: 600; }
-  .meta { color: var(--muted); font-size: 0.8rem; }
-  .empty { color: var(--muted); font-size: 0.85rem; padding: 8px 0; }
+  .meta { color: var(--muted); font-size: 0.8rem; white-space: nowrap; }
+  .empty {
+    color: var(--muted);
+    font-size: 0.88rem;
+    padding: 14px 0;
+    text-align: center;
+  }
   .progress-bar {
-    width: 60px;
-    height: 6px;
+    width: 64px;
+    height: 7px;
     background: var(--border);
-    border-radius: 3px;
+    border-radius: 4px;
     overflow: hidden;
     display: inline-block;
   }
@@ -119,6 +195,8 @@
     display: block;
     height: 100%;
     background: var(--accent);
+    border-radius: 4px;
+    transition: width 0.25s;
   }
   .shelf-group h3 {
     font-size: 0.78rem;
@@ -142,21 +220,25 @@
 <body>
 
 <h1>LifeOS Agent</h1>
-<p class="subtitle">Простейший веб-интерфейс — использует тот же REST API, что и Telegram-бот.</p>
+<p class="subtitle">Задачи, привычки, цели и полка — то же, что в боте, только целиком на одном экране.</p>
 
-<div class="id-bar">
-  <span>Telegram ID:</span>
-  <input id="userIdInput" type="text" placeholder="напр. 414825951" />
-  <button id="saveUserId" class="secondary">Сохранить</button>
-  <span id="userIdStatus"></span>
-</div>
+<details class="settings">
+  <summary>Настройки доступа</summary>
 
-<div class="id-bar">
-  <span>Токен API:</span>
-  <input id="apiTokenInput" type="password" placeholder="из api_token в .env" />
-  <button id="saveApiToken" class="secondary">Сохранить</button>
-  <span id="apiTokenStatus"></span>
-</div>
+  <div class="id-bar">
+    <span>Telegram ID:</span>
+    <input id="userIdInput" type="text" placeholder="напр. 414825951" />
+    <button id="saveUserId" class="secondary">Сохранить</button>
+    <span id="userIdStatus"></span>
+  </div>
+
+  <div class="id-bar">
+    <span>Токен API:</span>
+    <input id="apiTokenInput" type="password" placeholder="из api_token в .env" />
+    <button id="saveApiToken" class="secondary">Сохранить</button>
+    <span id="apiTokenStatus"></span>
+  </div>
+</details>
 
 <div class="grid">
 
@@ -274,6 +356,37 @@ function formatDate(iso) {
   return d.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
+// Те же слова и та же логика срочности, что и у бота
+// (app/tasks/formatting.py) — иначе одна и та же задача выглядит
+// по-разному в чате и на сайте.
+function daysUntil(iso) {
+  const due = new Date(iso);
+  const startOfDue = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((startOfDue - startOfToday) / 86400000);
+}
+
+function dueStatus(iso) {
+  if (!iso) return "later";
+  const delta = daysUntil(iso);
+  if (delta < 0) return "overdue";
+  if (delta === 0) return "today";
+  if (delta === 1) return "tomorrow";
+  return "later";
+}
+
+function formatDueHuman(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const clock = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  const delta = daysUntil(iso);
+  if (delta === 0) return `сегодня в ${clock}`;
+  if (delta === 1) return `завтра в ${clock}`;
+  if (delta === -1) return `вчера в ${clock}`;
+  return `${d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" })} в ${clock}`;
+}
+
 // ---- Tasks ----
 
 async function loadTasks() {
@@ -282,19 +395,22 @@ async function loadTasks() {
   if (!id) { list.innerHTML = ""; return; }
   const tasks = await api(`/tasks?telegram_user_id=${encodeURIComponent(id)}`);
   if (!tasks.length) {
-    list.innerHTML = '<li class="empty">Активных задач нет.</li>';
+    list.innerHTML = '<li class="empty">Активных задач нет — и это нормально.</li>';
     return;
   }
-  list.innerHTML = tasks.map((task) => `
+  list.innerHTML = tasks.map((task) => {
+    const status = dueStatus(task.due_date);
+    return `
     <li>
+      <span class="status-dot ${status}" title="${status}"></span>
       <span class="item-title ${task.priority === "high" ? "high" : ""}">
         ${task.priority === "high" ? "❗ " : ""}${escapeHtml(task.title)}
       </span>
-      <span class="meta">${formatDate(task.due_date)}</span>
+      <span class="meta ${status === "overdue" ? "overdue" : ""}">${formatDueHuman(task.due_date)}</span>
       <button class="secondary" data-action="complete-task" data-id="${task.id}">✓</button>
       <button class="danger" data-action="delete-task" data-id="${task.id}">✕</button>
-    </li>
-  `).join("");
+    </li>`;
+  }).join("");
 }
 
 document.getElementById("taskForm").addEventListener("submit", async (e) => {
