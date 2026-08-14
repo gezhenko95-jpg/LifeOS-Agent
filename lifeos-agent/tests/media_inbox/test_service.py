@@ -33,11 +33,13 @@ async def test_sketch_uploads_without_watchlist(monkeypatch):
     watchlist = _watchlist_service()
     service = MediaInboxService(drive, watchlist, AsyncMock())
 
-    reply = await service.handle_photo(1, "photo.jpg", b"data", "image/jpeg")
+    saved, reply = await service.handle_photo(1, "photo.jpg", b"data", "image/jpeg")
 
-    drive.ensure_folder.assert_called_once_with("Эскизы")
+    assert saved is True
+    drive.ensure_folder.assert_any_call("LifeOS")
+    drive.ensure_folder.assert_any_call("Эскизы", parent_id="folder-id")
     watchlist.create_item.assert_not_called()
-    assert "Эскизы" in reply
+    assert "LifeOS/Эскизы" in reply
 
 
 async def test_movie_with_title_creates_watchlist_item(monkeypatch):
@@ -49,9 +51,10 @@ async def test_movie_with_title_creates_watchlist_item(monkeypatch):
     watchlist = _watchlist_service()
     service = MediaInboxService(drive, watchlist, AsyncMock())
 
-    reply = await service.handle_photo(1, "photo.jpg", b"data", "image/jpeg")
+    saved, reply = await service.handle_photo(1, "photo.jpg", b"data", "image/jpeg")
 
-    drive.ensure_folder.assert_called_once_with("Кино и книги")
+    assert saved is True
+    drive.ensure_folder.assert_any_call("Кино и книги", parent_id="folder-id")
     watchlist.create_item.assert_awaited_once_with(
         1,
         "Дюна",
@@ -85,9 +88,10 @@ async def test_classification_failure_falls_back_to_other(monkeypatch):
     watchlist = _watchlist_service()
     service = MediaInboxService(drive, watchlist, AsyncMock())
 
-    reply = await service.handle_photo(1, "photo.jpg", b"data", "image/jpeg")
+    saved, reply = await service.handle_photo(1, "photo.jpg", b"data", "image/jpeg")
 
-    drive.ensure_folder.assert_called_once_with("Разное")
+    assert saved is True
+    drive.ensure_folder.assert_any_call("Разное", parent_id="folder-id")
     watchlist.create_item.assert_not_called()
     assert "Разное" in reply
 
@@ -99,10 +103,11 @@ async def test_without_ai_client_skips_classification_entirely(monkeypatch):
     watchlist = _watchlist_service()
     service = MediaInboxService(drive, watchlist, ai_client=None)
 
-    reply = await service.handle_photo(1, "photo.jpg", b"data", "image/jpeg")
+    saved, reply = await service.handle_photo(1, "photo.jpg", b"data", "image/jpeg")
 
     classify_mock.assert_not_awaited()
-    drive.ensure_folder.assert_called_once_with("Разное")
+    assert saved is True
+    drive.ensure_folder.assert_any_call("Разное", parent_id="folder-id")
     assert "Разное" in reply
 
 
@@ -116,7 +121,8 @@ async def test_drive_error_returns_graceful_message(monkeypatch):
     watchlist = _watchlist_service()
     service = MediaInboxService(drive, watchlist, AsyncMock())
 
-    reply = await service.handle_photo(1, "photo.jpg", b"data", "image/jpeg")
+    saved, reply = await service.handle_photo(1, "photo.jpg", b"data", "image/jpeg")
 
+    assert saved is False
     assert "не получилось" in reply.lower()
     watchlist.create_item.assert_not_called()

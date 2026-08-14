@@ -32,26 +32,38 @@ class DriveClient:
     def __init__(self, token_file: str) -> None:
         creds = Credentials.from_authorized_user_file(token_file)
         self._service = build("drive", "v3", credentials=creds)
-        self._folder_cache: dict[str, str] = {}
+        self._folder_cache: dict[tuple[str | None, str], str] = {}
 
-    def ensure_folder(self, name: str) -> str:
-        """Id папки `name` в корне Диска — создаёт при отсутствии.
-        Кэшируется на время жизни клиента, чтобы не искать папку заново
-        на каждую загрузку файла."""
-        if name in self._folder_cache:
-            return self._folder_cache[name]
+    def ensure_folder(self, name: str, parent_id: str | None = None) -> str:
+        """Id папки `name` — создаёт при отсутствии, внутри `parent_id`
+        (корень Диска, если не задан). Кэшируется на время жизни клиента
+        по паре (parent_id, name), чтобы не искать папку заново на
+        каждую загрузку файла."""
+        cache_key = (parent_id, name)
+        if cache_key in self._folder_cache:
+            return self._folder_cache[cache_key]
 
         try:
             query = (
                 f"name = '{name}' and mimeType = '{_FOLDER_MIME_TYPE}' "
                 "and trashed = false"
             )
+            # Без ограничения по родителю совпало бы с одноимённой папкой
+            # где угодно на Диске — так у вложенной "Разное" внутри LifeOS
+            # не было бы конфликта с чем-то посторонним с тем же именем.
+            query += (
+                f" and '{parent_id}' in parents"
+                if parent_id
+                else " and 'root' in parents"
+            )
             result = self._service.files().list(q=query, fields="files(id)").execute()
             files = result.get("files", [])
             if files:
                 folder_id = files[0]["id"]
             else:
-                metadata = {"name": name, "mimeType": _FOLDER_MIME_TYPE}
+                metadata: dict = {"name": name, "mimeType": _FOLDER_MIME_TYPE}
+                if parent_id:
+                    metadata["parents"] = [parent_id]
                 created = (
                     self._service.files().create(body=metadata, fields="id").execute()
                 )
@@ -61,7 +73,7 @@ class DriveClient:
                 f"Не удалось получить/создать папку: {exc}"
             ) from exc
 
-        self._folder_cache[name] = folder_id
+        self._folder_cache[cache_key] = folder_id
         return folder_id
 
     def upload_file(

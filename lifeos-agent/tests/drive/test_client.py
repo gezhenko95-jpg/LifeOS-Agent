@@ -69,6 +69,40 @@ def test_ensure_folder_caches_across_calls(mock_creds, mock_build):
 
 @patch("app.drive.client.build")
 @patch("app.drive.client.Credentials.from_authorized_user_file")
+def test_ensure_folder_with_parent_creates_nested(mock_creds, mock_build):
+    service = MagicMock()
+    service.files.return_value.list.return_value.execute.return_value = {"files": []}
+    service.files.return_value.create.return_value.execute.return_value = {
+        "id": "child123"
+    }
+    mock_build.return_value = service
+
+    client = DriveClient("token.json")
+    folder_id = client.ensure_folder("Эскизы", parent_id="root-folder")
+
+    assert folder_id == "child123"
+    _, kwargs = service.files.return_value.create.call_args
+    assert kwargs["body"]["parents"] == ["root-folder"]
+
+
+@patch("app.drive.client.build")
+@patch("app.drive.client.Credentials.from_authorized_user_file")
+def test_ensure_folder_cache_distinguishes_by_parent(mock_creds, mock_build):
+    service = MagicMock()
+    service.files.return_value.list.return_value.execute.return_value = {
+        "files": [{"id": "existing1"}]
+    }
+    mock_build.return_value = service
+
+    client = DriveClient("token.json")
+    client.ensure_folder("Разное")  # без родителя
+    client.ensure_folder("Разное", parent_id="root-folder")  # с родителем — не кэш
+
+    assert service.files.return_value.list.call_count == 2
+
+
+@patch("app.drive.client.build")
+@patch("app.drive.client.Credentials.from_authorized_user_file")
 def test_ensure_folder_wraps_http_error(mock_creds, mock_build):
     service = MagicMock()
     service.files.return_value.list.return_value.execute.side_effect = _http_error()

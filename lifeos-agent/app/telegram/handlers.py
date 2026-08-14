@@ -9,6 +9,7 @@ inline-кнопками (app/telegram/keyboards.py) — ConversationEngine не
 должен знать про Telegram-специфичные типы.
 """
 
+import logging
 import re
 
 from telegram import Update
@@ -52,6 +53,8 @@ from app.telegram.keyboards import (
 )
 from app.watchlist.repository import WatchlistRepository
 from app.watchlist.service import WatchlistService
+
+logger = logging.getLogger(__name__)
 
 _ADD_TASK_HINT = "Окей, пиши, что за задача — с датой или без, я пойму."
 _JOURNAL_PROMPT = "Что запишем в дневник? Пиши как есть — сохраню без изменений."
@@ -122,7 +125,11 @@ async def handle_photo_message(
     """Фаза 2 Media Inbox (см. specs/010-media-inbox.md) — эскизы и
     скриншоты фильмов/книг автоматически раскладываются по Google Drive.
     Если Drive не настроен (нет token.json) — явно говорим об этом, а не
-    молчим: пользователь мог не понять, что фото вообще не обработалось."""
+    молчим: пользователь мог не понять, что фото вообще не обработалось.
+
+    После успешной загрузки оригинал фото удаляется из чата (файл уже
+    на Диске, дублировать его в кеше Telegram незачем) — только при
+    успехе, иначе фото потеряется, если Drive не смог его сохранить."""
     if update.message is None or not update.message.photo:
         return
     if update.effective_user is None:
@@ -151,11 +158,20 @@ async def handle_photo_message(
             WatchlistService(WatchlistRepository(session)),
             get_ai_client(),
         )
-        reply = await service.handle_photo(
+        saved, reply = await service.handle_photo(
             telegram_user_id, filename, content, "image/jpeg"
         )
 
-    await update.message.reply_text(reply)
+    if saved:
+        try:
+            await update.message.delete()
+        except Exception:
+            # Не критично — файл уже на Диске, просто оригинал останется
+            # в чате (например, если сообщение старше 48 часов).
+            logger.warning("Не удалось удалить фото-сообщение после загрузки")
+        await context.bot.send_message(chat_id=telegram_user_id, text=reply)
+    else:
+        await update.message.reply_text(reply)
 
 
 async def handle_text_message(

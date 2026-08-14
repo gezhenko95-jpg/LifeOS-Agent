@@ -16,6 +16,10 @@ from app.watchlist.service import WatchlistService
 
 logger = logging.getLogger(__name__)
 
+# Всё, что шлёт пользователь, лежит внутри одной корневой папки LifeOS —
+# не мусорим в корне Диска, легко найти/убрать целиком.
+_ROOT_FOLDER = "LifeOS"
+
 _FOLDER_BY_CATEGORY = {
     "sketch": "Эскизы",
     "movie": "Кино и книги",
@@ -38,8 +42,14 @@ class MediaInboxService:
 
     async def handle_photo(
         self, telegram_user_id: int, filename: str, content: bytes, mime_type: str
-    ) -> str:
-        """Классификация не удалась/AI недоступна — молчаливый откат на
+    ) -> tuple[bool, str]:
+        """(успех, текст). Успех=False только при сбое самого Drive —
+        вызывающий код (см. app/telegram/handlers.py) по этому флагу
+        решает, можно ли удалить оригинал фото из чата: файл ещё нигде
+        не сохранён, значит и удалять из Telegram нельзя, иначе фото
+        будет потеряно безвозвратно.
+
+        Классификация не удалась/AI недоступна — молчаливый откат на
         "other" (файл всё равно сохраняется, просто без Watchlist-записи),
         тот же принцип, что и у AI-фолбэков везде в проекте."""
         classification = None
@@ -50,11 +60,15 @@ class MediaInboxService:
 
         folder_name = _FOLDER_BY_CATEGORY[category]
         try:
-            folder_id = self._drive.ensure_folder(folder_name)
+            root_id = self._drive.ensure_folder(_ROOT_FOLDER)
+            folder_id = self._drive.ensure_folder(folder_name, parent_id=root_id)
             file_url = self._drive.upload_file(folder_id, filename, content, mime_type)
         except DriveServiceError as exc:
             logger.warning("Не удалось сохранить файл на Drive: %s", exc)
-            return "Не получилось сохранить файл на Диск — попробуй ещё раз позже."
+            return (
+                False,
+                "Не получилось сохранить файл на Диск — попробуй ещё раз позже.",
+            )
 
         note = ""
         if category in _WATCHLIST_CATEGORIES and title:
@@ -67,4 +81,4 @@ class MediaInboxService:
             )
             note = f"\nДобавил в список: «{item.title}»."
 
-        return f"Сохранил в «{folder_name}» на Диске.{note}"
+        return True, f"Сохранил в «{_ROOT_FOLDER}/{folder_name}» на Диске.{note}"
