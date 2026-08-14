@@ -379,3 +379,58 @@ def test_day_without_time_keeps_default_hour():
     assert due.date() == date.today() + timedelta(days=1)
     assert (due.hour, due.minute) == (9, 0)
     assert remaining == "купить молоко"
+
+
+# --- 12-часовая форма: «в 9 утра», «в 7 вечера» (живое использование) ---
+
+
+def test_morning_hour():
+    """«напомни сегодня в 9 утра запустить стиралку» — реальная фраза
+    владельца: слово «утра» раньше оставалось в названии задачи."""
+    due, remaining = extract_due_date("сегодня в 9 утра запустить стиралку")
+
+    assert (due.hour, due.minute) == (9, 0)
+    assert remaining == "запустить стиралку"
+
+
+def test_evening_hour_shifts_to_pm():
+    due, remaining = extract_due_date("в 7 вечера позвонить маме")
+
+    assert (due.hour, due.minute) == (19, 0)
+    assert remaining == "позвонить маме"
+
+
+def test_afternoon_hour_shifts_to_pm():
+    due, remaining = extract_due_date("в 3 дня забрать посылку")
+
+    assert (due.hour, due.minute) == (15, 0)
+    assert remaining == "забрать посылку"
+
+
+def test_late_night_hour_shifts_to_pm():
+    due, _ = extract_due_date("в 11 ночи выключить свет")
+
+    assert (due.hour, due.minute) == (23, 0)
+
+
+def test_early_night_hour_stays_am():
+    """«в 2 ночи» это 02:00, а не 14:00 — граница по 4 часам."""
+    due, _ = extract_due_date("в 2 ночи проверить сервер")
+
+    assert (due.hour, due.minute) == (2, 0)
+
+
+def test_noon_and_midnight_are_special_cases():
+    """Двенадцать выбивается из правила «прибавить 12»."""
+    noon, _ = extract_due_date("в 12 дня обед")
+    midnight, _ = extract_due_date("в 12 ночи новый год")
+
+    assert noon.hour == 12
+    assert midnight.hour == 0
+
+
+def test_day_part_with_minutes():
+    due, remaining = extract_due_date("в 9:30 утра к врачу")
+
+    assert (due.hour, due.minute) == (9, 30)
+    assert remaining == "к врачу"

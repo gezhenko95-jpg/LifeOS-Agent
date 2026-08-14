@@ -44,6 +44,15 @@ _RELATIVE_HOURS_PATTERN = re.compile(rf"через\s+{_COUNT}\s*час\w*", re.I
 _RELATIVE_HALF_HOUR_PATTERN = re.compile(r"через\s+полчаса", re.IGNORECASE)
 _RELATIVE_ONE_HOUR_PATTERN = re.compile(r"через\s+час\b", re.IGNORECASE)
 
+# «в 9 утра», «в 7 вечера», «в 3 дня», «в 11 ночи» — 12-часовая форма,
+# самая обычная в разговоре. Без неё «в 9 утра» разбиралось как «в 9», а
+# слово «утра» оставалось в названии задачи (поймано на живом
+# использовании: «напомни сегодня в 9 утра запустить стиралку»).
+_DAY_PART_PATTERN = re.compile(
+    r"\bв\s+(\d{1,2})(?:[:.\s-](\d{2}))?\s*(утра|дня|вечера|ночи)\b",
+    re.IGNORECASE,
+)
+
 # Время суток. Разделитель не только двоеточие: «в 19 00», «в 19.00»,
 # «в 19-00» пишут ровно так же часто (реальная жалоба владельца).
 _TIME_OF_DAY_PATTERN = re.compile(r"\bв\s+(\d{1,2})[:.\s-](\d{2})\b", re.IGNORECASE)
@@ -260,6 +269,14 @@ def _extract_clock(text: str) -> tuple[Optional[time], str]:
     Форма с минутами проверяется первой: у «в 19 00» иначе совпал бы
     только час, а «00» осталось бы в названии задачи.
     """
+    match = _DAY_PART_PATTERN.search(text)
+    if match:
+        hour = int(match.group(1))
+        minute = int(match.group(2) or 0)
+        if 1 <= hour <= 12 and 0 <= minute <= 59:
+            hour = _apply_day_part(hour, match.group(3).lower())
+            return time(hour=hour, minute=minute), _remove_span(text, match.span())
+
     match = _TIME_OF_DAY_PATTERN.search(text)
     if match:
         hour, minute = int(match.group(1)), int(match.group(2))
@@ -273,6 +290,24 @@ def _extract_clock(text: str) -> tuple[Optional[time], str]:
             return time(hour=hour), _remove_span(text, match.span())
 
     return None, text
+
+
+def _apply_day_part(hour: int, day_part: str) -> int:
+    """12-часовой час + часть суток -> час в 24-часовом формате.
+
+    «12 ночи» это полночь, «12 дня» — полдень: двенадцать выбивается из
+    общего правила «прибавить 12», поэтому обрабатывается отдельно.
+    «11 ночи» — 23:00, а «2 ночи» — 02:00: граница по 4 часам, дальше
+    ночь уже переходит в утро.
+    """
+    if day_part == "утра":
+        return 0 if hour == 12 else hour
+    if day_part in ("дня", "вечера"):
+        return hour if hour == 12 else hour + 12
+    # ночи
+    if hour == 12:
+        return 0
+    return hour if hour <= 4 else hour + 12
 
 
 def _next_occurrence_of(clock: time) -> datetime:

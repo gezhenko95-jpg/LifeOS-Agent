@@ -1075,3 +1075,67 @@ async def test_add_task_reply_names_the_time(
     reply = await engine.handle_message(1, "напомни в 19:00 позвонить маме")
 
     assert reply == "Добавил задачу: «позвонить маме» на 16.08.2026 в 19:00"
+
+
+async def test_reminder_is_not_swallowed_by_open_journal_prompt(
+    task_service, habit_service, memory_service, goal_service, pending_prompt_service
+):
+    """Регрессия из живого использования: при открытом дневниковом
+    вопросе «напомни сегодня в 9 утра запустить стиралку» уходило в
+    дневник, и напоминание не создавалось вовсе (см. AUDIT.md, B-1)."""
+    pending_prompt_service.get_open.return_value = SimpleNamespace(
+        category="journal",
+        question_text="Что запишем в дневник?",
+        asked_at=datetime.now(timezone.utc),
+    )
+    from app.tasks.models import Task
+
+    task_service.create_task.return_value = Task(
+        id=1,
+        telegram_user_id=1,
+        title="запустить стиралку",
+        due_date=datetime(2026, 8, 15, 9, 0, tzinfo=timezone.utc),
+        status="active",
+        priority="normal",
+    )
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        goal_service=goal_service,
+        pending_prompt_service=pending_prompt_service,
+    )
+
+    reply = await engine.handle_message(
+        1, "напомни сегодня в 9 утра запустить стиралку"
+    )
+
+    assert "Добавил задачу" in reply
+    memory_service.save.assert_not_awaited()
+    task_service.create_task.assert_awaited_once()
+
+
+async def test_journal_still_captures_prose_containing_command_words(
+    task_service, habit_service, memory_service, goal_service, pending_prompt_service
+):
+    """Отсекаем только НАЧАЛО сообщения: «напомни» посреди прозы — обычное
+    слово, такая запись должна остаться дневниковой."""
+    pending_prompt_service.get_open.return_value = SimpleNamespace(
+        category="journal",
+        question_text="Как прошёл день?",
+        asked_at=datetime.now(timezone.utc),
+    )
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        goal_service=goal_service,
+        pending_prompt_service=pending_prompt_service,
+    )
+
+    reply = await engine.handle_message(
+        1, "Весь день крутилось в голове, надо напомни себе не тянуть с отчётом"
+    )
+
+    assert reply == "Записал в дневник. 📝"
+    memory_service.save.assert_awaited_once()

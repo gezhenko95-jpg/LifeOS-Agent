@@ -65,6 +65,19 @@ _STREAK_MILESTONES = {7, 30, 100}
 # только раздражать (см. историю с "Сохрани лес" → задача без объяснений).
 _UNANSWERED_PROMPT_NOTE_WINDOW = timedelta(minutes=30)
 
+# Слова, с которых начинается ЯВНАЯ команда боту, а не дневниковая запись
+# (см. _try_capture_journal). Проверяется только начало сообщения:
+# «напомни» внутри длинной прозы — обычное слово, а в начале — просьба.
+_COMMAND_PREFIXES = ("напомни", "напомнить", "вспомни")
+
+
+def _starts_with_command(text: str) -> bool:
+    stripped = text.lstrip()
+    if stripped.startswith("/"):
+        return True
+    lowered = stripped.lower()
+    return any(lowered.startswith(prefix) for prefix in _COMMAND_PREFIXES)
+
 
 class ConversationEngine:
     def __init__(
@@ -140,15 +153,22 @@ class ConversationEngine:
         от structured-вопросов не считаем это "промахом" пользователя
         (без пометки "не понял").
 
-        Команды (текст с "/") не перехватываются никогда: пользователь,
-        нажавший /help при открытом дневниковом вопросе, хочет справку, а
-        не запись "/help" в дневнике. Именно так в боевой БД и появилась
-        запись {"type": "journal", "content": "/help"} — справка при этом
-        не показывалась вообще (см. AUDIT.md, B-1).
+        Явные команды не перехватываются никогда — ни "/help", ни
+        "напомни в 9 утра запустить стиралку". Оба случая пойманы на
+        живом использовании: в боевой БД оказались дневниковые записи
+        "/help" и "напомни сегодня в 9 утра запустить стиралку", то есть
+        ни справка, ни напоминание не сработали, а текст молча ушёл в
+        дневник (см. AUDIT.md, B-1).
+
+        Проза дневника при этом по-прежнему перехватывается целиком:
+        отсеиваются только сообщения, НАЧИНАЮЩИЕСЯ с командного слова
+        (см. _COMMAND_PREFIXES), а не содержащие его где-то внутри —
+        иначе фраза «мне снилось, что я выполнил марафон» снова улетела
+        бы в задачи вместо дневника.
         """
         assert self._pending_prompts is not None
 
-        if text.lstrip().startswith("/"):
+        if _starts_with_command(text):
             return None
 
         pending = await self._pending_prompts.get_open(telegram_user_id)
