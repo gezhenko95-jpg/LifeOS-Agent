@@ -44,9 +44,17 @@ MENU_ADD_TASK = "➕ Задача"
 MENU_JOURNAL = "📝 Дневник"
 MENU_INSIGHTS = "📊 Инсайты"
 MENU_WATCHLIST = "🎬 Посмотреть"
+MENU_SITE = "🌐 Сайт"
 MENU_HELP = "❓ Помощь"
 
 _MEDIA_TYPE_EMOJI = {"movie": "🎬", "book": "📖"}
+
+
+def build_open_site_keyboard(url: str) -> InlineKeyboardMarkup:
+    """Кнопка «Открыть сайт» со ссылкой на /ui — ReplyKeyboardMarkup не
+    умеет открывать URL, только InlineKeyboardButton(url=...) умеет
+    (см. app/telegram/handlers.py::_send_site_link)."""
+    return InlineKeyboardMarkup([[InlineKeyboardButton("Открыть сайт", url=url)]])
 
 
 def build_main_menu() -> ReplyKeyboardMarkup:
@@ -56,7 +64,7 @@ def build_main_menu() -> ReplyKeyboardMarkup:
         [KeyboardButton(MENU_HABITS), KeyboardButton(MENU_GOALS)],
         [KeyboardButton(MENU_ADD_TASK), KeyboardButton(MENU_JOURNAL)],
         [KeyboardButton(MENU_INSIGHTS), KeyboardButton(MENU_WATCHLIST)],
-        [KeyboardButton(MENU_HELP)],
+        [KeyboardButton(MENU_SITE), KeyboardButton(MENU_HELP)],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 

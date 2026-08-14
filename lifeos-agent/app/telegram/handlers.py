@@ -20,6 +20,7 @@ from app.ai.client import get_ai_client
 from app.conversation.engine import ConversationEngine
 from app.conversation.intent import Intent
 from app.conversation.parser import parse_intent
+from app.core.config import get_settings
 from app.db.session import AsyncSessionLocal
 from app.drive.client import get_drive_client
 from app.goals.repository import GoalRepository
@@ -42,11 +43,13 @@ from app.telegram.keyboards import (
     MENU_HELP,
     MENU_INSIGHTS,
     MENU_JOURNAL,
+    MENU_SITE,
     MENU_TASKS,
     MENU_WATCHLIST,
     build_goals_message,
     build_habits_message,
     build_main_menu,
+    build_open_site_keyboard,
     build_task_quick_actions_keyboard,
     build_tasks_message,
     build_watchlist_message,
@@ -92,6 +95,7 @@ _MENU_ACTIONS = {
     MENU_JOURNAL: "journal",
     MENU_INSIGHTS: "insights",
     MENU_WATCHLIST: "watchlist",
+    MENU_SITE: "site",
     MENU_HELP: "help",
 }
 
@@ -207,6 +211,9 @@ async def handle_text_message(
     if menu_action == "watchlist":
         await _send_watchlist_keyboard(update)
         return
+    if menu_action == "site":
+        await _send_site_link(update)
+        return
 
     intent = parse_intent(text).intent
     if intent is Intent.LIST_TASKS:
@@ -273,6 +280,22 @@ async def _send_watchlist_keyboard(update: Update) -> None:
         text, markup = build_watchlist_message(items)
 
     await update.message.reply_text(text, reply_markup=markup)
+
+
+async def _send_site_link(update: Update) -> None:
+    """Кнопка «🌐 Сайт» — ReplyKeyboardMarkup не умеет открывать ссылки
+    напрямую, поэтому в ответ шлём сообщение с inline-кнопкой
+    (InlineKeyboardButton(url=...), см. keyboards.py). Пусто в настройках
+    — значит /ui ещё не задеплоен на публичный адрес, говорим прямо."""
+    if update.message is None:
+        return
+    url = get_settings().public_ui_url
+    if not url:
+        await update.message.reply_text("Сайт ещё не настроен (нет публичного адреса).")
+        return
+    await update.message.reply_text(
+        "Полный интерфейс:", reply_markup=build_open_site_keyboard(url)
+    )
 
 
 async def _send_insights(update: Update) -> None:

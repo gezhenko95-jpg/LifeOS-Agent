@@ -94,6 +94,11 @@ class Settings(BaseSettings):
     # выключена (см. app/drive/client.py::get_drive_client).
     drive_token_file: str = "token.json"
 
+    # Публичный адрес /ui (см. app/telegram/handlers.py::_send_site_link,
+    # кнопка "🌐 Сайт" в меню) — пусто, пока не задеплоено на постоянный
+    # сервер с доменом.
+    public_ui_url: str = ""
+
     model_config = SettingsConfigDict(env_file=".env")
 
 

@@ -10,11 +10,13 @@ from app.telegram.keyboards import (
     MENU_HELP,
     MENU_INSIGHTS,
     MENU_JOURNAL,
+    MENU_SITE,
     MENU_TASKS,
     MENU_WATCHLIST,
     build_goals_message,
     build_habits_message,
     build_main_menu,
+    build_open_site_keyboard,
     build_task_confirmation_message,
     build_task_quick_actions_keyboard,
     build_tasks_message,
@@ -184,15 +186,16 @@ def test_main_menu_has_expected_buttons_in_rows():
         MENU_JOURNAL,
         MENU_INSIGHTS,
         MENU_WATCHLIST,
+        MENU_SITE,
         MENU_HELP,
     ]
-    # Первая и последняя строка — по одной кнопке (во всю ширину),
-    # средние — по две в ряд (как на скрине-референсе пользователя).
+    # Первая строка — одна кнопка (во всю ширину), остальные — по две в
+    # ряд (как на скрине-референсе пользователя).
     assert len(rows[0]) == 1
     assert len(rows[1]) == 2
     assert len(rows[2]) == 2
     assert len(rows[3]) == 2
-    assert len(rows[4]) == 1
+    assert len(rows[4]) == 2
 
 
 def test_main_menu_resizes_to_fit():
@@ -235,3 +238,10 @@ def test_watchlist_message_caps_at_max_items():
     _, markup = build_watchlist_message(items)
 
     assert len(markup.inline_keyboard) == 11  # 10 записей + кнопка "Порекомендуй"
+
+
+def test_open_site_keyboard_has_url_button():
+    markup = build_open_site_keyboard("https://lifeos-agent.ru/ui")
+
+    button = markup.inline_keyboard[0][0]
+    assert button.url == "https://lifeos-agent.ru/ui"

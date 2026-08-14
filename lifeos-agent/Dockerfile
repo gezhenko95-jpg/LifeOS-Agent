@@ -20,4 +20,7 @@ RUN pip install --no-cache-dir -e .
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --proxy-headers/--forwarded-allow-ips — без них uvicorn не знает про
+# X-Forwarded-Proto от Caddy (см. docker-compose.yml на VPS) и генерирует
+# редиректы (например, /ui -> /ui/) с http:// вместо https://.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
