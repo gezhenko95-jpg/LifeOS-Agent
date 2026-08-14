@@ -1,14 +1,18 @@
 """
 Извлечение даты из текста на русском языке (без LLM).
 
-Поддерживается: относительное время («через 10 минут», «через 2 часа»),
-время суток («в 18:30»), сегодня/завтра/послезавтра, дни недели («в
-пятницу» — ближайший будущий день, не сегодняшний), числовые даты
-dd.mm[.yyyy].
+Поддерживается:
+- относительное время: «через 10 минут», «через 2 часа», «через пару
+  часов», «через полчаса», «через час»;
+- время суток: «в 18:30», «в 18 30», «в 18.30», «в 18», «в 18 часов»;
+- дни: сегодня/завтра/послезавтра, дни недели («в пятницу» — ближайший
+  будущий, не сегодняшний), числовые даты dd.mm[.yyyy];
+- их сочетание: «завтра в 19:00», «в пятницу в 9».
 
-Упрощение: каждый паттерн проверяется независимо и возвращается первым
-совпадением — «завтра в 15:00» распознается только как «завтра» (в
-09:00), комбинация день+время не разбирается.
+День и время разбираются раздельно (_extract_day / _extract_clock) и
+затем совмещаются в extract_due_date. Дата без времени получает
+_DEFAULT_HOUR; время без даты — ближайшее наступление (сегодня, если
+ещё не прошло, иначе завтра).
 """
 
 import re
@@ -20,9 +24,36 @@ _DEFAULT_HOUR = 9
 # Все формы слов "минута"/"час" (минута/минуты/минут, час/часа/часов)
 # начинаются с одной основы — префиксного матча достаточно, без
 # грамматического разбора.
-_RELATIVE_MINUTES_PATTERN = re.compile(r"через\s+(\d+)\s*минут\w*", re.IGNORECASE)
-_RELATIVE_HOURS_PATTERN = re.compile(r"через\s+(\d+)\s*час\w*", re.IGNORECASE)
-_TIME_OF_DAY_PATTERN = re.compile(r"\bв\s+(\d{1,2}):(\d{2})\b", re.IGNORECASE)
+# Количество словами: «через пару часов» — такая же обычная фраза, как
+# «через 2 часа», но цифры в ней нет. Список намеренно короткий и
+# однозначный: «несколько»/«полтора» разные люди понимают по-разному, а
+# ошибка в сроке напоминания дороже, чем непонятая фраза (ADR-004).
+_WORD_NUMBERS = {
+    "пару": 2,
+    "пары": 2,
+    "два": 2,
+    "две": 2,
+    "три": 3,
+    "четыре": 4,
+}
+_COUNT = r"(\d+|" + "|".join(_WORD_NUMBERS) + r")"
+
+_RELATIVE_MINUTES_PATTERN = re.compile(rf"через\s+{_COUNT}\s*минут\w*", re.IGNORECASE)
+_RELATIVE_HOURS_PATTERN = re.compile(rf"через\s+{_COUNT}\s*час\w*", re.IGNORECASE)
+# «через полчаса» и «через час» — без количества вообще.
+_RELATIVE_HALF_HOUR_PATTERN = re.compile(r"через\s+полчаса", re.IGNORECASE)
+_RELATIVE_ONE_HOUR_PATTERN = re.compile(r"через\s+час\b", re.IGNORECASE)
+
+# Время суток. Разделитель не только двоеточие: «в 19 00», «в 19.00»,
+# «в 19-00» пишут ровно так же часто (реальная жалоба владельца).
+_TIME_OF_DAY_PATTERN = re.compile(r"\bв\s+(\d{1,2})[:.\s-](\d{2})\b", re.IGNORECASE)
+# «в 19», «в 19 часов» — час без минут. Отрицательный просмотр вперёд
+# нужен, чтобы не съесть «в 5 минутах ходьбы» и «в 3 дня» как время.
+_BARE_HOUR_PATTERN = re.compile(
+    r"\bв\s+(\d{1,2})\s*(?:часов|часа|час)?\b"
+    r"(?!\s*(?:минут|секунд|дн|недел|мес|год|раз|шт|км|кг))",
+    re.IGNORECASE,
+)
 
 _WEEKDAYS: list[tuple[str, int]] = [
     ("понедельник", 0),
@@ -59,29 +90,45 @@ _RECURRENCE_WEEKDAY_PATTERN = re.compile(
 
 
 def extract_due_date(text: str) -> tuple[Optional[datetime], str]:
-    """Найти дату в тексте, вернуть (дата | None, текст без упоминания даты)."""
+    """Найти дату в тексте, вернуть (дата | None, текст без упоминания даты).
 
+    День и время разбираются РАЗДЕЛЬНО и затем совмещаются: «завтра в
+    19:00» это завтра в 19:00, а не «завтра в 09:00» и не «сегодня в
+    19:00». Раньше возвращалось первое же совпадение, поэтому у такой
+    фразы время выигрывало у дня, дата уезжала на сегодня, а слово
+    «завтра» так и оставалось в названии задачи (см. AUDIT.md, B-8).
+
+    «через N часов» разбирается отдельно и раньше всех: это уже полный
+    момент времени, совмещать его не с чем.
+    """
     due, remaining = _extract_relative_offset(text)
     if due is not None:
         return due, remaining
 
-    due, remaining = _extract_time_of_day(text)
-    if due is not None:
-        return due, remaining
+    day, remaining = _extract_day(text)
+    clock, remaining = _extract_clock(remaining)
 
+    if day is not None and clock is not None:
+        return datetime.combine(day, clock).astimezone(), remaining
+    if day is not None:
+        return _at_default_time(day), remaining
+    if clock is not None:
+        return _next_occurrence_of(clock), remaining
+    return None, text
+
+
+def _extract_day(text: str) -> tuple[Optional[date], str]:
+    """Только календарный день, без времени суток."""
     lowered = text.lower()
 
     if "послезавтра" in lowered:
-        due = _at_default_time(date.today() + timedelta(days=2))
-        return due, _remove_phrase(text, "послезавтра")
+        return date.today() + timedelta(days=2), _remove_phrase(text, "послезавтра")
 
     if "завтра" in lowered:
-        due = _at_default_time(date.today() + timedelta(days=1))
-        return due, _remove_phrase(text, "завтра")
+        return date.today() + timedelta(days=1), _remove_phrase(text, "завтра")
 
     if "сегодня" in lowered:
-        due = _at_default_time(date.today())
-        return due, _remove_phrase(text, "сегодня")
+        return date.today(), _remove_phrase(text, "сегодня")
 
     weekday_match = _WEEKDAY_PATTERN.search(text)
     if weekday_match:
@@ -90,24 +137,57 @@ def extract_due_date(text: str) -> tuple[Optional[datetime], str]:
             if word.startswith(prefix):
                 days_ahead = (weekday - date.today().weekday()) % 7
                 days_ahead = days_ahead or 7  # ближайший будущий, не сегодня
-                due = _at_default_time(date.today() + timedelta(days=days_ahead))
-                return due, _remove_span(text, weekday_match.span())
+                return (
+                    date.today() + timedelta(days=days_ahead),
+                    _remove_span(text, weekday_match.span()),
+                )
 
     date_match = _DATE_PATTERN.search(text)
     if date_match:
         day_raw, month_raw, year_raw = date_match.groups()
-        year = date.today().year
-        if year_raw:
-            year = int(year_raw)
-            if year < 100:
-                year += 2000
-        try:
-            parsed_date = date(year, int(month_raw), int(day_raw))
-        except ValueError:
-            return None, text
-        return _at_default_time(parsed_date), _remove_span(text, date_match.span())
+        parsed_date = _build_date(day_raw, month_raw, year_raw)
+        if parsed_date is not None:
+            return parsed_date, _remove_span(text, date_match.span())
 
     return None, text
+
+
+def _build_date(day_raw: str, month_raw: str, year_raw: str | None) -> Optional[date]:
+    """Собрать дату из "дд.мм[.гггг]". None — такой даты не существует.
+
+    Если год НЕ указан явно, а получившаяся дата уже прошла — берём
+    следующий год: "встреча 05.01", написанная в декабре, означает
+    январь будущего года, а не 11 месяцев назад. Иначе задача создаётся
+    сразу просроченной и тут же стреляет напоминанием (см. AUDIT.md, B-7).
+
+    Явно указанный год не трогаем никогда: "01.01.2020" — это осознанно
+    прошлое (например, отметить задним числом), догадываться тут не о чем.
+    """
+    day, month = int(day_raw), int(month_raw)
+
+    if year_raw:
+        year = int(year_raw)
+        if year < 100:
+            year += 2000
+        return _safe_date(year, month, day)
+
+    today = date.today()
+    parsed = _safe_date(today.year, month, day)
+    if parsed is None:
+        # 29.02 в невисокосный год — в следующем году может существовать.
+        return _safe_date(today.year + 1, month, day)
+    if parsed < today:
+        # Дата сегодняшняя — оставляем сегодня, а не переносим на год
+        # вперёд: "созвон 15.08" утром 15 августа это сегодня.
+        return _safe_date(today.year + 1, month, day) or parsed
+    return parsed
+
+
+def _safe_date(year: int, month: int, day: int) -> Optional[date]:
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
 
 
 def extract_recurrence(text: str) -> tuple[Optional[str], str]:
@@ -143,34 +223,71 @@ def extract_recurrence(text: str) -> tuple[Optional[str], str]:
     return None, text
 
 
+def _parse_count(raw: str) -> int:
+    """ "2" или "пару" -> 2 (см. _WORD_NUMBERS)."""
+    return int(raw) if raw.isdigit() else _WORD_NUMBERS[raw.lower()]
+
+
 def _extract_relative_offset(text: str) -> tuple[Optional[datetime], str]:
+    now = datetime.now().astimezone()
+
+    # «полчаса» раньше «часа»: иначе _RELATIVE_ONE_HOUR_PATTERN не
+    # сработает, зато и не должен — «через полчаса» это 30 минут.
+    match = _RELATIVE_HALF_HOUR_PATTERN.search(text)
+    if match:
+        return now + timedelta(minutes=30), _remove_span(text, match.span())
+
     match = _RELATIVE_MINUTES_PATTERN.search(text)
     if match:
-        due = datetime.now().astimezone() + timedelta(minutes=int(match.group(1)))
+        due = now + timedelta(minutes=_parse_count(match.group(1)))
         return due, _remove_span(text, match.span())
 
     match = _RELATIVE_HOURS_PATTERN.search(text)
     if match:
-        due = datetime.now().astimezone() + timedelta(hours=int(match.group(1)))
+        due = now + timedelta(hours=_parse_count(match.group(1)))
         return due, _remove_span(text, match.span())
+
+    match = _RELATIVE_ONE_HOUR_PATTERN.search(text)
+    if match:
+        return now + timedelta(hours=1), _remove_span(text, match.span())
 
     return None, text
 
 
-def _extract_time_of_day(text: str) -> tuple[Optional[datetime], str]:
+def _extract_clock(text: str) -> tuple[Optional[time], str]:
+    """Только время суток: «в 19:00», «в 19 00», «в 19», «в 19 часов».
+
+    Форма с минутами проверяется первой: у «в 19 00» иначе совпал бы
+    только час, а «00» осталось бы в названии задачи.
+    """
     match = _TIME_OF_DAY_PATTERN.search(text)
-    if not match:
-        return None, text
+    if match:
+        hour, minute = int(match.group(1)), int(match.group(2))
+        if 0 <= hour <= 23 and 0 <= minute <= 59:
+            return time(hour=hour, minute=minute), _remove_span(text, match.span())
 
-    hour, minute = int(match.group(1)), int(match.group(2))
-    if not (0 <= hour <= 23 and 0 <= minute <= 59):
-        return None, text
+    match = _BARE_HOUR_PATTERN.search(text)
+    if match:
+        hour = int(match.group(1))
+        if 0 <= hour <= 23:
+            return time(hour=hour), _remove_span(text, match.span())
 
+    return None, text
+
+
+def _next_occurrence_of(clock: time) -> datetime:
+    """Ближайшее наступление этого времени: сегодня, если ещё не прошло,
+    иначе завтра — «напомни в 9», написанное вечером, значит завтра утром.
+
+    Применяется, только когда день в тексте НЕ указан: при явном «завтра
+    в 9» день берётся из текста, а не угадывается."""
     now = datetime.now().astimezone()
-    candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    candidate = now.replace(
+        hour=clock.hour, minute=clock.minute, second=0, microsecond=0
+    )
     if candidate <= now:
         candidate += timedelta(days=1)
-    return candidate, _remove_span(text, match.span())
+    return candidate
 
 
 def _at_default_time(day: date) -> datetime:

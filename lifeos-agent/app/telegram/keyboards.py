@@ -29,6 +29,7 @@ from telegram import (
 
 from app.goals.models import Goal
 from app.habits.models import Habit
+from app.tasks.formatting import format_due_date
 from app.tasks.models import Task
 from app.watchlist.models import WatchlistItem
 
@@ -113,7 +114,7 @@ def build_task_confirmation_message(task: Task) -> tuple[str, InlineKeyboardMark
     при создании (app/conversation/engine.py::_add_task), чтобы не было
     расхождения в стиле."""
     prefix = "❗ " if task.priority == "high" else ""
-    suffix = f" на {task.due_date:%d.%m.%Y}" if task.due_date else ""
+    suffix = f" на {format_due_date(task.due_date)}" if task.due_date else ""
     recurrence_suffix = " 🔁" if task.recurrence else ""
     text = f"{prefix}Добавил задачу: «{task.title}»{suffix}{recurrence_suffix}"
     markup = build_task_quick_actions_keyboard(task) or InlineKeyboardMarkup([])

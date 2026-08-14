@@ -393,3 +393,73 @@ def test_watchlist_bare_noun_series():
     assert result.intent is Intent.ADD_WATCHLIST_ITEM
     assert result.media_type == "movie"
     assert result.title == "Оффер"
+
+
+# --- «напомни» = задача, а не только поиск по памяти (жалоба владельца) ---
+
+
+def test_remind_with_time_creates_task_not_recall():
+    """Раньше ЛЮБОЕ «напомни» уходило в поиск по памяти, и напоминание
+    со временем не создавало вообще ничего."""
+    parsed = parse_intent("напомни в 19:00 позвонить маме")
+
+    assert parsed.intent is Intent.ADD_TASK
+    assert parsed.title == "позвонить маме"
+    assert parsed.due_date.hour == 19
+    assert parsed.due_date.minute == 0
+
+
+def test_remind_with_hour_without_colon():
+    """«в 19 00» пишут не реже, чем «в 19:00»."""
+    parsed = parse_intent("напомни в 19 00 позвонить маме")
+
+    assert parsed.intent is Intent.ADD_TASK
+    assert parsed.title == "позвонить маме"
+    assert (parsed.due_date.hour, parsed.due_date.minute) == (19, 0)
+
+
+def test_remind_with_bare_hour():
+    parsed = parse_intent("напомни в 19 позвонить маме")
+
+    assert parsed.intent is Intent.ADD_TASK
+    assert parsed.title == "позвонить маме"
+    assert (parsed.due_date.hour, parsed.due_date.minute) == (19, 0)
+
+
+def test_remind_with_word_number():
+    parsed = parse_intent("напомни через пару часов позвонить маме")
+
+    assert parsed.intent is Intent.ADD_TASK
+    assert parsed.title == "позвонить маме"
+    assert parsed.due_date is not None
+
+
+def test_remind_with_relative_date():
+    parsed = parse_intent("напомни завтра оплатить интернет")
+
+    assert parsed.intent is Intent.ADD_TASK
+    assert parsed.title == "оплатить интернет"
+
+
+def test_explicit_recall_phrase_stays_recall():
+    """«что я говорил» — однозначный поиск по памяти, время внутри фразы
+    не должно превращать его в задачу."""
+    parsed = parse_intent("напомни, что я говорил про встречу в 19:00")
+
+    assert parsed.intent is Intent.RECALL
+
+
+def test_remind_without_time_stays_recall():
+    """Без времени «напомни про X» по-прежнему поиск — поведение, на
+    которое пользователь уже привык."""
+    parsed = parse_intent("напомни про отпуск")
+
+    assert parsed.intent is Intent.RECALL
+    assert parsed.title == "отпуск"
+
+
+def test_vspomni_stays_recall():
+    parsed = parse_intent("вспомни про Сохрани лес")
+
+    assert parsed.intent is Intent.RECALL
+    assert parsed.title == "Сохрани лес"

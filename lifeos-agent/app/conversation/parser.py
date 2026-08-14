@@ -52,6 +52,14 @@ _RECALL_KEYWORDS = (
     "что ты знаешь о",
 )
 _RECALL_CONNECTOR_PATTERN = re.compile(r"^[,\s]*(?:про|о|об)\b", re.IGNORECASE)
+# Фразы, которые ОДНОЗНАЧНО означают поиск по памяти — в отличие от
+# голого «напомни», которое одинаково начинает и «напомни, что я говорил
+# про отпуск», и «напомни в 19:00 позвонить маме» (см. _try_reminder_task).
+_EXPLICIT_RECALL_PHRASES = (
+    "что я говорил",
+    "что ты знаешь",
+    "вспомни",
+)
 _COMPLETE_KEYWORDS = ("выполнил", "сделал", "готово", "закрой")
 _DELETE_KEYWORDS = ("удали", "убери", "отмени")
 _HIGH_PRIORITY_KEYWORDS = ("важно", "срочно")
@@ -109,6 +117,9 @@ def parse_intent(text: str) -> ParsedIntent:
         return ParsedIntent(intent=Intent.LIST_TASKS)
 
     if _contains_any(lowered, _RECALL_KEYWORDS):
+        reminder = _try_reminder_task(stripped, lowered)
+        if reminder is not None:
+            return reminder
         query = _extract_recall_query(stripped)
         return ParsedIntent(intent=Intent.RECALL, title=query or None)
 
@@ -173,6 +184,47 @@ def _remove_keyword(text: str, keyword: str) -> str:
     # тире («посмотреть, 21 и больше»), она иначе так и остаётся приклеенной
     # к началу названия (см. живой баг с watchlist-записью).
     return cleaned.strip(" ,:—-")
+
+
+def _try_reminder_task(stripped: str, lowered: str) -> Optional[ParsedIntent]:
+    """«напомни в 19:00 позвонить маме» — это ЗАДАЧА, а не поиск в памяти.
+
+    Слово «напомни» одинаково начинает и просьбу вспомнить («напомни, что
+    я говорил про отпуск»), и просьбу напомнить о деле в будущем. Раньше
+    оно всегда означало RECALL, поэтому любое напоминание со временем
+    молча уходило в поиск по памяти и не создавало вообще ничего —
+    реальная жалоба владельца (см. AUDIT.md).
+
+    Различаем по двум признакам:
+    1. Явные фразы поиска («что я говорил про…») — всегда RECALL, даже
+       если в тексте попалось что-то похожее на время.
+    2. Иначе: есть время/дата в тексте → это напоминание о деле; нет →
+       RECALL, как раньше.
+
+    None означает «это не напоминание, разбирай как RECALL».
+    """
+    if _contains_any(lowered, _EXPLICIT_RECALL_PHRASES):
+        return None
+
+    without_keyword = _remove_keyword(stripped, "напомни")
+    if not without_keyword:
+        return None
+
+    priority, without_priority = _extract_priority(without_keyword)
+    recurrence, without_recurrence = extract_recurrence(without_priority)
+    due_date, remaining = extract_due_date(without_recurrence)
+
+    title = remaining.strip(" ,:—-")
+    if due_date is None or not title:
+        return None
+
+    return ParsedIntent(
+        intent=Intent.ADD_TASK,
+        title=title,
+        due_date=due_date,
+        priority=priority,
+        recurrence=recurrence,
+    )
 
 
 def _extract_recall_query(stripped: str) -> str:

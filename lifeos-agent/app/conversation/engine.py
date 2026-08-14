@@ -27,6 +27,7 @@ from app.memory.models import MemoryType
 from app.memory.service import MemoryService
 from app.proactive.ai_extract import extract_prompt_answer
 from app.proactive.service import PendingPromptService
+from app.tasks.formatting import format_due_date
 from app.tasks.models import Task
 from app.tasks.service import TaskService
 from app.watchlist.service import WatchlistService
@@ -40,6 +41,8 @@ _HELP_TEXT = (
     "• привычки — «привычки» (список со стриком), «привычка чтение» "
     "(отметить сегодня)\n"
     "• спросить про день — «что на завтра», «какие задачи в пятницу»\n"
+    "• напоминание ко времени — «напомни в 19:00 позвонить маме», "
+    "«напомни завтра в 9 сдать отчёт», «напомни через пару часов выйти»\n"
     "• вспомнить — «напомни, что я говорил про отпуск»\n"
     "• повторяющиеся задачи — «каждый понедельник оплатить интернет», "
     "«каждый день пить воду»\n"
@@ -269,7 +272,7 @@ class ConversationEngine:
         if task.due_date:
             return (
                 f"{prefix}Добавил задачу: «{task.title}» "
-                f"на {task.due_date:%d.%m.%Y}{suffix}"
+                f"на {format_due_date(task.due_date)}{suffix}"
             )
         return f"{prefix}Добавил задачу: «{task.title}»{suffix}"
 

@@ -1032,3 +1032,46 @@ async def test_journal_still_captures_text_that_merely_contains_a_slash(
     memory_service.save.assert_awaited_once_with(
         1, MemoryType.JOURNAL, "Работал 9/10 часов, вымотался", source="quick_capture"
     )
+
+
+# --- ответ должен называть время, если оно задано (жалоба владельца) ---
+
+
+def test_format_due_date_shows_time_when_set():
+    from datetime import datetime as dt
+
+    from app.tasks.formatting import format_due_date
+
+    assert format_due_date(dt(2026, 8, 16, 19, 0)) == "16.08.2026 в 19:00"
+    assert format_due_date(dt(2026, 8, 16, 3, 22)) == "16.08.2026 в 03:22"
+
+
+def test_format_due_date_shows_default_hour_too():
+    """Прятать 9:00 (значение по умолчанию) заманчиво, но тогда у явного
+    «в пятницу в 9» время исчезало бы из ответа — ровно в том случае,
+    когда пользователь назвал его сам."""
+    from datetime import datetime as dt
+
+    from app.tasks.formatting import format_due_date
+
+    assert format_due_date(dt(2026, 8, 16, 9, 0)) == "16.08.2026 в 09:00"
+
+
+async def test_add_task_reply_names_the_time(
+    task_service, habit_service, memory_service
+):
+    from app.tasks.models import Task
+
+    task_service.create_task.return_value = Task(
+        id=1,
+        telegram_user_id=1,
+        title="позвонить маме",
+        due_date=datetime(2026, 8, 16, 19, 0, tzinfo=timezone.utc),
+        status="active",
+        priority="normal",
+    )
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "напомни в 19:00 позвонить маме")
+
+    assert reply == "Добавил задачу: «позвонить маме» на 16.08.2026 в 19:00"
