@@ -26,6 +26,7 @@ from app.telegram.jobs import (
     send_evening_checkin_job,
     send_evening_reflection_job,
     send_midday_checkin_job,
+    send_monthly_insights_job,
     send_morning_briefing_job,
     send_morning_reflection_job,
     send_nudges_job,
@@ -59,6 +60,7 @@ def build_application() -> Application:
     _register_proactive_prompts(application, settings)
     _register_weekly_digest(application, settings)
     _register_nudges(application, settings)
+    _register_monthly_insights(application, settings)
 
     return application
 
@@ -176,4 +178,22 @@ def _register_nudges(application: Application, settings: Settings) -> None:
             hour=settings.nudges_hour, minute=settings.nudges_minute, tzinfo=local_tz
         ),
         name="nudges",
+    )
+
+
+def _register_monthly_insights(application: Application, settings: Settings) -> None:
+    """Регистрируется как ежедневная job — фильтр "1-е число" внутри
+    send_monthly_insights_job (PTB run_daily не умеет "раз в месяц")."""
+    if not settings.monthly_insights_enabled or not settings.owner_telegram_user_id:
+        return
+
+    local_tz = datetime.now().astimezone().tzinfo
+    application.job_queue.run_daily(
+        send_monthly_insights_job,
+        time=time(
+            hour=settings.monthly_insights_hour,
+            minute=settings.monthly_insights_minute,
+            tzinfo=local_tz,
+        ),
+        name="monthly_insights",
     )

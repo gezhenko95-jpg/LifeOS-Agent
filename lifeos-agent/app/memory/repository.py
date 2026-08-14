@@ -5,6 +5,7 @@
 `memory_entries`. Никакой бизнес-логики — только чтение/запись.
 """
 
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import select
@@ -42,6 +43,19 @@ class MemoryRepository:
         if not include_archived:
             query = query.where(MemoryEntry.archived.is_(False))
         query = query.order_by(MemoryEntry.created_at.desc())
+        result = await self._session.execute(query)
+        return list(result.scalars().all())
+
+    async def list_by_type_since(
+        self, telegram_user_id: int, type: MemoryType, since: datetime
+    ) -> list[MemoryEntry]:
+        """Записи заданного типа начиная с `since` — для Personal Insights
+        (см. app/insights/service.py), не тянем всю историю целиком."""
+        query = select(MemoryEntry).where(
+            MemoryEntry.telegram_user_id == telegram_user_id,
+            MemoryEntry.type == type.value,
+            MemoryEntry.created_at >= since,
+        )
         result = await self._session.execute(query)
         return list(result.scalars().all())
 

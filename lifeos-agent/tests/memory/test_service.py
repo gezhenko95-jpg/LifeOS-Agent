@@ -115,3 +115,15 @@ async def test_get_context_sorted_and_limited(repository):
 
     assert len(context) == 1
     assert context[0].content == "B"
+
+
+async def test_list_journal_entries_since_delegates_to_repository(repository):
+    entry = MemoryEntry(telegram_user_id=1, type=MemoryType.JOURNAL.value, content="X")
+    repository.list_by_type_since.return_value = [entry]
+    service = MemoryService(repository)
+    since = datetime(2026, 8, 1, tzinfo=timezone.utc)
+
+    entries = await service.list_journal_entries_since(1, since)
+
+    assert entries == [entry]
+    repository.list_by_type_since.assert_awaited_once_with(1, MemoryType.JOURNAL, since)

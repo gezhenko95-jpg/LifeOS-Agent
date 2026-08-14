@@ -4,6 +4,7 @@
 
 import logging
 import random
+from datetime import date
 
 from telegram.ext import ContextTypes
 
@@ -14,6 +15,8 @@ from app.goals.repository import GoalRepository
 from app.goals.service import GoalService
 from app.habits.repository import HabitRepository
 from app.habits.service import HabitService
+from app.insights.formatting import build_insights_text
+from app.insights.service import InsightsService
 from app.memory.repository import MemoryRepository
 from app.memory.service import MemoryService
 from app.proactive.repository import PendingPromptRepository
@@ -236,6 +239,38 @@ async def _send_text_or_photo(
     else:
         await context.bot.send_photo(chat_id=telegram_user_id, photo=chart)
         await context.bot.send_message(chat_id=telegram_user_id, text=text)
+
+
+async def send_monthly_insights_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Personal Insights раз в месяц, 1-е число (см.
+    specs/009-personal-insights.md, flows/010-personal-insights.md).
+    PTB JobQueue не умеет "раз в месяц" из коробки — регистрируется как
+    ежедневная job (см. app/telegram/bot.py), а фильтр по дню — здесь.
+    Тихий пропуск, если находок нет — фоновая рассылка не должна слать
+    "недостаточно данных", это шум (в отличие от кнопки "📊 Инсайты" по
+    запросу, см. app/telegram/handlers.py::_send_insights)."""
+    if date.today().day != 1:
+        return
+
+    settings = get_settings()
+    telegram_user_id = settings.owner_telegram_user_id
+    if not telegram_user_id:
+        return
+
+    async with AsyncSessionLocal() as session:
+        service = InsightsService(
+            TaskService(TaskRepository(session)),
+            HabitService(HabitRepository(session)),
+            MemoryService(MemoryRepository(session)),
+        )
+        findings = await service.build_findings(telegram_user_id)
+
+    if not findings:
+        return
+
+    await context.bot.send_message(
+        chat_id=telegram_user_id, text=build_insights_text(findings)
+    )
 
 
 async def send_nudges_job(context: ContextTypes.DEFAULT_TYPE) -> None:

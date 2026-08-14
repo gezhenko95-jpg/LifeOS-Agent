@@ -67,6 +67,14 @@ class Settings(BaseSettings):
     nudges_hour: int = 9
     nudges_minute: int = 0
 
+    # Personal Insights раз в месяц, 1-е число (см.
+    # specs/009-personal-insights.md) — поведенческие закономерности за
+    # 60 дней. Тихий пропуск, если находок нет (в отличие от кнопки
+    # "📊 Инсайты" в меню, которая отвечает по запросу в любой момент).
+    monthly_insights_enabled: bool = True
+    monthly_insights_hour: int = 12
+    monthly_insights_minute: int = 0
+
     # AI Service (OpenRouter) — фолбэк для Conversation Engine,
     # см. specs/003-conversation.md. Пусто = фолбэк выключен.
     openrouter_api_key: str = ""

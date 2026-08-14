@@ -8,6 +8,7 @@ from app.telegram.keyboards import (
     MENU_GOALS,
     MENU_HABITS,
     MENU_HELP,
+    MENU_INSIGHTS,
     MENU_JOURNAL,
     MENU_TASKS,
     build_goals_message,
@@ -178,14 +179,16 @@ def test_main_menu_has_expected_buttons_in_rows():
         MENU_GOALS,
         MENU_ADD_TASK,
         MENU_JOURNAL,
+        MENU_INSIGHTS,
         MENU_HELP,
     ]
-    # Первая и последняя строка — по одной кнопке (во всю ширину),
-    # средние — по две в ряд (как на скрине-референсе пользователя).
+    # Первая, предпоследняя и последняя строка — по одной кнопке (во всю
+    # ширину), средние — по две в ряд (как на скрине-референсе пользователя).
     assert len(rows[0]) == 1
     assert len(rows[1]) == 2
     assert len(rows[2]) == 2
     assert len(rows[3]) == 1
+    assert len(rows[4]) == 1
 
 
 def test_main_menu_resizes_to_fit():

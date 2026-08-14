@@ -202,3 +202,12 @@ class TaskService:
         return await self._repository.count_completed_between(
             telegram_user_id, since, until
         )
+
+    async def list_tasks_completed_between(
+        self, telegram_user_id: int, since: datetime, until: datetime
+    ) -> list[Task]:
+        """Завершённые в [since, until) задачи целиком (не только счётчик) —
+        для Personal Insights (см. app/insights/service.py)."""
+        return await self._repository.list_completed_between(
+            telegram_user_id, since, until
+        )

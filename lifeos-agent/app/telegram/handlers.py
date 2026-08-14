@@ -24,6 +24,8 @@ from app.goals.repository import GoalRepository
 from app.goals.service import GoalService
 from app.habits.repository import HabitRepository
 from app.habits.service import HabitService
+from app.insights.formatting import build_insights_text
+from app.insights.service import InsightsService
 from app.memory.repository import MemoryRepository
 from app.memory.service import MemoryService
 from app.proactive.repository import PendingPromptRepository
@@ -35,6 +37,7 @@ from app.telegram.keyboards import (
     MENU_GOALS,
     MENU_HABITS,
     MENU_HELP,
+    MENU_INSIGHTS,
     MENU_JOURNAL,
     MENU_TASKS,
     build_goals_message,
@@ -78,6 +81,7 @@ _MENU_ACTIONS = {
     MENU_GOALS: "goals",
     MENU_ADD_TASK: "add_task",
     MENU_JOURNAL: "journal",
+    MENU_INSIGHTS: "insights",
     MENU_HELP: "help",
 }
 
@@ -132,6 +136,9 @@ async def handle_text_message(
     if menu_action == "journal":
         await _open_journal_prompt(update)
         return
+    if menu_action == "insights":
+        await _send_insights(update)
+        return
 
     intent = parse_intent(text).intent
     if intent is Intent.LIST_TASKS:
@@ -182,6 +189,26 @@ async def _send_goals_keyboard(update: Update) -> None:
         text, markup = build_goals_message(goals)
 
     await update.message.reply_text(text, reply_markup=markup)
+
+
+async def _send_insights(update: Update) -> None:
+    """Кнопка «📊 Инсайты» — Personal Insights по запросу (см.
+    specs/009-personal-insights.md). В отличие от фоновой месячной
+    рассылки (app/telegram/jobs.py::send_monthly_insights_job), здесь
+    отвечаем всегда, даже если находок нет — пользователь сам спросил."""
+    if update.message is None or update.effective_user is None:
+        return
+    telegram_user_id = update.effective_user.id
+
+    async with AsyncSessionLocal() as session:
+        service = InsightsService(
+            TaskService(TaskRepository(session)),
+            HabitService(HabitRepository(session)),
+            MemoryService(MemoryRepository(session)),
+        )
+        findings = await service.build_findings(telegram_user_id)
+
+    await update.message.reply_text(build_insights_text(findings))
 
 
 async def _open_journal_prompt(update: Update) -> None:

@@ -112,3 +112,36 @@ async def test_count_completed_between_isolated_per_user(session):
     count = await repository.count_completed_between(1, NOW - timedelta(days=7), NOW)
 
     assert count == 1
+
+
+async def test_list_completed_between_returns_matching_tasks(session):
+    in_range = await _add(
+        session, status="completed", completed_at=NOW - timedelta(days=1)
+    )
+    await _add(
+        session, status="completed", completed_at=WEEK_AGO - timedelta(days=1)
+    )  # раньше периода
+    await _add(session, status="active")  # не завершена
+
+    repository = TaskRepository(session)
+    tasks = await repository.list_completed_between(1, WEEK_AGO, NOW)
+
+    assert [task.id for task in tasks] == [in_range.id]
+
+
+async def test_list_completed_between_isolated_per_user(session):
+    await _add(session, status="completed", completed_at=NOW - timedelta(days=1))
+    other_user_task = Task(
+        telegram_user_id=2,
+        title="Y",
+        status="completed",
+        completed_at=NOW - timedelta(days=1),
+    )
+    session.add(other_user_task)
+    await session.commit()
+
+    repository = TaskRepository(session)
+    tasks = await repository.list_completed_between(2, WEEK_AGO, NOW)
+
+    assert len(tasks) == 1
+    assert tasks[0].telegram_user_id == 2

@@ -64,6 +64,15 @@ class MemoryService:
     ) -> list[MemoryEntry]:
         return await self._repository.list_by_user(telegram_user_id, type=type)
 
+    async def list_journal_entries_since(
+        self, telegram_user_id: int, since: datetime
+    ) -> list[MemoryEntry]:
+        """Дневниковые записи начиная с `since` — для Personal Insights
+        (см. app/insights/service.py)."""
+        return await self._repository.list_by_type_since(
+            telegram_user_id, MemoryType.JOURNAL, since
+        )
+
     async def search(
         self,
         telegram_user_id: int,

@@ -91,3 +91,19 @@ class TaskRepository:
         )
         result = await self._session.execute(query)
         return result.scalar_one()
+
+    async def list_completed_between(
+        self, telegram_user_id: int, since: datetime, until: datetime
+    ) -> list[Task]:
+        """Как count_completed_between, но возвращает сами задачи — нужны
+        completed_at/due_date для находок Personal Insights
+        (см. app/insights/service.py, specs/009-personal-insights.md)."""
+        query = select(Task).where(
+            Task.telegram_user_id == telegram_user_id,
+            Task.status == "completed",
+            Task.completed_at.is_not(None),
+            Task.completed_at >= since,
+            Task.completed_at < until,
+        )
+        result = await self._session.execute(query)
+        return list(result.scalars().all())

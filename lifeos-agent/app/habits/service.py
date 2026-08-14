@@ -89,6 +89,22 @@ class HabitService:
             return None
         return (date.today() - logs[0].completed_on).days
 
+    async def get_longest_streak(self, habit_id: int) -> int:
+        """Рекорд самой длинной последовательности подряд идущих дней —
+        не обязательно текущей (в отличие от get_streak), а за всю
+        историю логов. Для Personal Insights (см. app/insights/service.py)."""
+        logs = await self._repository.list_logs(habit_id)
+        completed_days = sorted({log.completed_on for log in logs})
+        if not completed_days:
+            return 0
+
+        longest = 1
+        current = 1
+        for previous_day, day in zip(completed_days, completed_days[1:], strict=False):
+            current = current + 1 if day == previous_day + timedelta(days=1) else 1
+            longest = max(longest, current)
+        return longest
+
     async def get_completed_days(self, habit_id: int, since: date) -> set[date]:
         """Дни (>= since), когда привычка была отмечена — для тепловой
         карты в графике дайджеста (см. app/scheduler/charts.py)."""

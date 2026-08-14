@@ -198,6 +198,40 @@ async def test_get_completed_days_empty_when_no_logs(repository):
     assert result == set()
 
 
+async def test_get_longest_streak_no_logs_returns_zero(repository):
+    repository.list_logs.return_value = []
+    service = HabitService(repository)
+
+    streak = await service.get_longest_streak(1)
+
+    assert streak == 0
+
+
+async def test_get_longest_streak_picks_longest_not_last(repository):
+    # Два отрезка: 3 дня подряд давно, потом разрыв, потом 1 день сейчас.
+    # Рекорд — 3, а не текущая (последняя) серия.
+    repository.list_logs.return_value = [
+        HabitLog(habit_id=1, completed_on=TODAY),
+        HabitLog(habit_id=1, completed_on=TODAY - timedelta(days=10)),
+        HabitLog(habit_id=1, completed_on=TODAY - timedelta(days=11)),
+        HabitLog(habit_id=1, completed_on=TODAY - timedelta(days=12)),
+    ]
+    service = HabitService(repository)
+
+    streak = await service.get_longest_streak(1)
+
+    assert streak == 3
+
+
+async def test_get_longest_streak_single_log_returns_one(repository):
+    repository.list_logs.return_value = [HabitLog(habit_id=1, completed_on=TODAY)]
+    service = HabitService(repository)
+
+    streak = await service.get_longest_streak(1)
+
+    assert streak == 1
+
+
 async def test_delete_habit_found(repository):
     habit = Habit(telegram_user_id=1, title="Читать", id=1)
     repository.get_by_id.return_value = habit
