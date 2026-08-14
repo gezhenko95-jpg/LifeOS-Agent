@@ -282,6 +282,14 @@ def test_watchlist_bare_verb_is_other():
     assert result.title == "Дюна"
 
 
+def test_watchlist_strips_leftover_comma_after_keyword():
+    # Живой баг: "посмотреть, 21 и больше" оставляло ", 21 и больше" —
+    # запятая приклеивалась к началу названия.
+    result = parse_intent("посмотреть, 21 и больше")
+
+    assert result.title == "21 и больше"
+
+
 def test_watchlist_empty_title():
     result = parse_intent("посмотреть фильм")
 
@@ -296,3 +304,51 @@ def test_watchlist_specific_phrase_wins_over_generic():
 
     assert result.media_type == "movie"
     assert "фильм" not in result.title
+
+
+def test_watchlist_bare_reading_verb_is_book():
+    result = parse_intent("прочитать Дюну")
+
+    assert result.intent is Intent.ADD_WATCHLIST_ITEM
+    assert result.media_type == "book"
+    assert result.title == "Дюну"
+
+
+def test_watchlist_bare_noun_book():
+    result = parse_intent("книга Дюна")
+
+    assert result.intent is Intent.ADD_WATCHLIST_ITEM
+    assert result.media_type == "book"
+    assert result.title == "Дюна"
+
+
+def test_watchlist_add_verb_book():
+    result = parse_intent("добавь книгу Дюна")
+
+    assert result.intent is Intent.ADD_WATCHLIST_ITEM
+    assert result.media_type == "book"
+    assert result.title == "Дюна"
+
+
+def test_watchlist_bare_noun_movie():
+    result = parse_intent("фильм Дюна")
+
+    assert result.intent is Intent.ADD_WATCHLIST_ITEM
+    assert result.media_type == "movie"
+    assert result.title == "Дюна"
+
+
+def test_watchlist_add_verb_movie():
+    result = parse_intent("добавь фильм Дюна")
+
+    assert result.intent is Intent.ADD_WATCHLIST_ITEM
+    assert result.media_type == "movie"
+    assert result.title == "Дюна"
+
+
+def test_watchlist_bare_noun_series():
+    result = parse_intent("сериал Оффер")
+
+    assert result.intent is Intent.ADD_WATCHLIST_ITEM
+    assert result.media_type == "movie"
+    assert result.title == "Оффер"

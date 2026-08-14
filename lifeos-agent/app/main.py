@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api import goals, habits, health, memory, tasks
+from app.api import goals, habits, health, memory, tasks, watchlist
 
 _WEB_STATIC_DIR = Path(__file__).parent / "web" / "static"
 
@@ -37,6 +37,7 @@ app.include_router(tasks.router, tags=["tasks"])
 app.include_router(memory.router, tags=["memory"])
 app.include_router(habits.router, tags=["habits"])
 app.include_router(goals.router, tags=["goals"])
+app.include_router(watchlist.router, tags=["watchlist"])
 
 # Простейший веб-интерфейс — статическая страница, использует REST API выше.
 app.mount("/ui", StaticFiles(directory=_WEB_STATIC_DIR, html=True), name="ui")

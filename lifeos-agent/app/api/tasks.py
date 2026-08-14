@@ -4,15 +4,19 @@ REST API для задач.
 Эндпоинты не содержат бизнес-логики — только вызывают TaskService.
 """
 
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
 from app.tasks.repository import TaskRepository
-from app.tasks.schemas import TaskCreate, TaskRead, TaskUpdate
+from app.tasks.schemas import TaskCreate, TaskRead, TaskStats, TaskUpdate
 from app.tasks.service import TaskService
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
+
+_WEEK = timedelta(days=7)
 
 
 def get_task_service(session: AsyncSession = Depends(get_session)) -> TaskService:
@@ -44,6 +48,16 @@ async def list_tasks(
 ) -> list[TaskRead]:
     tasks = await service.list_active_tasks(telegram_user_id)
     return [TaskRead.model_validate(task) for task in tasks]
+
+
+@router.get("/stats", response_model=TaskStats)
+async def get_task_stats(
+    telegram_user_id: int, service: TaskService = Depends(get_task_service)
+) -> TaskStats:
+    """Для карточки "Итоги недели" в /ui (см. app/web/static/index.html)."""
+    since = datetime.now(timezone.utc) - _WEEK
+    completed = await service.count_tasks_completed_since(telegram_user_id, since)
+    return TaskStats(completed_this_week=completed)
 
 
 @router.patch("/{task_id}", response_model=TaskRead)

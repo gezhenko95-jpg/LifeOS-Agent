@@ -169,3 +169,23 @@ async def test_completing_recurring_task_creates_next_occurrence(client):
     assert active_tasks[0]["title"] == "Пить воду"
     next_due = datetime.fromisoformat(active_tasks[0]["due_date"])
     assert (next_due.year, next_due.month, next_due.day) == (2026, 8, 14)
+
+
+async def test_stats_counts_completed_this_week(client):
+    create_resp = await client.post(
+        "/tasks", json={"telegram_user_id": 7, "title": "Отчёт"}
+    )
+    task_id = create_resp.json()["id"]
+    await client.patch(f"/tasks/{task_id}", json={"status": "completed"})
+
+    response = await client.get("/tasks/stats", params={"telegram_user_id": 7})
+
+    assert response.status_code == 200
+    assert response.json()["completed_this_week"] == 1
+
+
+async def test_stats_zero_when_nothing_completed(client):
+    response = await client.get("/tasks/stats", params={"telegram_user_id": 8})
+
+    assert response.status_code == 200
+    assert response.json()["completed_this_week"] == 0

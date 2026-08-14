@@ -120,6 +120,23 @@
     height: 100%;
     background: var(--accent);
   }
+  .shelf-group h3 {
+    font-size: 0.78rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin: 14px 0 4px;
+  }
+  .shelf-group:first-child h3 { margin-top: 0; }
+  .stat-line {
+    font-size: 1rem;
+    margin: 0;
+  }
+  .stat-line .stat-number {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--accent);
+  }
 </style>
 </head>
 <body>
@@ -166,6 +183,35 @@
       <button type="submit">Добавить</button>
     </form>
     <ul class="item-list" id="goalList"></ul>
+  </section>
+
+  <section class="card">
+    <h2>📊 Итоги недели</h2>
+    <p class="stat-line"><span class="stat-number" id="weeklyTasksCount">—</span> задач выполнено за последние 7 дней</p>
+  </section>
+
+  <section class="card">
+    <h2>📚🎬 Полка</h2>
+    <div class="shelf-group">
+      <h3>🎬 Посмотреть</h3>
+      <ul class="item-list" id="shelfMovieToWatch"></ul>
+    </div>
+    <div class="shelf-group">
+      <h3>✅ Просмотрено</h3>
+      <ul class="item-list" id="shelfMovieDone"></ul>
+    </div>
+    <div class="shelf-group">
+      <h3>📖 Прочитать</h3>
+      <ul class="item-list" id="shelfBookToWatch"></ul>
+    </div>
+    <div class="shelf-group">
+      <h3>✅ Прочитано</h3>
+      <ul class="item-list" id="shelfBookDone"></ul>
+    </div>
+    <div class="shelf-group" id="shelfOtherGroup" style="display:none">
+      <h3>🎯 Другое</h3>
+      <ul class="item-list" id="shelfOtherToWatch"></ul>
+    </div>
   </section>
 
 </div>
@@ -272,14 +318,20 @@ async function loadHabits() {
     list.innerHTML = '<li class="empty">Активных привычек нет.</li>';
     return;
   }
-  list.innerHTML = habits.map((habit) => `
+  list.innerHTML = habits.map((habit) => {
+    // 30 дней подряд = полная полоска — просто наглядная шкала, не привязана
+    // к какой-то конкретной цели (у привычек нет "плана" в днях).
+    const strength = Math.min(100, Math.round((habit.streak / 30) * 100));
+    return `
     <li>
       <span class="item-title">${escapeHtml(habit.title)}</span>
-      <span class="meta">${habit.streak > 0 ? "🔥 " + habit.streak : ""}</span>
+      <span class="progress-bar"><span style="width:${strength}%"></span></span>
+      <span class="meta">${habit.streak > 0 ? "🔥 " + habit.streak : "нет серии"}</span>
       <button class="secondary" data-action="complete-habit" data-id="${habit.id}">Готово</button>
       <button class="danger" data-action="delete-habit" data-id="${habit.id}">✕</button>
     </li>
-  `).join("");
+  `;
+  }).join("");
 }
 
 document.getElementById("habitForm").addEventListener("submit", async (e) => {
@@ -364,6 +416,71 @@ document.getElementById("goalList").addEventListener("click", async (e) => {
   }
 });
 
+// ---- Watchlist (Полка) ----
+
+function renderShelfList(elementId, items, showComplete) {
+  const list = document.getElementById(elementId);
+  if (!items.length) {
+    list.innerHTML = '<li class="empty">Пусто.</li>';
+    return;
+  }
+  list.innerHTML = items.map((item) => `
+    <li>
+      <span class="item-title">${escapeHtml(item.title)}</span>
+      ${showComplete ? `<button class="secondary" data-action="complete-watchlist" data-id="${item.id}">✓</button>` : ""}
+      <button class="danger" data-action="delete-watchlist" data-id="${item.id}">✕</button>
+    </li>
+  `).join("");
+}
+
+async function loadWatchlist() {
+  const id = getUserId();
+  const groupIds = ["shelfMovieToWatch", "shelfMovieDone", "shelfBookToWatch", "shelfBookDone", "shelfOtherToWatch"];
+  if (!id) {
+    groupIds.forEach((elId) => { document.getElementById(elId).innerHTML = ""; });
+    return;
+  }
+  const items = await api(`/watchlist?telegram_user_id=${encodeURIComponent(id)}`);
+  const by = (mediaType, statusValue) =>
+    items.filter((i) => i.media_type === mediaType && i.status === statusValue);
+
+  renderShelfList("shelfMovieToWatch", by("movie", "to_watch"), true);
+  renderShelfList("shelfMovieDone", by("movie", "done"), false);
+  renderShelfList("shelfBookToWatch", by("book", "to_watch"), true);
+  renderShelfList("shelfBookDone", by("book", "done"), false);
+
+  // "Другое" — редкий случай (записи без явного типа фильм/книга),
+  // не занимает место на полке, пока в нём реально что-то есть.
+  const otherItems = items.filter((i) => i.media_type === "other" && i.status === "to_watch");
+  document.getElementById("shelfOtherGroup").style.display = otherItems.length ? "" : "none";
+  renderShelfList("shelfOtherToWatch", otherItems, true);
+}
+
+async function handleShelfClick(e) {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  const itemId = btn.dataset.id;
+  if (btn.dataset.action === "complete-watchlist") {
+    await api(`/watchlist/${itemId}/complete`, { method: "POST" });
+  } else if (btn.dataset.action === "delete-watchlist") {
+    await api(`/watchlist/${itemId}`, { method: "DELETE" });
+  }
+  await loadWatchlist();
+}
+
+["shelfMovieToWatch", "shelfMovieDone", "shelfBookToWatch", "shelfBookDone", "shelfOtherToWatch"]
+  .forEach((elId) => document.getElementById(elId).addEventListener("click", handleShelfClick));
+
+// ---- Weekly stats ----
+
+async function loadWeeklyStats() {
+  const id = getUserId();
+  const el = document.getElementById("weeklyTasksCount");
+  if (!id) { el.textContent = "—"; return; }
+  const stats = await api(`/tasks/stats?telegram_user_id=${encodeURIComponent(id)}`);
+  el.textContent = stats.completed_this_week;
+}
+
 // ---- User id + init ----
 
 function refreshUserIdStatus() {
@@ -381,7 +498,13 @@ document.getElementById("saveUserId").addEventListener("click", async () => {
 });
 
 async function loadAll() {
-  await Promise.all([loadTasks(), loadHabits(), loadGoals()]);
+  await Promise.all([
+    loadTasks(),
+    loadHabits(),
+    loadGoals(),
+    loadWatchlist(),
+    loadWeeklyStats(),
+  ]);
 }
 
 refreshUserIdStatus();

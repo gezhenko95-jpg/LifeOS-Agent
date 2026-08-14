@@ -30,6 +30,12 @@ class TaskUpdate(BaseModel):
     recurrence: Optional[str] = None
 
 
+class TaskStats(BaseModel):
+    """Сводка по задачам для /ui (см. app/api/tasks.py)."""
+
+    completed_this_week: int
+
+
 class TaskRead(BaseModel):
     """Представление задачи в ответах API."""
 

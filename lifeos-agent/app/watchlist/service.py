@@ -62,6 +62,11 @@ class WatchlistService:
     async def list_active_items(self, telegram_user_id: int) -> list[WatchlistItem]:
         return await self._repository.list_by_user(telegram_user_id, status=TO_WATCH)
 
+    async def list_all_items(self, telegram_user_id: int) -> list[WatchlistItem]:
+        """to_watch и done вместе — для "полки" в /ui (см. app/watchlist/api.py):
+        нужно видеть и что ещё предстоит, и что уже посмотрено/прочитано."""
+        return await self._repository.list_by_user(telegram_user_id, status=None)
+
     async def mark_done(self, item_id: int) -> Optional[WatchlistItem]:
         item = await self._repository.get_by_id(item_id)
         if item is None:

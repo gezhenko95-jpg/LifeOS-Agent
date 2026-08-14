@@ -77,6 +77,19 @@ async def test_list_active_items(repository):
     repository.list_by_user.assert_awaited_once_with(1, status="to_watch")
 
 
+async def test_list_all_items_passes_no_status_filter(repository):
+    repository.list_by_user.return_value = [
+        WatchlistItem(telegram_user_id=1, title="X", status="to_watch"),
+        WatchlistItem(telegram_user_id=1, title="Y", status="done"),
+    ]
+    service = WatchlistService(repository)
+
+    items = await service.list_all_items(1)
+
+    assert len(items) == 2
+    repository.list_by_user.assert_awaited_once_with(1, status=None)
+
+
 async def test_mark_done_found(repository):
     item = WatchlistItem(id=1, telegram_user_id=1, title="Дюна", status="to_watch")
     repository.get_by_id.return_value = item
