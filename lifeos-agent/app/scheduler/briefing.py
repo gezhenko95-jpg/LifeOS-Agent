@@ -6,10 +6,15 @@
 поверх шаблона добавляется одна короткая AI-фраза-инсайт по уже
 собранному контексту. Ошибка AI никогда не должна сорвать отправку
 брифинга — при сбое инсайт просто не добавляется (см. _generate_insight).
+
+Оформление: HTML (parse_mode задаётся при отправке, см.
+app/telegram/jobs.py). Всё пользовательское проходит через escape —
+задача с названием «<b>» иначе сломала бы разметку всего сообщения.
 """
 
 import logging
 from datetime import date
+from html import escape
 
 from app.ai.client import AIClient, AIServiceError
 from app.goals.models import Goal
@@ -18,12 +23,38 @@ from app.habits.models import Habit
 from app.habits.service import HabitService
 from app.memory.models import MemoryEntry, MemoryType
 from app.memory.service import MemoryService
+from app.tasks.formatting import format_due_human, task_status_emoji
 from app.tasks.models import Task
 from app.tasks.service import TaskService
 
 logger = logging.getLogger(__name__)
 
 _MAX_MEMORY_ITEMS = 3
+_DIVIDER = "━━━━━━━━━━━━━━━"
+
+_MONTHS_GENITIVE = (
+    "января",
+    "февраля",
+    "марта",
+    "апреля",
+    "мая",
+    "июня",
+    "июля",
+    "августа",
+    "сентября",
+    "октября",
+    "ноября",
+    "декабря",
+)
+_WEEKDAYS_NOMINATIVE = (
+    "понедельник",
+    "вторник",
+    "среда",
+    "четверг",
+    "пятница",
+    "суббота",
+    "воскресенье",
+)
 
 _INSIGHT_SYSTEM_PROMPT = (
     "Ты — личный ассистент пользователя. Ниже черновик его утреннего "
@@ -32,6 +63,22 @@ _INSIGHT_SYSTEM_PROMPT = (
     "существу, без предисловий, без кавычек и без markdown. Верни только "
     "текст этой фразы, ничего больше."
 )
+
+
+def _esc(text: str) -> str:
+    return escape(str(text), quote=False)
+
+
+def format_today(today: date) -> str:
+    """«пятница, 15 августа» — дата словами.
+
+    Брифинг приходит каждое утро и легко сливается со вчерашним; строка
+    с днём недели сразу говорит, к какому дню он относится.
+    """
+    return (
+        f"{_WEEKDAYS_NOMINATIVE[today.weekday()]}, "
+        f"{today.day} {_MONTHS_GENITIVE[today.month - 1]}"
+    )
 
 
 def _split_tasks(
@@ -67,36 +114,49 @@ def _pick_main_task(
     return None
 
 
-def _format_task_line(task: Task) -> str:
-    suffix = f" — {task.due_date:%d.%m.%Y}" if task.due_date else ""
-    return f"• {task.title}{suffix}"
+def _format_task_line(task: Task, in_overdue_section: bool = False) -> str:
+    if not task.due_date:
+        return f"   {task_status_emoji(task)} {_esc(task.title)}"
+    when = format_due_human(task.due_date)
+    if in_overdue_section:
+        # Раздел уже называется «Просрочено» — повторять это в каждой
+        # строке незачем.
+        when = when.replace(" (просрочено)", "")
+    return f"   {task_status_emoji(task)} {_esc(task.title)} · {when}"
 
 
-def _format_tasks_section(tasks: list[Task]) -> str:
-    lines = ["Доброе утро! ☀️"]
+def _format_tasks_section(tasks: list[Task], today: date) -> str:
+    lines = ["☀️ <b>Доброе утро!</b>", f"<i>{format_today(today)}</i>"]
 
-    overdue, today_tasks, upcoming = _split_tasks(tasks, date.today())
+    overdue, today_tasks, upcoming = _split_tasks(tasks, today)
     main_task = _pick_main_task(overdue, today_tasks, upcoming)
 
     if main_task is None:
         lines.append("")
-        lines.append("На сегодня активных задач нет.")
+        lines.append(_DIVIDER)
+        lines.append("Активных задач нет — день ваш. 🌤")
         return "\n".join(lines)
 
     lines.append("")
-    lines.append(f"Главная задача дня: «{main_task.title}»")
+    lines.append(_DIVIDER)
+    lines.append("🎯 <b>Главное на сегодня</b>")
+    lines.append(f"   {_esc(main_task.title)}")
+    if main_task.due_date:
+        lines.append(f"   <i>{format_due_human(main_task.due_date)}</i>")
 
     rest = [t for t in (today_tasks + upcoming) if t is not main_task]
     if rest:
         lines.append("")
-        lines.append("Остальные задачи:")
+        lines.append("📋 <b>Дальше</b>")
         lines.extend(_format_task_line(t) for t in rest)
 
     overdue_display = [t for t in overdue if t is not main_task]
     if overdue_display:
         lines.append("")
-        lines.append("⚠️ Просрочено:")
-        lines.extend(_format_task_line(t) for t in overdue_display)
+        lines.append(f"⚠️ <b>Просрочено ({len(overdue_display)})</b>")
+        lines.extend(
+            _format_task_line(t, in_overdue_section=True) for t in overdue_display
+        )
 
     return "\n".join(lines)
 
@@ -107,12 +167,17 @@ async def _format_habits_section(
     if not habits:
         return ""
 
-    lines = ["", "Привычки на сегодня:"]
+    lines = ["", "🔁 <b>Привычки</b>"]
     for habit in habits:
         streak = await habit_service.get_streak(habit.id)
-        suffix = f" — 🔥 {streak}" if streak > 0 else ""
-        lines.append(f"• {habit.title}{suffix}")
+        suffix = f" 🔥 {streak}" if streak > 0 else ""
+        lines.append(f"   {_esc(habit.title)}{suffix}")
     return "\n".join(lines)
+
+
+def _progress_bar(percent: int, width: int = 10) -> str:
+    filled = round(max(0, min(100, percent)) / 100 * width)
+    return "▓" * filled + "░" * (width - filled)
 
 
 def _format_goals_and_projects_section(
@@ -123,11 +188,19 @@ def _format_goals_and_projects_section(
     if not goals and not projects:
         return ""
 
-    lines = ["", "Не забывайте:"]
-    lines.extend(
-        f"🎯 {goal.title} — {goal.progress}%" for goal in goals[:_MAX_MEMORY_ITEMS]
-    )
-    lines.extend(f"📁 {entry.content}" for entry in projects[:_MAX_MEMORY_ITEMS])
+    lines = [""]
+    if goals:
+        lines.append("🎯 <b>Цели</b>")
+        lines.extend(
+            f"   {_esc(goal.title)}  {_progress_bar(goal.progress)} {goal.progress}%"
+            for goal in goals[:_MAX_MEMORY_ITEMS]
+        )
+    if projects:
+        lines.append("")
+        lines.append("📁 <b>Проекты</b>")
+        lines.extend(
+            f"   {_esc(entry.content)}" for entry in projects[:_MAX_MEMORY_ITEMS]
+        )
     return "\n".join(lines)
 
 
@@ -162,7 +235,7 @@ async def build_morning_briefing(
         telegram_user_id, type=MemoryType.PROJECT
     )
 
-    parts = [_format_tasks_section(tasks)]
+    parts = [_format_tasks_section(tasks, date.today())]
 
     habits_section = await _format_habits_section(habits, habit_service)
     if habits_section:
@@ -177,6 +250,6 @@ async def build_morning_briefing(
     if ai_client is not None:
         insight = await _generate_insight(ai_client, text)
         if insight:
-            text = f"{text}\n\n💡 {insight}"
+            text = f"{text}\n\n{_DIVIDER}\n💡 <i>{_esc(insight)}</i>"
 
     return text

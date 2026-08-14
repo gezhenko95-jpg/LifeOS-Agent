@@ -45,8 +45,8 @@ async def test_no_tasks_and_no_memory():
         _empty_goal_service(),
     )
 
-    assert "На сегодня активных задач нет." in text
-    assert "Не забывайте" not in text
+    assert "Активных задач нет" in text
+    assert "Цели" not in text and "Проекты" not in text
 
 
 async def test_main_task_is_todays_task_and_sections_split_correctly():
@@ -72,18 +72,18 @@ async def test_main_task_is_todays_task_and_sections_split_correctly():
         1, task_service, memory_service, _empty_habit_service(), goal_service
     )
 
-    assert "Главная задача дня: «Позвонить маме»" in text
-    assert "Остальные задачи:" in text
+    assert "Главное на сегодня" in text and "Позвонить маме" in text
+    assert "Дальше" in text
     assert "Купить билеты" in text
-    assert "⚠️ Просрочено:" in text
+    assert "Просрочено" in text
     assert "Сдать отчет" in text
-    # просроченная задача не должна попасть в "Остальные задачи"
+    # просроченная задача не должна попасть в раздел "Дальше"
     lines = text.splitlines()
-    rest_index = lines.index("Остальные задачи:")
-    overdue_index = lines.index("⚠️ Просрочено:")
-    assert "Сдать отчет" not in lines[rest_index:overdue_index]
-    assert "🎯 Выучить английский — 40%" in text
-    assert "📁 LifeOS Agent" in text
+    rest_index = next(i for i, ln in enumerate(lines) if "Дальше" in ln)
+    overdue_index = next(i for i, ln in enumerate(lines) if "Просрочено" in ln)
+    assert not any("Сдать отчет" in ln for ln in lines[rest_index:overdue_index])
+    assert "Выучить английский" in text and "40%" in text
+    assert "LifeOS Agent" in text
 
 
 async def test_main_task_falls_back_to_overdue_and_is_not_duplicated():
@@ -102,8 +102,8 @@ async def test_main_task_falls_back_to_overdue_and_is_not_duplicated():
         _empty_goal_service(),
     )
 
-    assert "Главная задача дня: «Сдать отчет»" in text
-    assert "⚠️ Просрочено:" not in text
+    assert "Главное на сегодня" in text and "Сдать отчет" in text
+    assert "Просрочено" not in text
 
 
 async def test_main_task_falls_back_to_upcoming_when_no_today_or_overdue():
@@ -123,8 +123,8 @@ async def test_main_task_falls_back_to_upcoming_when_no_today_or_overdue():
         _empty_goal_service(),
     )
 
-    assert "Главная задача дня: «Купить билеты»" in text
-    assert "Остальные задачи:" in text
+    assert "Главное на сегодня" in text and "Купить билеты" in text
+    assert "Дальше" in text
     assert "Прочитать книгу" in text
 
 
@@ -148,7 +148,7 @@ async def test_main_task_prefers_high_priority_task_from_today():
         _empty_goal_service(),
     )
 
-    assert "Главная задача дня: «Позвонить в банк»" in text
+    assert "Главное на сегодня" in text and "Позвонить в банк" in text
     assert "Купить молоко" in text
 
 
@@ -166,7 +166,7 @@ async def test_goals_and_projects_section_absent_when_empty():
         _empty_goal_service(),
     )
 
-    assert "Не забывайте" not in text
+    assert "Цели" not in text and "Проекты" not in text
 
 
 async def test_goals_section_uses_goal_service_with_progress():
@@ -184,7 +184,7 @@ async def test_goals_section_uses_goal_service_with_progress():
         1, task_service, memory_service, _empty_habit_service(), goal_service
     )
 
-    assert "🎯 Пробежать марафон — 15%" in text
+    assert "Пробежать марафон" in text and "15%" in text
 
 
 async def test_habits_section_shows_streak():
@@ -204,8 +204,8 @@ async def test_habits_section_shows_streak():
         1, task_service, memory_service, habit_service, _empty_goal_service()
     )
 
-    assert "Привычки на сегодня:" in text
-    assert "Читать — 🔥 5" in text
+    assert "Привычки" in text
+    assert "Читать" in text and "🔥 5" in text
 
 
 async def test_habits_section_absent_without_habits():
@@ -222,7 +222,7 @@ async def test_habits_section_absent_without_habits():
         _empty_goal_service(),
     )
 
-    assert "Привычки на сегодня:" not in text
+    assert "Привычки" not in text
 
 
 async def test_ai_insight_appended_when_ai_client_returns_text():
@@ -243,7 +243,7 @@ async def test_ai_insight_appended_when_ai_client_returns_text():
         ai_client=ai_client,
     )
 
-    assert "💡 Начните с самого сложного дела." in text
+    assert "💡 <i>Начните с самого сложного дела.</i>" in text
     ai_client.complete.assert_awaited_once()
 
 
@@ -282,7 +282,7 @@ async def test_ai_insight_error_is_swallowed_and_briefing_still_sent():
         ai_client=ai_client,
     )
 
-    assert "На сегодня активных задач нет." in text
+    assert "Активных задач нет" in text
     assert "💡" not in text
 
 

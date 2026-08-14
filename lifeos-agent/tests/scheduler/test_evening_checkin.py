@@ -19,7 +19,7 @@ async def test_zero_completed_tasks_today():
 
     text = await build_evening_checkin_text(1, task_service, _empty_habit_service())
 
-    assert "✅ Задач выполнено сегодня: 0" in text
+    assert "Задач выполнено: <b>0</b>" in text
 
 
 async def test_completed_tasks_count_today():
@@ -28,7 +28,7 @@ async def test_completed_tasks_count_today():
 
     text = await build_evening_checkin_text(1, task_service, _empty_habit_service())
 
-    assert "✅ Задач выполнено сегодня: 3" in text
+    assert "Задач выполнено: <b>3</b>" in text
 
 
 async def test_habits_section_absent_without_habits():
@@ -57,4 +57,4 @@ async def test_habits_section_counts_done_today():
 
     text = await build_evening_checkin_text(1, task_service, habit_service)
 
-    assert "🔁 Привычек отмечено: 1/2" in text
+    assert "Привычек отмечено: <b>1/2</b>" in text

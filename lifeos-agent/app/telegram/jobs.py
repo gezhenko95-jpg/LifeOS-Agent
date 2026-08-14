@@ -6,6 +6,7 @@ import logging
 import random
 from datetime import date
 
+from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
 from app.ai.client import get_ai_client
@@ -195,7 +196,9 @@ async def send_evening_checkin_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             if gap_question:
                 text = f"{text}\n\n{gap_question}"
 
-    await context.bot.send_message(chat_id=telegram_user_id, text=text)
+    await context.bot.send_message(
+        chat_id=telegram_user_id, text=text, parse_mode=ParseMode.HTML
+    )
 
 
 async def send_weekly_digest_job(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -242,16 +245,23 @@ async def _send_text_or_photo(
     context: ContextTypes.DEFAULT_TYPE, telegram_user_id: int, text: str, chart
 ) -> None:
     if chart is None:
-        await context.bot.send_message(chat_id=telegram_user_id, text=text)
+        await context.bot.send_message(
+            chat_id=telegram_user_id, text=text, parse_mode=ParseMode.HTML
+        )
         return
 
     if len(text) <= _PHOTO_CAPTION_LIMIT:
         await context.bot.send_photo(
-            chat_id=telegram_user_id, photo=chart, caption=text
+            chat_id=telegram_user_id,
+            photo=chart,
+            caption=text,
+            parse_mode=ParseMode.HTML,
         )
     else:
         await context.bot.send_photo(chat_id=telegram_user_id, photo=chart)
-        await context.bot.send_message(chat_id=telegram_user_id, text=text)
+        await context.bot.send_message(
+            chat_id=telegram_user_id, text=text, parse_mode=ParseMode.HTML
+        )
 
 
 async def send_monthly_insights_job(context: ContextTypes.DEFAULT_TYPE) -> None:
