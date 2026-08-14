@@ -108,6 +108,20 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await update.message.reply_text(text, reply_markup=build_main_menu())
 
 
+async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Переотправить постоянное меню.
+
+    ReplyKeyboardMarkup живёт на клиенте, пока его не заменят новым —
+    поэтому кнопка, добавленная в build_main_menu после последнего
+    /start, у пользователя просто не появляется (так и не появилась
+    «🌐 Сайт»). Раньше единственным способом обновить меню был /start,
+    который вдобавок показывает приветствие для первой настройки.
+    """
+    if update.message is None:
+        return
+    await update.message.reply_text("Меню обновлено.", reply_markup=build_main_menu())
+
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply_via_engine(update, context, "/help")
 

@@ -49,6 +49,10 @@ services:
       TZ: Europe/Moscow
     ports:
       - "127.0.0.1:8000:8000"
+    volumes:
+      # Хеш развёрнутого коммита — пишется scripts/deploy.sh, отдаётся в
+      # /health, чтобы сверять прод с гитом одним curl (см. app/api/health.py).
+      - ./DEPLOYED_COMMIT:/app/DEPLOYED_COMMIT:ro
     depends_on:
       db:
         condition: service_healthy

@@ -22,6 +22,7 @@ from app.telegram.handlers import (
     handle_photo_message,
     handle_text_message,
     help_command,
+    menu_command,
     start_command,
     tasks_command,
 )
@@ -81,6 +82,7 @@ def build_application() -> Application:
 
     application.add_handler(CommandHandler("start", start_command, filters=owner))
     application.add_handler(CommandHandler("help", help_command, filters=owner))
+    application.add_handler(CommandHandler("menu", menu_command, filters=owner))
     application.add_handler(CommandHandler("tasks", tasks_command, filters=owner))
     application.add_handler(CommandHandler("habits", habits_command, filters=owner))
     application.add_handler(CommandHandler("goals", goals_command, filters=owner))
