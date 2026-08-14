@@ -25,12 +25,15 @@ class Settings(BaseSettings):
     # 0 = утренний брифинг не отправляется (Telegram ID не задан).
     owner_telegram_user_id: int = 0
 
-    # Утренний брифинг (см. flows/001-morning-briefing.md)
+    # Утренний брифинг (см. flows/001-morning-briefing.md, flows/009-daily-rhythm.md):
+    # задачи/привычки/цели/AI-инсайт + график.
     morning_briefing_enabled: bool = True
     morning_briefing_hour: int = 8
     morning_briefing_minute: int = 0
 
-    # Вечерняя рефлексия (см. flows/005-evening-reflection.md)
+    # Вечерняя рефлексия (см. flows/005-evening-reflection.md,
+    # flows/009-daily-rhythm.md): один AI-сгенерированный вдумчивый
+    # вопрос для дневника вместо статичного текста.
     evening_reflection_enabled: bool = True
     evening_reflection_hour: int = 21
     evening_reflection_minute: int = 0
@@ -39,10 +42,12 @@ class Settings(BaseSettings):
     task_reminders_enabled: bool = True
     task_reminders_interval_seconds: int = 60
 
-    # Проактивные вопросы 3 раза в день (см.
-    # specs/006-proactive-engagement.md). Отдельные сообщения, не встроены
-    # в брифинг/рефлексию — чтобы не путаться с парсингом "дневник: ...".
-    # Реально работают только если задан openrouter_api_key (без AI ответ
+    # Три касания дня (см. flows/009-daily-rhythm.md — имена настроек не
+    # переименовывали при переосмыслении содержания, чтобы не задеть уже
+    # настроенный .env): утро (10:30) — вопрос про сон или gap-вопрос про
+    # профиль; день (14:00) — "как дела" + табличка привычек; вечер
+    # (19:00) — итоги дня + иногда gap-вопрос. Gap-вопросы реально
+    # работают только если задан openrouter_api_key (без AI ответ
     # пользователя не разобрать) — см. app/telegram/jobs.py.
     proactive_prompts_enabled: bool = True
     proactive_prompt_morning_hour: int = 10
