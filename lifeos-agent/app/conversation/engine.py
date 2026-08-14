@@ -27,7 +27,7 @@ from app.memory.models import MemoryType
 from app.memory.service import MemoryService
 from app.proactive.ai_extract import extract_prompt_answer
 from app.proactive.service import PendingPromptService
-from app.tasks.formatting import format_due_date
+from app.tasks.formatting import format_due_human
 from app.tasks.models import Task
 from app.tasks.service import TaskService
 from app.watchlist.service import WatchlistService
@@ -185,7 +185,7 @@ class ConversationEngine:
         await self._memory.save(
             telegram_user_id, MemoryType.JOURNAL, text, source="quick_capture"
         )
-        return "Записал в дневник. 📝"
+        return "📝 Записал в дневник."
 
     async def _try_answer_pending_prompt(
         self, telegram_user_id: int, text: str
@@ -230,12 +230,12 @@ class ConversationEngine:
             goal = await self._goals.create_goal(
                 telegram_user_id, answer.title, answer.target_date
             )
-            return f"Добавил цель «{goal.title}» 🎯", None
+            return f"🎯 Новая цель: «{goal.title}»", None
 
         if answer.action == "create_habit" and answer.title:
             await self._pending_prompts.clear(telegram_user_id)
             habit = await self._habits.create_habit(telegram_user_id, answer.title)
-            return f"Добавил привычку «{habit.title}» 🔁", None
+            return f"🔁 Новая привычка: «{habit.title}»", None
 
         if answer.action == "save_memory" and answer.memory_type and answer.content:
             await self._pending_prompts.clear(telegram_user_id)
@@ -245,7 +245,7 @@ class ConversationEngine:
                 answer.content,
                 source="proactive_prompt",
             )
-            return f"Запомнил: {answer.content} 📝", None
+            return f"🧠 Запомнил: {answer.content}", None
 
         return None, (pending.question_text if is_fresh else None)
 
@@ -287,14 +287,18 @@ class ConversationEngine:
             parsed.priority,
             parsed.recurrence,
         )
+        # ВАЖНО: первая строка обязана начинаться с «Добавил задачу: «…»»
+        # — по этому шаблону app/telegram/handlers.py распознаёт, что
+        # задача создана, и цепляет быстрые кнопки. Всё остальное можно
+        # менять свободно, дополнительные строки шаблону не мешают.
         prefix = "❗ " if task.priority == "high" else ""
-        suffix = " 🔁" if task.recurrence else ""
+        repeat = "  🔁 повторяется" if task.recurrence else ""
         if task.due_date:
             return (
-                f"{prefix}Добавил задачу: «{task.title}» "
-                f"на {format_due_date(task.due_date)}{suffix}"
+                f"{prefix}Добавил задачу: «{task.title}»\n"
+                f"🕘 {format_due_human(task.due_date)}{repeat}"
             )
-        return f"{prefix}Добавил задачу: «{task.title}»{suffix}"
+        return f"{prefix}Добавил задачу: «{task.title}»\n🗓 без срока{repeat}"
 
     async def _list_tasks(self, telegram_user_id: int) -> str:
         tasks = await self._tasks.list_active_tasks(telegram_user_id)
@@ -318,7 +322,7 @@ class ConversationEngine:
         matches = [t for t in tasks if t.due_date and t.due_date.date() == target]
         label = f"{target:%d.%m.%Y}"
         if not matches:
-            return f"На {label} задач нет."
+            return f"На {label} задач нет. 🌤"
 
         lines = [f"Задачи на {label}:"]
         for index, task in enumerate(matches, start=1):
@@ -343,7 +347,7 @@ class ConversationEngine:
             header = f"Точных совпадений с «{query}» нет, но вот похожее:"
 
         if not entries:
-            return f"Ничего не нашёл про «{query}»."
+            return f"🤷 Ничего не нашёл про «{query}»."
 
         lines = [header]
         lines.extend(f"• {entry.content}" for entry in entries[:_MAX_RECALL_RESULTS])
@@ -354,29 +358,29 @@ class ConversationEngine:
             return "Какую задачу отметить выполненной?"
         matches = await self._tasks.find_active_by_title(telegram_user_id, title_query)
         if not matches:
-            return f"Не нашёл активную задачу «{title_query}»."
+            return f"🤔 Не нашёл активную задачу «{title_query}»."
         task = await self._tasks.complete_task_by_title(telegram_user_id, title_query)
         if task is None:
-            return f"Не нашёл активную задачу «{title_query}»."
+            return f"🤔 Не нашёл активную задачу «{title_query}»."
         note = _ambiguity_note(matches, title_query)
         recurrence_note = (
             "\n\nСоздал следующую — она повторится автоматически."
             if task.recurrence
             else ""
         )
-        return f"Готово: «{task.title}» отмечена выполненной.{recurrence_note}{note}"
+        return f"✅ «{task.title}» — сделано!{recurrence_note}{note}"
 
     async def _delete_task(self, telegram_user_id: int, title_query: str) -> str:
         if not title_query:
             return "Какую задачу удалить?"
         matches = await self._tasks.find_active_by_title(telegram_user_id, title_query)
         if not matches:
-            return f"Не нашёл активную задачу «{title_query}»."
+            return f"🤔 Не нашёл активную задачу «{title_query}»."
         task = await self._tasks.delete_task_by_title(telegram_user_id, title_query)
         if task is None:
-            return f"Не нашёл активную задачу «{title_query}»."
+            return f"🤔 Не нашёл активную задачу «{title_query}»."
         note = _ambiguity_note(matches, title_query)
-        return f"Удалил задачу «{task.title}».{note}"
+        return f"🗑 Удалил задачу «{task.title}».{note}"
 
     async def _list_habits(self, telegram_user_id: int) -> str:
         habits = await self._habits.list_active_habits(telegram_user_id)
@@ -394,18 +398,18 @@ class ConversationEngine:
             return "Какую привычку отметить выполненной?"
         matches = await self._habits.find_active_by_title(telegram_user_id, title_query)
         if not matches:
-            return f"Не нашёл активную привычку «{title_query}»."
+            return f"🤔 Не нашёл активную привычку «{title_query}»."
         habit = await self._habits.mark_done_today(telegram_user_id, title_query)
         if habit is None:
-            return f"Не нашёл активную привычку «{title_query}»."
+            return f"🤔 Не нашёл активную привычку «{title_query}»."
         streak = await self._habits.get_streak(habit.id)
         note = _ambiguity_note(matches, title_query)
+        # Число серии уже названо строкой выше — юбилей его не повторяет,
+        # иначе сообщение выглядит как заевшая пластинка.
         celebration = (
-            f"\n\n🎉 {streak} дней подряд — солидная серия!"
-            if streak in _STREAK_MILESTONES
-            else ""
+            "\n🎉 Круглая цифра — так держать!" if streak in _STREAK_MILESTONES else ""
         )
-        return f"Готово: «{habit.title}» — 🔥 {streak} дней подряд.{celebration}{note}"
+        return f"🔥 «{habit.title}» — {streak} дней подряд!{celebration}{note}"
 
     async def _add_watchlist_item(
         self, telegram_user_id: int, parsed: ParsedIntent
@@ -422,7 +426,7 @@ class ConversationEngine:
             telegram_user_id, parsed.title, parsed.media_type or "other"
         )
         emoji = {"movie": "🎬", "book": "📖"}.get(item.media_type, "🎯")
-        return f"Добавил в список: «{item.title}» {emoji}"
+        return f"{emoji} Добавил в список: «{item.title}»"
 
     async def _list_watchlist(self, telegram_user_id: int) -> str:
         """Текстовый фолбэк (без кнопок) — обычно перехватывается раньше
@@ -445,7 +449,7 @@ class ConversationEngine:
         await self._memory.save(
             telegram_user_id, MemoryType.JOURNAL, content, source="telegram"
         )
-        return "Записал в дневник."
+        return "📝 Записал в дневник."
 
 
 def _ambiguity_note(matches: list[Task] | list[Habit], title_query: str) -> str:

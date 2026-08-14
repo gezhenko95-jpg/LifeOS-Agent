@@ -65,7 +65,7 @@ async def test_add_task_with_date_shown_in_reply(
 
     reply = await engine.handle_message(1, "Завтра купить молоко")
 
-    assert "13.08.2026" in reply
+    assert "13.08" in reply
 
 
 async def test_add_task_with_high_priority_marker(
@@ -269,7 +269,7 @@ async def test_complete_task_found(task_service, habit_service, memory_service):
 
     reply = await engine.handle_message(1, "Выполнил молоко")
 
-    assert "Готово" in reply
+    assert "сделано" in reply
     assert "Под «" not in reply
     task_service.complete_task_by_title.assert_awaited_once_with(1, "молоко")
 
@@ -284,7 +284,7 @@ async def test_complete_recurring_task_mentions_next_occurrence(
 
     reply = await engine.handle_message(1, "Выполнил пить воду")
 
-    assert "Готово" in reply
+    assert "сделано" in reply
     assert "повторится автоматически" in reply
 
 
@@ -309,7 +309,7 @@ async def test_complete_task_ambiguous_lists_other_matches(
 
     reply = await engine.handle_message(1, "Выполнил молоко")
 
-    assert "Готово" in reply
+    assert "сделано" in reply
     assert "Купить молоко и хлеб" in reply
 
 
@@ -376,8 +376,8 @@ async def test_habit_done_found(task_service, habit_service, memory_service):
 
     reply = await engine.handle_message(1, "Привычка читать")
 
-    assert "Готово" in reply
-    assert "🔥 1" in reply
+    assert "подряд" in reply
+    assert "🔥" in reply and "1 дн" in reply
     habit_service.mark_done_today.assert_awaited_once_with(1, "читать")
 
 
@@ -393,7 +393,8 @@ async def test_habit_done_celebrates_streak_milestone(
     reply = await engine.handle_message(1, "Привычка читать")
 
     assert "🎉" in reply
-    assert "солидная серия" in reply
+    # Число серии называется строкой выше — юбилей его не повторяет.
+    assert reply.count("7") == 1
 
 
 async def test_habit_done_no_celebration_outside_milestone(
@@ -427,7 +428,7 @@ async def test_journal_entry_saved_to_memory(
 
     reply = await engine.handle_message(1, "Дневник: продуктивный день")
 
-    assert reply == "Записал в дневник."
+    assert reply == "📝 Записал в дневник."
     from app.memory.models import MemoryType
 
     memory_service.save.assert_awaited_once_with(
@@ -762,7 +763,7 @@ async def test_journal_capture_fresh_pending_saves_verbatim(
 
     reply = await engine.handle_message(1, "Сегодня выполнил кучу дел, устал")
 
-    assert reply == "Записал в дневник. 📝"
+    assert reply == "📝 Записал в дневник."
     memory_service.save.assert_awaited_once_with(
         1,
         MemoryType.JOURNAL,
@@ -796,7 +797,7 @@ async def test_journal_capture_intercepts_before_keyword_matching(
         1, "Мне снилось, что я выполнил привычка какую-то марафонскую дистанцию"
     )
 
-    assert reply == "Записал в дневник. 📝"
+    assert reply == "📝 Записал в дневник."
     memory_service.save.assert_awaited_once()
     task_service.complete_task_by_title.assert_not_awaited()
 
@@ -879,7 +880,7 @@ async def test_add_watchlist_item(
     reply = await engine.handle_message(1, "посмотреть фильм Дюна")
 
     watchlist_service.create_item.assert_awaited_once_with(1, "Дюна", "movie")
-    assert reply == "Добавил в список: «Дюна» 🎬"
+    assert reply == "🎬 Добавил в список: «Дюна»"
 
 
 async def test_add_watchlist_item_book_emoji(
@@ -1028,7 +1029,7 @@ async def test_journal_still_captures_text_that_merely_contains_a_slash(
 
     reply = await engine.handle_message(1, "Работал 9/10 часов, вымотался")
 
-    assert reply == "Записал в дневник. 📝"
+    assert reply == "📝 Записал в дневник."
     memory_service.save.assert_awaited_once_with(
         1, MemoryType.JOURNAL, "Работал 9/10 часов, вымотался", source="quick_capture"
     )
@@ -1076,7 +1077,7 @@ async def test_add_task_reply_names_the_time(
 
     reply = await engine.handle_message(1, "напомни в 19:00 позвонить маме")
 
-    assert reply == "Добавил задачу: «позвонить маме» на 16.08.2026 в 19:00"
+    assert reply == "Добавил задачу: «позвонить маме»\n🕘 завтра в 19:00"
 
 
 async def test_reminder_is_not_swallowed_by_open_journal_prompt(
@@ -1139,5 +1140,5 @@ async def test_journal_still_captures_prose_containing_command_words(
         1, "Весь день крутилось в голове, надо напомни себе не тянуть с отчётом"
     )
 
-    assert reply == "Записал в дневник. 📝"
+    assert reply == "📝 Записал в дневник."
     memory_service.save.assert_awaited_once()
