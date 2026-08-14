@@ -23,12 +23,16 @@ from app.scheduler.nudges import build_nudges
 from app.scheduler.weekly_digest import build_weekly_digest
 from app.tasks.repository import TaskRepository
 from app.tasks.service import TaskService
+from app.telegram.keyboards import build_habits_message
 
 logger = logging.getLogger(__name__)
 
 # Лимит Telegram на подпись к фото — если текст дайджеста вдруг длиннее,
 # шлём фото без подписи и текст отдельным сообщением, а не падаем на API.
 _PHOTO_CAPTION_LIMIT = 1024
+
+_MIDDAY_TEXT = "Как проходит твой день? 🌤 Отметь, что уже успел:"
+_MIDDAY_TEXT_NO_HABITS = "Как проходит твой день? 🌤"
 
 
 async def send_morning_briefing_job(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -111,12 +115,37 @@ async def send_morning_reflection_job(context: ContextTypes.DEFAULT_TYPE) -> Non
     await context.bot.send_message(chat_id=telegram_user_id, text=question)
 
 
+async def send_midday_checkin_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Дневной слот 14:00 (см. flows/009-daily-rhythm.md) — «как дела» +
+    табличка привычек прямо под сообщением (переиспользует
+    build_habits_message — то же, что и по команде /habits), чтобы
+    отметить выполненное можно было в один тап, без печати."""
+    settings = get_settings()
+    telegram_user_id = settings.owner_telegram_user_id
+    if not telegram_user_id:
+        return
+
+    async with AsyncSessionLocal() as session:
+        habit_service = HabitService(HabitRepository(session))
+        habits = await habit_service.list_active_habits(telegram_user_id)
+        if not habits:
+            await context.bot.send_message(
+                chat_id=telegram_user_id, text=_MIDDAY_TEXT_NO_HABITS
+            )
+            return
+        streaks = {h.id: await habit_service.get_streak(h.id) for h in habits}
+        _, markup = build_habits_message(habits, streaks)
+
+    await context.bot.send_message(
+        chat_id=telegram_user_id, text=_MIDDAY_TEXT, reply_markup=markup
+    )
+
+
 async def send_proactive_prompt_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     """Generic gap-вопрос про цель/привычку/проект/предпочтение (см.
     specs/006-proactive-engagement.md) — временно используется для
-    дневного/вечернего слотов (14:00/19:00), пока их не заменят
-    send_midday_checkin_job / send_evening_checkin_job (см.
-    flows/009-daily-rhythm.md, части C и D). Без AI-ключа отвечать на
+    вечернего слота (19:00), пока его не заменит send_evening_checkin_job
+    (см. flows/009-daily-rhythm.md, часть D). Без AI-ключа отвечать на
     свободный текст всё равно нечем, поэтому в этом случае молча ничего
     не отправляем.
     """
