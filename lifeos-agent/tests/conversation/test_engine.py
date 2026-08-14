@@ -32,6 +32,11 @@ def pending_prompt_service():
     return AsyncMock()
 
 
+@pytest.fixture
+def watchlist_service():
+    return AsyncMock()
+
+
 async def test_add_task_without_date(task_service, habit_service, memory_service):
     task_service.create_task.return_value = SimpleNamespace(
         title="Купить молоко", due_date=None, priority="normal", recurrence=None
@@ -805,3 +810,73 @@ async def test_ai_fallback_failure_keeps_old_message(
 
     task_service.create_task.assert_not_awaited()
     assert "Не понял" in reply
+
+
+# --- ADD_WATCHLIST_ITEM -------------------------------------------------
+
+
+async def test_add_watchlist_item(
+    task_service, habit_service, memory_service, watchlist_service
+):
+    watchlist_service.create_item.return_value = SimpleNamespace(
+        title="Дюна", media_type="movie"
+    )
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        watchlist_service=watchlist_service,
+    )
+
+    reply = await engine.handle_message(1, "посмотреть фильм Дюна")
+
+    watchlist_service.create_item.assert_awaited_once_with(1, "Дюна", "movie")
+    assert reply == "Добавил в список: «Дюна» 🎬"
+
+
+async def test_add_watchlist_item_book_emoji(
+    task_service, habit_service, memory_service, watchlist_service
+):
+    watchlist_service.create_item.return_value = SimpleNamespace(
+        title="Дюна", media_type="book"
+    )
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        watchlist_service=watchlist_service,
+    )
+
+    reply = await engine.handle_message(1, "прочитать книгу Дюна")
+
+    assert "📖" in reply
+
+
+async def test_add_watchlist_item_empty_title(
+    task_service, habit_service, memory_service, watchlist_service
+):
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        watchlist_service=watchlist_service,
+    )
+
+    reply = await engine.handle_message(1, "посмотреть фильм")
+
+    watchlist_service.create_item.assert_not_awaited()
+    assert "Что посмотреть" in reply
+
+
+async def test_add_watchlist_item_without_service_falls_back_to_task(
+    task_service, habit_service, memory_service
+):
+    task_service.create_task.return_value = SimpleNamespace(
+        title="Дюна", due_date=None, priority="normal", recurrence=None
+    )
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = await engine.handle_message(1, "посмотреть фильм Дюна")
+
+    task_service.create_task.assert_awaited_once()
+    assert "Добавил задачу" in reply

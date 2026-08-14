@@ -22,6 +22,7 @@ class Intent(str, Enum):
     LIST_HABITS = "list_habits"
     HABIT_DONE = "habit_done"
     JOURNAL_ENTRY = "journal_entry"
+    ADD_WATCHLIST_ITEM = "add_watchlist_item"
     HELP = "help"
 
 
@@ -32,3 +33,4 @@ class ParsedIntent:
     due_date: Optional[datetime] = None
     priority: str = "normal"
     recurrence: Optional[str] = None  # только для ADD_TASK: daily|weekly|monthly
+    media_type: Optional[str] = None  # только для ADD_WATCHLIST_ITEM: movie|book|other

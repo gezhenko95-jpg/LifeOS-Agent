@@ -40,12 +40,16 @@ from app.telegram.keyboards import (
     MENU_INSIGHTS,
     MENU_JOURNAL,
     MENU_TASKS,
+    MENU_WATCHLIST,
     build_goals_message,
     build_habits_message,
     build_main_menu,
     build_task_quick_actions_keyboard,
     build_tasks_message,
+    build_watchlist_message,
 )
+from app.watchlist.repository import WatchlistRepository
+from app.watchlist.service import WatchlistService
 
 _ADD_TASK_HINT = "Окей, пиши, что за задача — с датой или без, я пойму."
 _JOURNAL_PROMPT = "Что запишем в дневник? Пиши как есть — сохраню без изменений."
@@ -82,6 +86,7 @@ _MENU_ACTIONS = {
     MENU_ADD_TASK: "add_task",
     MENU_JOURNAL: "journal",
     MENU_INSIGHTS: "insights",
+    MENU_WATCHLIST: "watchlist",
     MENU_HELP: "help",
 }
 
@@ -139,6 +144,9 @@ async def handle_text_message(
     if menu_action == "insights":
         await _send_insights(update)
         return
+    if menu_action == "watchlist":
+        await _send_watchlist_keyboard(update)
+        return
 
     intent = parse_intent(text).intent
     if intent is Intent.LIST_TASKS:
@@ -187,6 +195,19 @@ async def _send_goals_keyboard(update: Update) -> None:
         service = GoalService(GoalRepository(session))
         goals = await service.list_active_goals(telegram_user_id)
         text, markup = build_goals_message(goals)
+
+    await update.message.reply_text(text, reply_markup=markup)
+
+
+async def _send_watchlist_keyboard(update: Update) -> None:
+    if update.message is None or update.effective_user is None:
+        return
+    telegram_user_id = update.effective_user.id
+
+    async with AsyncSessionLocal() as session:
+        service = WatchlistService(WatchlistRepository(session))
+        items = await service.list_active_items(telegram_user_id)
+        text, markup = build_watchlist_message(items)
 
     await update.message.reply_text(text, reply_markup=markup)
 
@@ -257,6 +278,7 @@ async def _reply_via_engine(
                 HabitService(HabitRepository(session)),
                 MemoryService(MemoryRepository(session)),
             ),
+            watchlist_service=WatchlistService(WatchlistRepository(session)),
         )
         reply = await engine.handle_message(telegram_user_id, text)
 

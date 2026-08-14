@@ -237,3 +237,62 @@ def test_recall_without_query_is_still_recall():
 
     assert result.intent is Intent.RECALL
     assert result.title is None
+
+
+# --- ADD_WATCHLIST_ITEM ------------------------------------------------
+
+
+def test_watchlist_movie_specific_phrase():
+    result = parse_intent("посмотреть фильм Дюна")
+
+    assert result.intent is Intent.ADD_WATCHLIST_ITEM
+    assert result.media_type == "movie"
+    assert result.title == "Дюна"
+
+
+def test_watchlist_series_phrase():
+    result = parse_intent("посмотреть сериал Оффер")
+
+    assert result.intent is Intent.ADD_WATCHLIST_ITEM
+    assert result.media_type == "movie"
+    assert result.title == "Оффер"
+
+
+def test_watchlist_book_specific_phrase():
+    result = parse_intent("прочитать книгу Дюна")
+
+    assert result.intent is Intent.ADD_WATCHLIST_ITEM
+    assert result.media_type == "book"
+    assert result.title == "Дюна"
+
+
+def test_watchlist_generic_want_phrase():
+    result = parse_intent("хочу прочитать Мастер и Маргарита")
+
+    assert result.intent is Intent.ADD_WATCHLIST_ITEM
+    assert result.media_type == "book"
+    assert result.title == "Мастер и Маргарита"
+
+
+def test_watchlist_bare_verb_is_other():
+    result = parse_intent("посмотреть Дюна")
+
+    assert result.intent is Intent.ADD_WATCHLIST_ITEM
+    assert result.media_type == "other"
+    assert result.title == "Дюна"
+
+
+def test_watchlist_empty_title():
+    result = parse_intent("посмотреть фильм")
+
+    assert result.intent is Intent.ADD_WATCHLIST_ITEM
+    assert result.title == ""
+
+
+def test_watchlist_specific_phrase_wins_over_generic():
+    # "посмотреть фильм X" не должно отрезать только "посмотреть",
+    # оставляя "фильм X" в названии.
+    result = parse_intent("Хочу посмотреть фильм Дюна")
+
+    assert result.media_type == "movie"
+    assert "фильм" not in result.title

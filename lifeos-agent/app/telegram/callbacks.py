@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
+from app.ai.client import get_ai_client
 from app.db.session import AsyncSessionLocal
 from app.goals.repository import GoalRepository
 from app.goals.service import GoalService
@@ -22,7 +23,10 @@ from app.telegram.keyboards import (
     build_habits_message,
     build_task_confirmation_message,
     build_tasks_message,
+    build_watchlist_message,
 )
+from app.watchlist.repository import WatchlistRepository
+from app.watchlist.service import WatchlistService
 
 # 9:00 — тот же час по умолчанию, что и у date_parser.py для дат без
 # явного времени (не импортируем оттуда приватную константу).
@@ -63,6 +67,10 @@ async def handle_callback_query(
             )
         elif domain == "g":
             text, markup = await _handle_goal_action(
+                session, action, item_id, telegram_user_id
+            )
+        elif domain == "w":
+            text, markup = await _handle_watchlist_action(
                 session, action, item_id, telegram_user_id
             )
         else:
@@ -131,3 +139,22 @@ async def _handle_goal_action(
         await service.delete_goal(int(item_id))
     goals = await service.list_active_goals(telegram_user_id)
     return build_goals_message(goals)
+
+
+async def _handle_watchlist_action(
+    session: AsyncSession, action: str, item_id: str, telegram_user_id: int
+) -> tuple[str, InlineKeyboardMarkup]:
+    service = WatchlistService(WatchlistRepository(session))
+    if action == "d":
+        await service.mark_done(int(item_id))
+    elif action == "x":
+        await service.delete_item(int(item_id))
+    elif action == "r":
+        recommendation = await service.pick_recommendation(
+            telegram_user_id, get_ai_client()
+        )
+        text = recommendation or "Смотреть/читать пока нечего."
+        return text, InlineKeyboardMarkup([])
+
+    items = await service.list_active_items(telegram_user_id)
+    return build_watchlist_message(items)

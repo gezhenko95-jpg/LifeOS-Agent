@@ -11,13 +11,16 @@ from app.telegram.keyboards import (
     MENU_INSIGHTS,
     MENU_JOURNAL,
     MENU_TASKS,
+    MENU_WATCHLIST,
     build_goals_message,
     build_habits_message,
     build_main_menu,
     build_task_confirmation_message,
     build_task_quick_actions_keyboard,
     build_tasks_message,
+    build_watchlist_message,
 )
+from app.watchlist.models import WatchlistItem
 
 
 def _task(id_, title="Купить молоко", priority="normal", due_date=None) -> Task:
@@ -180,14 +183,15 @@ def test_main_menu_has_expected_buttons_in_rows():
         MENU_ADD_TASK,
         MENU_JOURNAL,
         MENU_INSIGHTS,
+        MENU_WATCHLIST,
         MENU_HELP,
     ]
-    # Первая, предпоследняя и последняя строка — по одной кнопке (во всю
-    # ширину), средние — по две в ряд (как на скрине-референсе пользователя).
+    # Первая и последняя строка — по одной кнопке (во всю ширину),
+    # средние — по две в ряд (как на скрине-референсе пользователя).
     assert len(rows[0]) == 1
     assert len(rows[1]) == 2
     assert len(rows[2]) == 2
-    assert len(rows[3]) == 1
+    assert len(rows[3]) == 2
     assert len(rows[4]) == 1
 
 
@@ -195,3 +199,39 @@ def test_main_menu_resizes_to_fit():
     markup = build_main_menu()
 
     assert markup.resize_keyboard is True
+
+
+def _watchlist_item(id_, title="Дюна", media_type="movie") -> WatchlistItem:
+    return WatchlistItem(id=id_, telegram_user_id=1, title=title, media_type=media_type)
+
+
+def test_watchlist_message_empty():
+    text, markup = build_watchlist_message([])
+
+    assert "нечего" in text
+    assert len(markup.inline_keyboard) == 0
+
+
+def test_watchlist_message_shows_items_and_recommend_button():
+    _, markup = build_watchlist_message([_watchlist_item(1), _watchlist_item(2)])
+
+    assert len(markup.inline_keyboard) == 3  # 2 записи + кнопка "Порекомендуй"
+    item_row = markup.inline_keyboard[0]
+    assert item_row[0].callback_data == "w|d|1"
+    assert item_row[1].callback_data == "w|x|1"
+    recommend_row = markup.inline_keyboard[-1]
+    assert recommend_row[0].callback_data == "w|r|0"
+
+
+def test_watchlist_message_shows_media_emoji():
+    _, markup = build_watchlist_message([_watchlist_item(1, media_type="book")])
+
+    assert "📖" in markup.inline_keyboard[0][0].text
+
+
+def test_watchlist_message_caps_at_max_items():
+    items = [_watchlist_item(i) for i in range(1, 15)]
+
+    _, markup = build_watchlist_message(items)
+
+    assert len(markup.inline_keyboard) == 11  # 10 записей + кнопка "Порекомендуй"

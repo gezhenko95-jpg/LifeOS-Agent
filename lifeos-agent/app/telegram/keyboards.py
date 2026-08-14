@@ -16,6 +16,8 @@ callback_data — компактный формат "{домен}|{действ�
   h|d|{id} / h|x|{id} — привычка: отметить сегодня / удалить
   g|u|{id} / g|n|{id} / g|c|{id} / g|x|{id} — цель: +10% / -10% / завершить / удалить
   g|noop — строка-заголовок цели, не действие
+  w|d|{id} / w|x|{id} — watchlist: отметить готовым / удалить
+  w|r|0 — «Порекомендуй» (id не нужен, действует на весь список)
 """
 
 from telegram import (
@@ -28,6 +30,7 @@ from telegram import (
 from app.goals.models import Goal
 from app.habits.models import Habit
 from app.tasks.models import Task
+from app.watchlist.models import WatchlistItem
 
 _MAX_ITEMS = 10
 _LABEL_LIMIT = 45
@@ -40,7 +43,10 @@ MENU_GOALS = "🎯 Цели"
 MENU_ADD_TASK = "➕ Задача"
 MENU_JOURNAL = "📝 Дневник"
 MENU_INSIGHTS = "📊 Инсайты"
+MENU_WATCHLIST = "🎬 Посмотреть"
 MENU_HELP = "❓ Помощь"
+
+_MEDIA_TYPE_EMOJI = {"movie": "🎬", "book": "📖"}
 
 
 def build_main_menu() -> ReplyKeyboardMarkup:
@@ -49,7 +55,7 @@ def build_main_menu() -> ReplyKeyboardMarkup:
         [KeyboardButton(MENU_TASKS)],
         [KeyboardButton(MENU_HABITS), KeyboardButton(MENU_GOALS)],
         [KeyboardButton(MENU_ADD_TASK), KeyboardButton(MENU_JOURNAL)],
-        [KeyboardButton(MENU_INSIGHTS)],
+        [KeyboardButton(MENU_INSIGHTS), KeyboardButton(MENU_WATCHLIST)],
         [KeyboardButton(MENU_HELP)],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -124,6 +130,26 @@ def build_habits_message(
             ]
         )
     return "Ваши привычки:", InlineKeyboardMarkup(rows)
+
+
+def build_watchlist_message(
+    items: list[WatchlistItem],
+) -> tuple[str, InlineKeyboardMarkup]:
+    if not items:
+        return "Смотреть/читать пока нечего.", InlineKeyboardMarkup([])
+
+    rows = []
+    for item in items[:_MAX_ITEMS]:
+        emoji = _MEDIA_TYPE_EMOJI.get(item.media_type, "🎯")
+        label = _truncate(f"✅ {emoji} {item.title}")
+        rows.append(
+            [
+                InlineKeyboardButton(label, callback_data=f"w|d|{item.id}"),
+                InlineKeyboardButton("🗑", callback_data=f"w|x|{item.id}"),
+            ]
+        )
+    rows.append([InlineKeyboardButton("🎲 Порекомендуй", callback_data="w|r|0")])
+    return "Хочешь посмотреть/прочитать:", InlineKeyboardMarkup(rows)
 
 
 def build_goals_message(goals: list[Goal]) -> tuple[str, InlineKeyboardMarkup]:

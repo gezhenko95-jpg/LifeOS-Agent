@@ -47,6 +47,19 @@ _HABIT_DONE_KEYWORD = "привычка "
 # Только в начале сообщения — иначе "купить дневник" стало бы записью
 # в дневник вместо задачи.
 _JOURNAL_KEYWORDS = ("дневник", "рефлексия", "итоги дня")
+# Специфичные фразы — раньше общих ("посмотреть фильм" раньше просто
+# "посмотреть"), иначе у "посмотреть фильм X" отрежется только
+# "посмотреть", а "фильм" останется частью названия и media_type будет
+# определён неверно (см. specs/010-media-inbox.md).
+_WATCHLIST_TRIGGERS: tuple[tuple[str, str], ...] = (
+    ("посмотреть сериал", "movie"),
+    ("посмотреть фильм", "movie"),
+    ("прочитать книгу", "book"),
+    ("хочу посмотреть", "movie"),
+    ("хочу прочитать", "book"),
+    ("посмотреть", "other"),
+    ("прочитать", "other"),
+)
 
 
 def parse_intent(text: str) -> ParsedIntent:
@@ -94,6 +107,15 @@ def parse_intent(text: str) -> ParsedIntent:
     if journal_content is not None:
         return ParsedIntent(intent=Intent.JOURNAL_ENTRY, title=journal_content or None)
 
+    watchlist_match = _match_watchlist_trigger(lowered)
+    if watchlist_match:
+        keyword, media_type = watchlist_match
+        return ParsedIntent(
+            intent=Intent.ADD_WATCHLIST_ITEM,
+            title=_remove_keyword(stripped, keyword),
+            media_type=media_type,
+        )
+
     priority, without_priority = _extract_priority(stripped)
     recurrence, without_recurrence = extract_recurrence(without_priority)
     due_date, remaining = extract_due_date(without_recurrence)
@@ -140,6 +162,13 @@ def _extract_journal_entry(stripped: str, lowered: str) -> Optional[str]:
     for keyword in _JOURNAL_KEYWORDS:
         if lowered.startswith(keyword):
             return stripped[len(keyword) :].lstrip(":").strip()
+    return None
+
+
+def _match_watchlist_trigger(lowered: str) -> Optional[tuple[str, str]]:
+    for phrase, media_type in _WATCHLIST_TRIGGERS:
+        if phrase in lowered:
+            return phrase, media_type
     return None
 
 

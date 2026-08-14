@@ -29,6 +29,7 @@ from app.proactive.ai_extract import extract_prompt_answer
 from app.proactive.service import PendingPromptService
 from app.tasks.models import Task
 from app.tasks.service import TaskService
+from app.watchlist.service import WatchlistService
 
 _HELP_TEXT = (
     "Я умею:\n"
@@ -44,6 +45,8 @@ _HELP_TEXT = (
     "«каждый день пить воду»\n"
     "• дневник — «дневник: как прошёл день» (запомню в памяти), или "
     "нажмите «📝 Дневник» в меню — и пишите без префикса\n"
+    "• посмотреть/прочитать позже — «посмотреть фильм Дюна», «прочитать "
+    "книгу X», или кнопка «🎬 Посмотреть» в меню — список со статусами\n"
     "• иногда я сам спрашиваю о целях/привычках/проектах или прошу "
     "дневник — просто ответьте текстом, и я запомню это как надо\n"
     "• /tasks, /habits, /goals — списки с кнопками прямо под сообщением"
@@ -68,6 +71,7 @@ class ConversationEngine:
         ai_client: AIClient | None = None,
         goal_service: GoalService | None = None,
         pending_prompt_service: PendingPromptService | None = None,
+        watchlist_service: WatchlistService | None = None,
     ) -> None:
         self._tasks = task_service
         self._habits = habit_service
@@ -75,6 +79,7 @@ class ConversationEngine:
         self._ai_client = ai_client
         self._goals = goal_service
         self._pending_prompts = pending_prompt_service
+        self._watchlist = watchlist_service
 
     async def handle_message(self, telegram_user_id: int, text: str) -> str:
         if self._pending_prompts is not None:
@@ -230,6 +235,8 @@ class ConversationEngine:
             return await self._habit_done(telegram_user_id, parsed.title or "")
         if parsed.intent is Intent.JOURNAL_ENTRY:
             return await self._journal_entry(telegram_user_id, parsed.title or "")
+        if parsed.intent is Intent.ADD_WATCHLIST_ITEM:
+            return await self._add_watchlist_item(telegram_user_id, parsed)
         return await self._add_task(telegram_user_id, parsed)
 
     async def _add_task(self, telegram_user_id: int, parsed: ParsedIntent) -> str:
@@ -353,6 +360,23 @@ class ConversationEngine:
             else ""
         )
         return f"Готово: «{habit.title}» — 🔥 {streak} дней подряд.{celebration}{note}"
+
+    async def _add_watchlist_item(
+        self, telegram_user_id: int, parsed: ParsedIntent
+    ) -> str:
+        if not parsed.title:
+            return "Что посмотреть-то? Например: «посмотреть фильм Дюна»."
+        if self._watchlist is None:
+            # Сервис не подключён (не должно случаться в проде, см.
+            # handlers.py) — не терять сообщение молча, а хотя бы
+            # сохранить как задачу.
+            return await self._add_task(telegram_user_id, parsed)
+
+        item = await self._watchlist.create_item(
+            telegram_user_id, parsed.title, parsed.media_type or "other"
+        )
+        emoji = {"movie": "🎬", "book": "📖"}.get(item.media_type, "🎯")
+        return f"Добавил в список: «{item.title}» {emoji}"
 
     async def _journal_entry(self, telegram_user_id: int, content: str) -> str:
         if not content:

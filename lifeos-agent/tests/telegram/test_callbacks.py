@@ -3,7 +3,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.db.base import Base
 from app.tasks.models import Task
-from app.telegram.callbacks import _handle_task_action, parse_callback
+from app.telegram.callbacks import (
+    _handle_task_action,
+    _handle_watchlist_action,
+    parse_callback,
+)
+from app.watchlist.models import WatchlistItem
 
 
 @pytest_asyncio.fixture
@@ -56,6 +61,48 @@ async def test_quick_action_on_missing_task_is_graceful(session):
 
     assert "не активна" in text
     assert len(markup.inline_keyboard) == 0
+
+
+async def _add_watchlist_item(session, **kwargs) -> WatchlistItem:
+    kwargs.setdefault("media_type", "movie")
+    item = WatchlistItem(telegram_user_id=1, title="Дюна", **kwargs)
+    session.add(item)
+    await session.commit()
+    await session.refresh(item)
+    return item
+
+
+async def test_watchlist_action_d_marks_done_and_removes_from_list(session):
+    item = await _add_watchlist_item(session)
+
+    text, markup = await _handle_watchlist_action(session, "d", str(item.id), 1)
+
+    callbacks = [b.callback_data for row in markup.inline_keyboard for b in row]
+    assert f"w|d|{item.id}" not in callbacks
+
+
+async def test_watchlist_action_x_deletes_and_removes_from_list(session):
+    item = await _add_watchlist_item(session)
+
+    text, markup = await _handle_watchlist_action(session, "x", str(item.id), 1)
+
+    callbacks = [b.callback_data for row in markup.inline_keyboard for b in row]
+    assert f"w|x|{item.id}" not in callbacks
+
+
+async def test_watchlist_action_r_recommends_without_ai(session):
+    await _add_watchlist_item(session)
+
+    text, markup = await _handle_watchlist_action(session, "r", "0", 1)
+
+    assert "Как насчёт" in text
+    assert len(markup.inline_keyboard) == 0
+
+
+async def test_watchlist_action_r_on_empty_list(session):
+    text, markup = await _handle_watchlist_action(session, "r", "0", 1)
+
+    assert "нечего" in text
 
 
 def test_parse_task_complete():
