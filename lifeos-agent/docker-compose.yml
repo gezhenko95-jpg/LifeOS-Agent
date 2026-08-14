@@ -22,6 +22,7 @@ services:
     env_file: .env
     environment:
       database_url: postgresql+asyncpg://postgres:postgres@db:5432/lifeos
+      TZ: Europe/Moscow
     ports:
       - "8000:8000"
     depends_on:
@@ -34,6 +35,7 @@ services:
     env_file: .env
     environment:
       database_url: postgresql+asyncpg://postgres:postgres@db:5432/lifeos
+      TZ: Europe/Moscow
     command: ["python", "-m", "app.telegram.runner"]
     depends_on:
       db:

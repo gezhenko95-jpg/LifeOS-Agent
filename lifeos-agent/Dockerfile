@@ -1,5 +1,14 @@
 FROM python:3.11-slim
 
+# tzdata — без него ENV TZ (см. docker-compose.yml) молча не применится:
+# python:slim не включает базу IANA-таймзон по умолчанию, а без неё
+# datetime.now().astimezone()/date.today() внутри контейнера всегда
+# читают UTC, даже если TZ выставлен (баг, из-за которого все
+# ежедневные сообщения приходили на 3 часа позже ожидаемого).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY pyproject.toml README.md ./
