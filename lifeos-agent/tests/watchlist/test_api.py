@@ -6,6 +6,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.api.deps import require_api_token
 from app.db.base import Base
 from app.db.session import get_session
 from app.main import app
@@ -24,6 +25,10 @@ async def client():
             yield session
 
     app.dependency_overrides[get_session] = override_get_session
+    # Аутентификация REST API проверяется отдельно
+    # (tests/api/test_auth.py) — здесь тестируется поведение
+    # эндпоинтов, а не замок на двери.
+    app.dependency_overrides[require_api_token] = lambda: None
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:

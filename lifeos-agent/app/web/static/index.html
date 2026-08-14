@@ -151,6 +151,13 @@
   <span id="userIdStatus"></span>
 </div>
 
+<div class="id-bar">
+  <span>Токен API:</span>
+  <input id="apiTokenInput" type="password" placeholder="из api_token в .env" />
+  <button id="saveApiToken" class="secondary">Сохранить</button>
+  <span id="apiTokenStatus"></span>
+</div>
+
 <div class="grid">
 
   <section class="card">
@@ -218,6 +225,11 @@
 
 <script>
 const STORAGE_KEY = "lifeos_telegram_user_id";
+const TOKEN_KEY = "lifeos_api_token";
+
+function getApiToken() {
+  return localStorage.getItem(TOKEN_KEY) || "";
+}
 
 function getUserId() {
   return localStorage.getItem(STORAGE_KEY) || "";
@@ -233,7 +245,16 @@ function requireUserId() {
 }
 
 async function api(path, options) {
-  const response = await fetch(path, options);
+  // Токен уходит заголовком, а не в query — иначе он осел бы в логах
+  // сервера и в истории браузера.
+  const opts = { ...(options || {}) };
+  opts.headers = { ...(opts.headers || {}), "X-API-Token": getApiToken() };
+
+  const response = await fetch(path, opts);
+  if (response.status === 401 || response.status === 503) {
+    const body = await response.text();
+    throw new Error(`Нет доступа к API — проверьте токен (${response.status}: ${body})`);
+  }
   if (!response.ok && response.status !== 204) {
     const body = await response.text();
     throw new Error(`${response.status}: ${body}`);
@@ -489,6 +510,19 @@ function refreshUserIdStatus() {
   document.getElementById("userIdInput").value = id;
 }
 
+function refreshApiTokenStatus() {
+  document.getElementById("apiTokenStatus").textContent = getApiToken() ? "сохранён" : "не задан";
+}
+
+document.getElementById("saveApiToken").addEventListener("click", async () => {
+  const value = document.getElementById("apiTokenInput").value.trim();
+  if (!value) return;
+  localStorage.setItem(TOKEN_KEY, value);
+  document.getElementById("apiTokenInput").value = "";
+  refreshApiTokenStatus();
+  await loadAll();
+});
+
 document.getElementById("saveUserId").addEventListener("click", async () => {
   const value = document.getElementById("userIdInput").value.trim();
   if (!value) return;
@@ -508,6 +542,7 @@ async function loadAll() {
 }
 
 refreshUserIdStatus();
+refreshApiTokenStatus();
 loadAll();
 </script>
 </body>

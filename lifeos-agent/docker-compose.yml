@@ -1,13 +1,36 @@
+# Порты намеренно публикуются ТОЛЬКО на 127.0.0.1.
+#
+# Docker пишет свои правила в цепочку DOCKER таблицы nat — то есть в обход
+# ufw, который фильтрует INPUT. Публикация "5432:5432" открывает Postgres
+# всему интернету даже при активном ufw, разрешающем только 22/80/443
+# (проверено живым коннектом снаружи — см. AUDIT.md, C-1/C-3).
+#
+# api не нужен снаружи напрямую: наружу смотрит Caddy на 443, он ходит на
+# localhost:8000. db не нужна снаружи вообще — api/bot ходят к ней по
+# внутренней docker-сети (db:5432).
+#
+# Логи ротируются: без max-size json-file растёт безлимитно, а SQL-эхо и
+# httpx уже забивали его мусором (см. AUDIT.md, C-5).
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      # Пароль — из .env (в git не попадает). Дефолт нужен только для
+      # локальной разработки без .env.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: lifeos
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - lifeos_db_data:/var/lib/postgresql/data
     healthcheck:
@@ -19,12 +42,13 @@ services:
   api:
     build: .
     restart: unless-stopped
+    logging: *default-logging
     env_file: .env
     environment:
-      database_url: postgresql+asyncpg://postgres:postgres@db:5432/lifeos
+      database_url: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/lifeos
       TZ: Europe/Moscow
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -32,9 +56,10 @@ services:
   bot:
     build: .
     restart: unless-stopped
+    logging: *default-logging
     env_file: .env
     environment:
-      database_url: postgresql+asyncpg://postgres:postgres@db:5432/lifeos
+      database_url: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/lifeos
       TZ: Europe/Moscow
     command: ["python", "-m", "app.telegram.runner"]
     depends_on:

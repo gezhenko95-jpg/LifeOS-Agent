@@ -18,6 +18,21 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/lifeos"
 
+    # Логировать каждый SQL с параметрами (см. app/db/session.py). Выключено
+    # по умолчанию: параметры — это в том числе тексты дневниковых записей,
+    # а логи контейнера не приватное место (см. AUDIT.md, C-5).
+    sql_echo: bool = False
+
+    # Токен доступа к REST API (заголовок X-API-Token, см. app/api/deps.py).
+    # REST API отдаёт задачи/память/цели по telegram_user_id из query-
+    # параметра — без токена этого достаточно, чтобы прочитать чужой
+    # дневник, зная только Telegram ID (см. AUDIT.md, C-2).
+    #
+    # Пусто = API ЗАКРЫТ ПОЛНОСТЬЮ (401 на всё, кроме /health). Именно так,
+    # а не "пусто = открыт": забытая настройка должна ломать доступ, а не
+    # молча снимать защиту.
+    api_token: str = ""
+
     # Telegram
     telegram_bot_token: str = ""
 

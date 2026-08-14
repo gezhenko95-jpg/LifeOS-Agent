@@ -5,39 +5,55 @@
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api import goals, habits, health, memory, tasks, watchlist
+from app.api.deps import require_api_token
+from app.core.config import get_settings
 
 _WEB_STATIC_DIR = Path(__file__).parent / "web" / "static"
+
+_settings = get_settings()
+_is_production = _settings.environment != "development"
 
 app = FastAPI(
     title="LifeOS Agent",
     description="Personal AI Chief of Staff - операционная система для управления жизнью",
     version="0.1.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    # На проде схема API наружу не отдаётся: /docs публично рисовал полную
+    # карту эндпоинтов (см. AUDIT.md, раздел 7).
+    docs_url=None if _is_production else "/docs",
+    redoc_url=None if _is_production else "/redoc",
+    openapi_url=None if _is_production else "/openapi.json",
 )
 
-# Настройка CORS
+# CORS: allow_origins=["*"] вместе с allow_credentials=True запрещён
+# спецификацией и игнорируется браузерами — фронт /ui ходит на свой же
+# origin, звёздочка ему не нужна (см. AUDIT.md, раздел 7).
+_allowed_origins = (
+    [_settings.public_ui_url.rsplit("/ui", 1)[0]] if _settings.public_ui_url else []
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # TODO: Заменить на конкретные домены в production
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Подключение роутеров
+# Подключение роутеров.
+# Всё, кроме /health, закрыто общим токеном (см. app/api/deps.py) —
+# health нужен снаружи для проверки живости и приватных данных не отдаёт.
+_protected = [Depends(require_api_token)]
+
 app.include_router(health.router, tags=["health"])
-app.include_router(tasks.router, tags=["tasks"])
-app.include_router(memory.router, tags=["memory"])
-app.include_router(habits.router, tags=["habits"])
-app.include_router(goals.router, tags=["goals"])
-app.include_router(watchlist.router, tags=["watchlist"])
+app.include_router(tasks.router, tags=["tasks"], dependencies=_protected)
+app.include_router(memory.router, tags=["memory"], dependencies=_protected)
+app.include_router(habits.router, tags=["habits"], dependencies=_protected)
+app.include_router(goals.router, tags=["goals"], dependencies=_protected)
+app.include_router(watchlist.router, tags=["watchlist"], dependencies=_protected)
 
 # Простейший веб-интерфейс — статическая страница, использует REST API выше.
 app.mount("/ui", StaticFiles(directory=_WEB_STATIC_DIR, html=True), name="ui")

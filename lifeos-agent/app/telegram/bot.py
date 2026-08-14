@@ -2,12 +2,14 @@
 Сборка Telegram Application (python-telegram-bot).
 """
 
+import logging
 from datetime import datetime, time
 
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
     CommandHandler,
+    ContextTypes,
     MessageHandler,
     filters,
 )
@@ -36,6 +38,35 @@ from app.telegram.jobs import (
     send_weekly_digest_job,
 )
 
+logger = logging.getLogger(__name__)
+
+
+def _owner_filter(settings: Settings) -> filters.BaseFilter:
+    """Пускать к боту только владельца (проект single-user, PROJECT.md).
+
+    Без этого фильтра посторонний, нашедший бота, тратил деньги владельца
+    на OpenRouter, грузил свои фото на ЕГО Google Drive (Media Inbox), а
+    его задачи попадали владельцу в чат напоминаниями — джобы намеренно
+    не фильтруют по пользователю (см. AUDIT.md, C-4).
+
+    owner_telegram_user_id=0 (ещё не настроен) — фильтр пропускает всех:
+    иначе свежепоставленный бот не смог бы ответить на /start, который
+    как раз и показывает Telegram ID для настройки.
+    """
+    if not settings.owner_telegram_user_id:
+        return filters.ALL
+    return filters.User(user_id=settings.owner_telegram_user_id)
+
+
+async def log_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Единая точка для необработанных исключений в хендлерах.
+
+    Без неё падение (например, ValueError на кривом callback_data)
+    уходило в лог PTB без контекста, а пользователь не получал ничего и
+    видел «бот завис» (см. AUDIT.md, B-3).
+    """
+    logger.exception("Ошибка при обработке апдейта %s", update, exc_info=context.error)
+
 
 def build_application() -> Application:
     settings = get_settings()
@@ -46,16 +77,22 @@ def build_application() -> Application:
 
     application = Application.builder().token(settings.telegram_bot_token).build()
 
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("tasks", tasks_command))
-    application.add_handler(CommandHandler("habits", habits_command))
-    application.add_handler(CommandHandler("goals", goals_command))
+    owner = _owner_filter(settings)
+
+    application.add_handler(CommandHandler("start", start_command, filters=owner))
+    application.add_handler(CommandHandler("help", help_command, filters=owner))
+    application.add_handler(CommandHandler("tasks", tasks_command, filters=owner))
+    application.add_handler(CommandHandler("habits", habits_command, filters=owner))
+    application.add_handler(CommandHandler("goals", goals_command, filters=owner))
     application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message)
+        MessageHandler(filters.TEXT & ~filters.COMMAND & owner, handle_text_message)
     )
-    application.add_handler(MessageHandler(filters.PHOTO, handle_photo_message))
+    application.add_handler(MessageHandler(filters.PHOTO & owner, handle_photo_message))
+    # У CallbackQueryHandler нет параметра filters — проверка владельца
+    # живёт внутри самого хендлера (app/telegram/callbacks.py).
     application.add_handler(CallbackQueryHandler(handle_callback_query))
+
+    application.add_error_handler(log_error)
 
     _register_morning_briefing(application, settings)
     _register_evening_reflection(application, settings)

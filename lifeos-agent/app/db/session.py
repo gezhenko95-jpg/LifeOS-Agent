@@ -10,10 +10,20 @@ from sqlalchemy.ext.asyncio import (
 
 from app.core.config import get_settings
 
-# Создаем engine
+_settings = get_settings()
+
+# echo печатает каждый SQL вместе с параметрами — а параметры это тексты
+# дневниковых записей. На проде это утечка личных данных в логи
+# контейнера и лишний оверхед на форматирование строк в горячем пути
+# (см. AUDIT.md, C-5).
+#
+# Выключено по умолчанию и включается ЯВНО через sql_echo=true в .env —
+# не через environment: забыть выставить environment=production легче,
+# чем осознанно включить отладку, а цена забывчивости здесь — приватные
+# записи в логах.
 engine = create_async_engine(
-    get_settings().database_url,
-    echo=True,  # Для отладки в development
+    _settings.database_url,
+    echo=_settings.sql_echo,
 )
 
 # Создаем session factory

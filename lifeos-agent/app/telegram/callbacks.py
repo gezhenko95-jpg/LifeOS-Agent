@@ -7,9 +7,11 @@ from datetime import date, datetime, time, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import InlineKeyboardMarkup, Update
+from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
 from app.ai.client import get_ai_client
+from app.core.config import get_settings
 from app.db.session import AsyncSessionLocal
 from app.goals.repository import GoalRepository
 from app.goals.service import GoalService
@@ -35,11 +37,26 @@ _DEFAULT_HOUR = 9
 logger = logging.getLogger(__name__)
 
 
-def parse_callback(data: str) -> tuple[str, str, str]:
-    """ "t|c|5" -> ("t", "c", "5"). Отдельная чистая функция для тестов."""
-    domain, action, *rest = data.split("|")
-    item_id = rest[0] if rest else ""
+def parse_callback(data: str) -> tuple[str, str, str] | None:
+    """ "t|c|5" -> ("t", "c", "5"). Отдельная чистая функция для тестов.
+
+    None на мусорном значении: раньше строка без "|" роняла распаковку
+    (ValueError), а исключение уходило в лог, оставляя пользователя без
+    ответа (см. AUDIT.md, B-3).
+    """
+    domain, _, rest = data.partition("|")
+    action, _, item_id = rest.partition("|")
+    if not domain or not action:
+        return None
     return domain, action, item_id
+
+
+def _parse_item_id(item_id: str) -> int | None:
+    """None вместо ValueError на нечисловом id (см. parse_callback)."""
+    try:
+        return int(item_id)
+    except ValueError:
+        return None
 
 
 async def handle_callback_query(
@@ -48,10 +65,30 @@ async def handle_callback_query(
     query = update.callback_query
     if query is None or query.data is None or update.effective_user is None:
         return
+
+    # У CallbackQueryHandler нет параметра filters (в отличие от
+    # Message/CommandHandler, см. app/telegram/bot.py), поэтому владельца
+    # проверяем здесь. Без проверки посторонний мог перебором id
+    # выполнять и удалять чужие задачи/привычки/цели — id приходит прямо
+    # из callback_data (см. AUDIT.md, C-4/B-2).
+    owner_id = get_settings().owner_telegram_user_id
+    if owner_id and update.effective_user.id != owner_id:
+        await query.answer("Этот бот личный.", show_alert=True)
+        return
+
     await query.answer()
 
-    domain, action, item_id = parse_callback(query.data)
+    parsed = parse_callback(query.data)
+    if parsed is None:
+        return
+    domain, action, item_id = parsed
     if domain == "g" and action == "noop":
+        return
+
+    # "w|r|0" ("Порекомендуй") действует на весь список, id ему не нужен —
+    # всем остальным действиям нужен корректный числовой id.
+    is_idless_action = domain == "w" and action == "r"
+    if not is_idless_action and _parse_item_id(item_id) is None:
         return
 
     telegram_user_id = update.effective_user.id
@@ -76,7 +113,16 @@ async def handle_callback_query(
         else:
             return
 
-    await query.edit_message_text(text, reply_markup=markup)
+    try:
+        await query.edit_message_text(text, reply_markup=markup)
+    except BadRequest as exc:
+        # "Message is not modified" — обычный двойной тап по кнопке, когда
+        # результат не изменился (например, повторное «готово» на уже
+        # отмеченной привычке). Это не ошибка, ронять хендлер незачем
+        # (см. AUDIT.md, B-4).
+        if "not modified" not in str(exc).lower():
+            raise
+        logger.debug("Сообщение не изменилось, перерисовка пропущена")
 
 
 async def _handle_task_action(
