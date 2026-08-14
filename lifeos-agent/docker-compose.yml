@@ -72,6 +72,10 @@ services:
       # на хосте — контейнер стартует нормально, Media Inbox просто
       # выключен (app/drive/client.py::get_drive_client).
       - ./token.json:/app/token.json:ro
+      # Дампы БД (см. scripts/backup_db.sh): pg_dump кладёт файл на хост,
+      # контейнер бота забирает его отсюда и выгружает на Drive — токен
+      # Диска есть только здесь. :ro — контейнеру достаточно читать.
+      - ./backups:/app/backups:ro
 
 volumes:
   lifeos_db_data:

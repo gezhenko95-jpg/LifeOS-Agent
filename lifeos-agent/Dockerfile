@@ -14,6 +14,9 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY app ./app
 COPY migrations ./migrations
+# scripts/ нужен в образе ради scripts/backup_upload.py — его запускает
+# docker exec из хостового scripts/backup_db.sh (см. docker-compose.yml).
+COPY scripts ./scripts
 COPY alembic.ini ./
 
 RUN pip install --no-cache-dir -e .

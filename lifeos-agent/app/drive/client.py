@@ -76,6 +76,34 @@ class DriveClient:
         self._folder_cache[cache_key] = folder_id
         return folder_id
 
+    def list_files(self, folder_id: str) -> list[dict]:
+        """Файлы в папке: [{"id": ..., "name": ...}, ...], новые сверху.
+
+        Нужен ротации бэкапов (см. app/backup/service.py) — без него
+        старые дампы копились бы на Диске бесконечно."""
+        try:
+            result = (
+                self._service.files()
+                .list(
+                    q=f"'{folder_id}' in parents and trashed = false",
+                    fields="files(id, name)",
+                    orderBy="createdTime desc",
+                    pageSize=100,
+                )
+                .execute()
+            )
+        except HttpError as exc:
+            raise DriveServiceError(
+                f"Не удалось получить список файлов: {exc}"
+            ) from exc
+        return result.get("files", [])
+
+    def delete_file(self, file_id: str) -> None:
+        try:
+            self._service.files().delete(fileId=file_id).execute()
+        except HttpError as exc:
+            raise DriveServiceError(f"Не удалось удалить файл: {exc}") from exc
+
     def upload_file(
         self, folder_id: str, filename: str, content: bytes, mime_type: str
     ) -> str:

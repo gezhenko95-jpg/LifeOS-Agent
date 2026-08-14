@@ -69,3 +69,5 @@ secrets/
 # Google Drive OAuth (Фаза 2 Media Inbox, см. specs/010-media-inbox.md)
 credentials.json
 token.json
+# Дампы БД (см. scripts/backup_db.sh) — локальные копии, не в git
+backups/

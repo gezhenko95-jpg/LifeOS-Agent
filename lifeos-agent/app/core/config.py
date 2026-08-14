@@ -109,6 +109,11 @@ class Settings(BaseSettings):
     # выключена (см. app/drive/client.py::get_drive_client).
     drive_token_file: str = "token.json"
 
+    # Сколько дампов БД держать на Google Drive (см. app/backup/service.py,
+    # scripts/backup_db.sh). Локально на сервере хранится неделя — Диск
+    # нужен как раз на случай, когда сервера уже нет.
+    backup_keep: int = 14
+
     # Публичный адрес /ui (см. app/telegram/handlers.py::_send_site_link,
     # кнопка "🌐 Сайт" в меню) — пусто, пока не задеплоено на постоянный
     # сервер с доменом.

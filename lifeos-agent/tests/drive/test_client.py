@@ -147,3 +147,40 @@ def test_get_drive_client_returns_none_when_token_missing(tmp_path):
     )
 
     assert get_drive_client(settings) is None
+
+
+@patch("app.drive.client.build")
+@patch("app.drive.client.Credentials.from_authorized_user_file")
+def test_list_files_returns_id_and_name(mock_creds, mock_build):
+    """Нужен ротации бэкапов (см. app/backup/service.py)."""
+    service = MagicMock()
+    service.files.return_value.list.return_value.execute.return_value = {
+        "files": [{"id": "a1", "name": "lifeos-2026-08-15.sql.gz"}]
+    }
+    mock_build.return_value = service
+
+    files = DriveClient("token.json").list_files("folder1")
+
+    assert files == [{"id": "a1", "name": "lifeos-2026-08-15.sql.gz"}]
+
+
+@patch("app.drive.client.build")
+@patch("app.drive.client.Credentials.from_authorized_user_file")
+def test_list_files_wraps_http_error(mock_creds, mock_build):
+    service = MagicMock()
+    service.files.return_value.list.return_value.execute.side_effect = _http_error()
+    mock_build.return_value = service
+
+    with pytest.raises(DriveServiceError):
+        DriveClient("token.json").list_files("folder1")
+
+
+@patch("app.drive.client.build")
+@patch("app.drive.client.Credentials.from_authorized_user_file")
+def test_delete_file_wraps_http_error(mock_creds, mock_build):
+    service = MagicMock()
+    service.files.return_value.delete.return_value.execute.side_effect = _http_error()
+    mock_build.return_value = service
+
+    with pytest.raises(DriveServiceError):
+        DriveClient("token.json").delete_file("a1")
