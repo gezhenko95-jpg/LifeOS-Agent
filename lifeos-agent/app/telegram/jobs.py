@@ -130,7 +130,12 @@ async def send_midday_checkin_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     """Дневной слот 14:00 (см. flows/009-daily-rhythm.md) — «как дела» +
     табличка привычек прямо под сообщением (переиспользует
     build_habits_message — то же, что и по команде /habits), чтобы
-    отметить выполненное можно было в один тап, без печати."""
+    отметить выполненное можно было в один тап, без печати.
+
+    Открывает category="journal" (как утренняя/вечерняя рефлексия) —
+    иначе свободный текстовый ответ на "как дела" уходит в обычный
+    разбор намерения ConversationEngine и по умолчанию создаёт задачу
+    (баг: ответ на этот чек-ин распознавался как ADD_TASK)."""
     settings = get_settings()
     telegram_user_id = settings.owner_telegram_user_id
     if not telegram_user_id:
@@ -140,12 +145,18 @@ async def send_midday_checkin_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         habit_service = HabitService(HabitRepository(session))
         habits = await habit_service.list_active_habits(telegram_user_id)
         if not habits:
+            await PendingPromptRepository(session).upsert(
+                telegram_user_id, "journal", _MIDDAY_TEXT_NO_HABITS
+            )
             await context.bot.send_message(
                 chat_id=telegram_user_id, text=_MIDDAY_TEXT_NO_HABITS
             )
             return
         streaks = {h.id: await habit_service.get_streak(h.id) for h in habits}
         _, markup = build_habits_message(habits, streaks)
+        await PendingPromptRepository(session).upsert(
+            telegram_user_id, "journal", _MIDDAY_TEXT
+        )
 
     await context.bot.send_message(
         chat_id=telegram_user_id, text=_MIDDAY_TEXT, reply_markup=markup
