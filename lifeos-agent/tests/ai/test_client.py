@@ -107,3 +107,58 @@ def test_get_ai_client_returns_client_with_key():
     client = get_ai_client(settings)
 
     assert isinstance(client, AIClient)
+
+
+def test_get_ai_client_reuses_same_instance_across_calls():
+    """Раньше каждый вызов строил новый AIClient (и внутри него — новый
+    httpx.AsyncClient, новое TCP/TLS соединение на каждый запрос к
+    OpenRouter, см. AUDIT.md P-4). Хендлеры и джобы дёргают
+    get_ai_client() на каждое сообщение — без переиспользования это
+    сводило на нет весь смысл keep-alive."""
+    settings = Settings(
+        telegram_bot_token="x",
+        openrouter_api_key="sk-same",
+        openrouter_model="m",
+        openrouter_base_url="https://openrouter.ai/api/v1",
+    )
+
+    first = get_ai_client(settings)
+    second = get_ai_client(settings)
+
+    assert first is second
+
+
+def test_get_ai_client_reuses_the_underlying_http_client():
+    """Не только AIClient один и тот же — httpx.AsyncClient внутри тоже
+    не пересоздаётся, иначе keep-alive соединение всё равно рвалось бы
+    на каждый вызов."""
+    settings = Settings(
+        telegram_bot_token="x",
+        openrouter_api_key="sk-same-http",
+        openrouter_model="m",
+        openrouter_base_url="https://openrouter.ai/api/v1",
+    )
+
+    first = get_ai_client(settings)
+    second = get_ai_client(settings)
+
+    assert first._http is second._http
+
+
+def test_get_ai_client_gives_separate_instances_for_different_keys():
+    """Разный api_key — разный клиент: смешивать соединения/авторизацию
+    двух разных конфигураций было бы хуже, чем не кэшировать вовсе."""
+    settings_a = Settings(
+        telegram_bot_token="x",
+        openrouter_api_key="sk-a",
+        openrouter_model="m",
+        openrouter_base_url="https://openrouter.ai/api/v1",
+    )
+    settings_b = Settings(
+        telegram_bot_token="x",
+        openrouter_api_key="sk-b",
+        openrouter_model="m",
+        openrouter_base_url="https://openrouter.ai/api/v1",
+    )
+
+    assert get_ai_client(settings_a) is not get_ai_client(settings_b)
