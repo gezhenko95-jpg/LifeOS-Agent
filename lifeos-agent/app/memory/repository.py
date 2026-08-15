@@ -14,6 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.memory.models import MemoryEntry, MemoryType
 
 
+def _escape_like(text: str) -> str:
+    """Экранировать %, _ и сам escape-символ — иначе поиск "5% скидка"
+    вёл бы себя как SQL-паттерн, а не как буквальная подстрока (Python
+    `in`, который эта функция заменяет, был буквальным по определению)."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 class MemoryRepository:
     """Доступ к таблице `memory_entries` через AsyncSession."""
 
@@ -56,6 +63,31 @@ class MemoryRepository:
             MemoryEntry.type == type.value,
             MemoryEntry.created_at >= since,
         )
+        result = await self._session.execute(query)
+        return list(result.scalars().all())
+
+    async def search(
+        self,
+        telegram_user_id: int,
+        needle: str,
+        type: Optional[MemoryType] = None,
+        include_archived: bool = False,
+    ) -> list[MemoryEntry]:
+        """Подстрока в content, регистронезависимо, в БД (ILIKE) — раньше
+        MemoryService.search тянул ВСЕ записи пользователя и фильтровал
+        их в Python (см. AUDIT.md, P-2): на каждое "напомни про X" из
+        памяти выгружалась целиком вся история, лишь бы найти несколько
+        строк. Порядок (created_at desc) как у list_by_user, чтобы
+        поведение не поменялось для вызывающего кода."""
+        query = select(MemoryEntry).where(
+            MemoryEntry.telegram_user_id == telegram_user_id,
+            MemoryEntry.content.ilike(f"%{_escape_like(needle)}%", escape="\\"),
+        )
+        if type is not None:
+            query = query.where(MemoryEntry.type == type.value)
+        if not include_archived:
+            query = query.where(MemoryEntry.archived.is_(False))
+        query = query.order_by(MemoryEntry.created_at.desc())
         result = await self._session.execute(query)
         return list(result.scalars().all())
 

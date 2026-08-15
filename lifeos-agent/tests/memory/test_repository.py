@@ -7,11 +7,12 @@ tests/tasks/test_completed_repository.py) — нужен Personal Insights
 from datetime import datetime, timedelta, timezone
 
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.db.base import Base
 from app.memory.models import MemoryEntry, MemoryType
 from app.memory.repository import MemoryRepository
+from tests.support import sqlite_engine
 
 NOW = datetime.now(timezone.utc)
 WEEK_AGO = NOW - timedelta(days=7)
@@ -19,7 +20,10 @@ WEEK_AGO = NOW - timedelta(days=7)
 
 @pytest_asyncio.fixture
 async def session():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    # sqlite_engine (не create_async_engine напрямую) — MemoryRepository
+    # .search использует ILIKE, а встроенный lower() у SQLite не понимает
+    # кириллицу (см. tests/support.py).
+    engine = sqlite_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -126,3 +130,103 @@ async def test_list_missing_embeddings_respects_limit(session):
     entries = await repository.list_missing_embeddings(limit=2)
 
     assert len(entries) == 2
+
+
+# --- MemoryRepository.search: фильтр в БД, не в Python (AUDIT.md, P-2) ---
+
+
+async def test_search_finds_case_insensitive_substring(session):
+    entry = MemoryEntry(
+        telegram_user_id=1, type="fact", content="Живу в Москве", source="manual"
+    )
+    session.add(entry)
+    await session.commit()
+    repo = MemoryRepository(session)
+
+    results = await repo.search(1, "москве")
+
+    assert len(results) == 1
+
+
+async def test_search_percent_is_treated_literally(session):
+    session.add_all(
+        [
+            MemoryEntry(
+                telegram_user_id=1,
+                type="fact",
+                content="Скидка 5% на всё",
+                source="manual",
+            ),
+            MemoryEntry(
+                telegram_user_id=1,
+                type="fact",
+                content="Другая запись",
+                source="manual",
+            ),
+        ]
+    )
+    await session.commit()
+    repo = MemoryRepository(session)
+
+    results = await repo.search(1, "5%")
+
+    assert len(results) == 1
+    assert "5%" in results[0].content
+
+
+async def test_search_excludes_archived_by_default(session):
+    session.add(
+        MemoryEntry(
+            telegram_user_id=1,
+            type="fact",
+            content="Живу в Москве",
+            source="manual",
+            archived=True,
+        )
+    )
+    await session.commit()
+    repo = MemoryRepository(session)
+
+    results = await repo.search(1, "москве")
+
+    assert results == []
+
+
+async def test_search_respects_type_filter(session):
+    session.add_all(
+        [
+            MemoryEntry(
+                telegram_user_id=1,
+                type="fact",
+                content="Живу в Москве",
+                source="manual",
+            ),
+            MemoryEntry(
+                telegram_user_id=1,
+                type="journal",
+                content="Гулял по Москве",
+                source="manual",
+            ),
+        ]
+    )
+    await session.commit()
+    repo = MemoryRepository(session)
+
+    results = await repo.search(1, "москве", type=MemoryType.FACT)
+
+    assert len(results) == 1
+    assert results[0].type == "fact"
+
+
+async def test_search_ignores_other_users_entries(session):
+    session.add(
+        MemoryEntry(
+            telegram_user_id=2, type="fact", content="Живу в Москве", source="manual"
+        )
+    )
+    await session.commit()
+    repo = MemoryRepository(session)
+
+    results = await repo.search(1, "москве")
+
+    assert results == []

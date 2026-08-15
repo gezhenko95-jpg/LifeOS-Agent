@@ -13,6 +13,14 @@ def repository():
     repo = AsyncMock()
     repo.add.side_effect = lambda entry: entry
     repo.save.side_effect = lambda entry: entry
+    # Реальная фильтрация теперь в БД (см. app/memory/repository.py,
+    # AUDIT.md P-2). Настоящая SQL-версия проверяется отдельно, против
+    # SQLite: tests/memory/test_repository.py.
+    repo.search.side_effect = lambda telegram_user_id, needle, type=None: [
+        entry
+        for entry in repo.list_by_user.return_value
+        if needle.lower() in entry.content.lower()
+    ]
     return repo
 
 

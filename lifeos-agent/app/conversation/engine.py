@@ -386,9 +386,10 @@ class ConversationEngine:
         habits = await self._habits.list_active_habits(telegram_user_id)
         if not habits:
             return "Активных привычек нет."
+        streaks = await self._habits.get_streaks_bulk([h.id for h in habits])
         lines = []
         for index, habit in enumerate(habits, start=1):
-            streak = await self._habits.get_streak(habit.id)
+            streak = streaks.get(habit.id, 0)
             suffix = f" — 🔥 {streak} дней подряд" if streak > 0 else ""
             lines.append(f"{index}. {habit.title}{suffix}")
         return "\n".join(lines)

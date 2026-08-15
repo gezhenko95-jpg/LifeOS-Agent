@@ -5,6 +5,7 @@
 `habit_logs`. Никакой бизнес-логики (расчёт стрика — в service.py).
 """
 
+from collections import defaultdict
 from datetime import date
 from typing import Optional
 
@@ -12,6 +13,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.habits.models import Habit, HabitLog
+
+
+def _escape_like(text: str) -> str:
+    """Экранировать %, _ и сам escape-символ (см. app/tasks/repository.py
+    — тот же приём, здесь не переиспользован ради избежания циклического
+    импорта между доменами)."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 class HabitRepository:
@@ -33,6 +41,21 @@ class HabitRepository:
         query = select(Habit).where(Habit.telegram_user_id == telegram_user_id)
         if not include_archived:
             query = query.where(Habit.archived.is_(False))
+        query = query.order_by(Habit.created_at)
+        result = await self._session.execute(query)
+        return list(result.scalars().all())
+
+    async def find_active_by_title(
+        self, telegram_user_id: int, needle: str
+    ) -> list[Habit]:
+        """Активные привычки, чьё название содержит needle — фильтр в БД
+        (см. AUDIT.md, P-2), а не "загрузить все и отфильтровать в
+        Python"."""
+        query = select(Habit).where(
+            Habit.telegram_user_id == telegram_user_id,
+            Habit.archived.is_(False),
+            Habit.title.ilike(f"%{_escape_like(needle)}%", escape="\\"),
+        )
         query = query.order_by(Habit.created_at)
         result = await self._session.execute(query)
         return list(result.scalars().all())
@@ -63,3 +86,25 @@ class HabitRepository:
         )
         result = await self._session.execute(query)
         return list(result.scalars().all())
+
+    async def list_logs_for_habits(
+        self, habit_ids: list[int]
+    ) -> dict[int, list[HabitLog]]:
+        """Логи сразу для нескольких привычек, одним запросом.
+
+        Экран со списком привычек (или брифинг/дайджест) считает стрик
+        КАЖДОЙ привычки — без этого метода list_logs вызывался бы в
+        цикле, по одному запросу на привычку (см. AUDIT.md, P-1). Пустой
+        список на входе — пустой словарь: WHERE habit_id IN () в
+        SQLAlchemy валиден, но экономим один поход к БД впустую.
+        """
+        if not habit_ids:
+            return {}
+
+        query = select(HabitLog).where(HabitLog.habit_id.in_(habit_ids))
+        result = await self._session.execute(query)
+
+        grouped: dict[int, list[HabitLog]] = defaultdict(list)
+        for log in result.scalars():
+            grouped[log.habit_id].append(log)
+        return dict(grouped)

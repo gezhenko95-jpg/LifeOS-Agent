@@ -98,7 +98,7 @@ async def test_habit_streak_break_nudge():
     goal_service.list_active_goals.return_value = []
     habit_service = AsyncMock()
     habit_service.list_active_habits.return_value = [_habit("Читать", id=1)]
-    habit_service.days_since_last_completion.return_value = 2
+    habit_service.days_since_last_completion_bulk.return_value = {1: 2}
 
     lines = await build_nudges(1, goal_service, habit_service)
 
@@ -112,7 +112,7 @@ async def test_habit_streak_break_not_nudged_outside_the_day_after():
     goal_service.list_active_goals.return_value = []
     habit_service = AsyncMock()
     habit_service.list_active_habits.return_value = [_habit("Читать", id=1)]
-    habit_service.days_since_last_completion.return_value = 5
+    habit_service.days_since_last_completion_bulk.return_value = {1: 5}
 
     lines = await build_nudges(1, goal_service, habit_service)
 
@@ -124,7 +124,7 @@ async def test_habit_never_completed_not_nudged():
     goal_service.list_active_goals.return_value = []
     habit_service = AsyncMock()
     habit_service.list_active_habits.return_value = [_habit("Читать", id=1)]
-    habit_service.days_since_last_completion.return_value = None
+    habit_service.days_since_last_completion_bulk.return_value = {1: None}
 
     lines = await build_nudges(1, goal_service, habit_service)
 
@@ -138,7 +138,7 @@ async def test_goal_and_habit_nudges_combined():
     ]
     habit_service = AsyncMock()
     habit_service.list_active_habits.return_value = [_habit("Читать", id=1)]
-    habit_service.days_since_last_completion.return_value = 2
+    habit_service.days_since_last_completion_bulk.return_value = {1: 2}
 
     lines = await build_nudges(1, goal_service, habit_service)
 

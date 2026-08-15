@@ -357,7 +357,7 @@ async def test_list_habits_with_streak(task_service, habit_service, memory_servi
         SimpleNamespace(title="Читать", id=1),
         SimpleNamespace(title="Спорт", id=2),
     ]
-    habit_service.get_streak.side_effect = [3, 0]
+    habit_service.get_streaks_bulk.return_value = {1: 3, 2: 0}
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
     reply = await engine.handle_message(1, "привычки")

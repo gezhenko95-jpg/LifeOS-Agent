@@ -127,10 +127,15 @@ class TaskService:
     async def find_active_by_title(
         self, telegram_user_id: int, title_query: str
     ) -> list[Task]:
-        """Найти активные задачи пользователя по подстроке названия."""
-        query = title_query.strip().lower()
-        tasks = await self.list_active_tasks(telegram_user_id)
-        return [task for task in tasks if query in task.title.lower()]
+        """Найти активные задачи пользователя по подстроке названия.
+
+        Сама фильтрация — в БД (см. app/tasks/repository.py, AUDIT.md
+        P-2); здесь только приоритетная сортировка поверх уже небольшого
+        набора совпадений, как у list_active_tasks."""
+        query = title_query.strip()
+        matches = await self._repository.find_active_by_title(telegram_user_id, query)
+        matches.sort(key=lambda task: _PRIORITY_ORDER.get(task.priority, 1))
+        return matches
 
     async def complete_task_by_title(
         self, telegram_user_id: int, title_query: str

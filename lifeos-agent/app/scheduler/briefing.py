@@ -167,9 +167,10 @@ async def _format_habits_section(
     if not habits:
         return ""
 
+    streaks = await habit_service.get_streaks_bulk([h.id for h in habits])
     lines = ["", "🔁 <b>Привычки</b>"]
     for habit in habits:
-        streak = await habit_service.get_streak(habit.id)
+        streak = streaks.get(habit.id, 0)
         suffix = f" 🔥 {streak}" if streak > 0 else ""
         lines.append(f"   {_esc(habit.title)}{suffix}")
     return "\n".join(lines)

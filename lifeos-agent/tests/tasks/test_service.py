@@ -12,6 +12,18 @@ def repository():
     repo = AsyncMock()
     repo.add.side_effect = lambda task: task
     repo.save.side_effect = lambda task: task
+    # Реальная фильтрация теперь в БД (см. app/tasks/repository.py,
+    # AUDIT.md P-2) — здесь repository замокан, поэтому имитируем ровно
+    # то поведение, которое раньше жило в TaskService.find_active_by_title
+    # (substring, case-insensitive), читая из list_by_user.return_value в
+    # МОМЕНТ ВЫЗОВА (не при создании фикстуры — тесты настраивают
+    # list_by_user уже после получения фикстуры). Настоящая SQL-версия
+    # проверяется отдельно, против SQLite: tests/tasks/test_repository.py.
+    repo.find_active_by_title.side_effect = lambda telegram_user_id, query: [
+        task
+        for task in repo.list_by_user.return_value
+        if query.lower() in task.title.lower()
+    ]
     return repo
 
 

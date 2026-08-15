@@ -88,7 +88,9 @@ async def test_gather_habit_series_has_thirty_days_per_habit():
     habit_service.list_active_habits.return_value = [
         SimpleNamespace(id=1, title="Читать")
     ]
-    habit_service.get_completed_days.return_value = {TODAY, TODAY - timedelta(days=2)}
+    habit_service.get_completed_days_bulk.return_value = {
+        1: {TODAY, TODAY - timedelta(days=2)}
+    }
 
     data = await gather_chart_data(1, task_service, habit_service)
 

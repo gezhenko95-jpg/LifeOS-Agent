@@ -153,7 +153,7 @@ async def send_midday_checkin_job(context: ContextTypes.DEFAULT_TYPE) -> None:
                 chat_id=telegram_user_id, text=_MIDDAY_TEXT_NO_HABITS
             )
             return
-        streaks = {h.id: await habit_service.get_streak(h.id) for h in habits}
+        streaks = await habit_service.get_streaks_bulk([h.id for h in habits])
         _, markup = build_habits_message(habits, streaks)
         await PendingPromptRepository(session).upsert(
             telegram_user_id, "journal", _MIDDAY_TEXT

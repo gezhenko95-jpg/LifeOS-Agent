@@ -81,11 +81,11 @@ class InsightsService:
             return None
 
         since_date = since.date()
+        completed_by_habit = await self._habit_service.get_completed_days_bulk(
+            [h.id for h in habits], since_date
+        )
         completion_counts: Counter[date] = Counter()
-        for habit in habits:
-            completed_days = await self._habit_service.get_completed_days(
-                habit.id, since_date
-            )
+        for completed_days in completed_by_habit.values():
             completion_counts.update(completed_days)
 
         journal_entries = await self._memory_service.list_journal_entries_since(
@@ -105,8 +105,8 @@ class InsightsService:
         if not habits:
             return None
 
-        streaks = {
-            habit.title: await self._habit_service.get_longest_streak(habit.id)
-            for habit in habits
-        }
+        by_id = await self._habit_service.get_longest_streaks_bulk(
+            [h.id for h in habits]
+        )
+        streaks = {habit.title: by_id.get(habit.id, 0) for habit in habits}
         return longest_streak_finding(streaks)

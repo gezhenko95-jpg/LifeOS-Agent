@@ -275,7 +275,7 @@ async def _send_habits_keyboard(update: Update) -> None:
     async with AsyncSessionLocal() as session:
         service = HabitService(HabitRepository(session))
         habits = await service.list_active_habits(telegram_user_id)
-        streaks = {habit.id: await service.get_streak(habit.id) for habit in habits}
+        streaks = await service.get_streaks_bulk([h.id for h in habits])
         text, markup = build_habits_message(habits, streaks)
 
     await update.message.reply_text(

@@ -10,6 +10,7 @@ TODAY = date.today()
 def _empty_habit_service() -> AsyncMock:
     service = AsyncMock()
     service.list_active_habits.return_value = []
+    service.get_completed_days_bulk.return_value = {}
     return service
 
 
@@ -50,10 +51,10 @@ async def test_habits_section_counts_done_today():
         SimpleNamespace(id=2, title="Спорт"),
     ]
     # Читать отмечена сегодня, Спорт — нет
-    habit_service.get_completed_days.side_effect = [
-        {TODAY},
-        {TODAY - timedelta(days=1)},
-    ]
+    habit_service.get_completed_days_bulk.return_value = {
+        1: {TODAY},
+        2: {TODAY - timedelta(days=1)},
+    }
 
     text = await build_evening_checkin_text(1, task_service, habit_service)
 

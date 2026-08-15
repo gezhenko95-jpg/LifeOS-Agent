@@ -198,7 +198,7 @@ async def test_habits_section_shows_streak():
     habit_service.list_active_habits.return_value = [
         SimpleNamespace(id=1, title="Читать")
     ]
-    habit_service.get_streak.return_value = 5
+    habit_service.get_streaks_bulk.return_value = {1: 5}
 
     text = await build_morning_briefing(
         1, task_service, memory_service, habit_service, _empty_goal_service()

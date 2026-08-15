@@ -14,6 +14,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.tasks.models import Task
 
 
+def _escape_like(text: str) -> str:
+    """Экранировать %, _ и сам escape-символ — иначе поиск по названию,
+    содержащему %, вёл бы себя как SQL-паттерн, а не как буквальная
+    подстрока (Python `in`, который эта функция заменяет, был буквальным
+    по определению)."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 class TaskRepository:
     """Доступ к таблице `tasks` через AsyncSession."""
 
@@ -35,6 +43,23 @@ class TaskRepository:
         query = select(Task).where(Task.telegram_user_id == telegram_user_id)
         if status is not None:
             query = query.where(Task.status == status)
+        query = query.order_by(Task.created_at)
+        result = await self._session.execute(query)
+        return list(result.scalars().all())
+
+    async def find_active_by_title(
+        self, telegram_user_id: int, needle: str
+    ) -> list[Task]:
+        """Активные задачи, чьё название содержит needle — фильтр в БД
+        (см. AUDIT.md, P-2), а не "загрузить все активные и отфильтровать
+        в Python". Порядок — created_at, как у list_by_user; приоритетную
+        пересортировку делает TaskService (набор совпадений маленький,
+        сортировать его в Python дёшево)."""
+        query = select(Task).where(
+            Task.telegram_user_id == telegram_user_id,
+            Task.status == "active",
+            Task.title.ilike(f"%{_escape_like(needle)}%", escape="\\"),
+        )
         query = query.order_by(Task.created_at)
         result = await self._session.execute(query)
         return list(result.scalars().all())

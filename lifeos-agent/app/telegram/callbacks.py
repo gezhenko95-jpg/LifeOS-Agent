@@ -167,7 +167,7 @@ async def _handle_habit_action(
     elif action == "x":
         await service.delete_habit(int(item_id))
     habits = await service.list_active_habits(telegram_user_id)
-    streaks = {habit.id: await service.get_streak(habit.id) for habit in habits}
+    streaks = await service.get_streaks_bulk([h.id for h in habits])
     return build_habits_message(habits, streaks)
 
 

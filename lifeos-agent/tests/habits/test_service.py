@@ -13,6 +13,14 @@ TODAY = date.today()
 def repository():
     repo = AsyncMock()
     repo.add.side_effect = lambda habit: habit
+    # Реальная фильтрация теперь в БД (см. app/habits/repository.py,
+    # AUDIT.md P-2). Настоящая SQL-версия проверяется отдельно, против
+    # SQLite: tests/habits/test_repository.py.
+    repo.find_active_by_title.side_effect = lambda telegram_user_id, query: [
+        habit
+        for habit in repo.list_by_user.return_value
+        if query.lower() in habit.title.lower()
+    ]
     return repo
 
 
@@ -250,3 +258,97 @@ async def test_delete_habit_not_found(repository):
     result = await service.delete_habit(999)
 
     assert result is None
+
+
+# --- пакетные методы: одним запросом на несколько привычек (P-1) ---
+
+
+def _log(habit_id: int, on: date) -> HabitLog:
+    return HabitLog(habit_id=habit_id, completed_on=on)
+
+
+async def test_get_streaks_bulk_uses_a_single_repository_call(repository):
+    """Экран со списком привычек считает стрик каждой — без пакетного
+    метода это было бы N запросов на N привычек (см. AUDIT.md, P-1)."""
+    repository.list_logs_for_habits.return_value = {
+        1: [_log(1, TODAY), _log(1, TODAY - timedelta(days=1))],
+        2: [_log(2, TODAY - timedelta(days=5))],
+    }
+    service = HabitService(repository)
+
+    streaks = await service.get_streaks_bulk([1, 2, 3])
+
+    assert streaks == {1: 2, 2: 0, 3: 0}
+    repository.list_logs_for_habits.assert_awaited_once_with([1, 2, 3])
+    repository.list_logs.assert_not_awaited()
+
+
+async def test_get_streaks_bulk_matches_single_get_streak(repository):
+    """Пакетный и одиночный путь должны сходиться в одинаковом ответе —
+    иначе список привычек и подтверждение после отметки покажут разные
+    цифры для одной и той же привычки."""
+    logs = [_log(1, TODAY), _log(1, TODAY - timedelta(days=1))]
+    repository.list_logs_for_habits.return_value = {1: logs}
+    repository.list_logs.return_value = logs
+    service = HabitService(repository)
+
+    bulk = await service.get_streaks_bulk([1])
+    single = await service.get_streak(1)
+
+    assert bulk[1] == single == 2
+
+
+async def test_get_streaks_bulk_empty_list(repository):
+    """Пустой список привычек — пустой результат. Сама защита от
+    похода в БД впустую живёт в репозитории (см. test_repository.py),
+    сервис её не дублирует."""
+    repository.list_logs_for_habits.return_value = {}
+    service = HabitService(repository)
+
+    streaks = await service.get_streaks_bulk([])
+
+    assert streaks == {}
+
+
+async def test_get_longest_streaks_bulk(repository):
+    repository.list_logs_for_habits.return_value = {
+        1: [
+            _log(1, TODAY - timedelta(days=10)),
+            _log(1, TODAY - timedelta(days=9)),
+            _log(1, TODAY - timedelta(days=8)),
+            _log(1, TODAY),
+        ]
+    }
+    service = HabitService(repository)
+
+    streaks = await service.get_longest_streaks_bulk([1, 2])
+
+    assert streaks == {1: 3, 2: 0}
+
+
+async def test_get_completed_days_bulk_filters_by_since(repository):
+    since = TODAY - timedelta(days=2)
+    repository.list_logs_for_habits.return_value = {
+        1: [
+            _log(1, TODAY),
+            _log(1, TODAY - timedelta(days=1)),
+            _log(1, TODAY - timedelta(days=10)),  # раньше since — не входит
+        ]
+    }
+    service = HabitService(repository)
+
+    result = await service.get_completed_days_bulk([1], since)
+
+    assert result == {1: {TODAY, TODAY - timedelta(days=1)}}
+
+
+async def test_days_since_last_completion_bulk(repository):
+    repository.list_logs_for_habits.return_value = {
+        1: [_log(1, TODAY - timedelta(days=3))],
+        # 2 отсутствует в ответе репозитория — ни разу не отмечалась
+    }
+    service = HabitService(repository)
+
+    result = await service.days_since_last_completion_bulk([1, 2])
+
+    assert result == {1: 3, 2: None}

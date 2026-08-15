@@ -46,7 +46,13 @@ async def list_habits(
     telegram_user_id: int, service: HabitService = Depends(get_habit_service)
 ) -> list[HabitRead]:
     habits = await service.list_active_habits(telegram_user_id)
-    return [await _to_read_model(habit, service) for habit in habits]
+    streaks = await service.get_streaks_bulk([h.id for h in habits])
+    return [
+        HabitRead.model_validate(habit).model_copy(
+            update={"streak": streaks.get(habit.id, 0)}
+        )
+        for habit in habits
+    ]
 
 
 @router.post("/{habit_id}/complete", response_model=HabitRead)

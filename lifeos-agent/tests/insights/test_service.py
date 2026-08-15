@@ -49,8 +49,8 @@ async def test_longest_streak_finding_present_without_tasks():
     task_service, habit_service, memory_service = _empty_services()
     habit = Habit(id=1, telegram_user_id=1, title="Чтение")
     habit_service.list_active_habits.return_value = [habit]
-    habit_service.get_completed_days.return_value = set()
-    habit_service.get_longest_streak.return_value = 5
+    habit_service.get_completed_days_bulk.return_value = {1: set()}
+    habit_service.get_longest_streaks_bulk.return_value = {1: 5}
     memory_service.list_journal_entries_since.return_value = []
     service = InsightsService(task_service, habit_service, memory_service)
 

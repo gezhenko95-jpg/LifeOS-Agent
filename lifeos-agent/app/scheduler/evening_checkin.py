@@ -51,11 +51,11 @@ async def build_evening_checkin_text(
     )
 
     habits = await habit_service.list_active_habits(telegram_user_id)
-    done_today = 0
-    for habit in habits:
-        completed_days = await habit_service.get_completed_days(habit.id, date.today())
-        if date.today() in completed_days:
-            done_today += 1
+    today = date.today()
+    completed_by_habit = await habit_service.get_completed_days_bulk(
+        [h.id for h in habits], today
+    )
+    done_today = sum(1 for days in completed_by_habit.values() if today in days)
 
     lines = [
         "🌙 <b>Итоги дня</b>",

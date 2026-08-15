@@ -44,10 +44,13 @@ async def _goal_deadline_nudges(
 async def _habit_streak_break_nudges(
     telegram_user_id: int, habit_service: HabitService
 ) -> list[str]:
+    habits = await habit_service.list_active_habits(telegram_user_id)
+    days_since_by_habit = await habit_service.days_since_last_completion_bulk(
+        [h.id for h in habits]
+    )
     lines = []
-    for habit in await habit_service.list_active_habits(telegram_user_id):
-        days_since = await habit_service.days_since_last_completion(habit.id)
-        if days_since == _STREAK_BREAK_DAYS:
+    for habit in habits:
+        if days_since_by_habit.get(habit.id) == _STREAK_BREAK_DAYS:
             lines.append(f"💔 Стрик «{habit.title}» прервался — начать заново сегодня?")
     return lines
 

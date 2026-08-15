@@ -89,9 +89,11 @@ class MemoryService:
         query: str,
         type: Optional[MemoryType] = None,
     ) -> list[MemoryEntry]:
-        needle = query.strip().lower()
-        entries = await self._repository.list_by_user(telegram_user_id, type=type)
-        return [entry for entry in entries if needle in entry.content.lower()]
+        """Подстрока в content, регистронезависимо — фильтруется в БД
+        (см. app/memory/repository.py::search, AUDIT.md P-2), не тянет
+        всю историю пользователя в Python ради нескольких строк."""
+        needle = query.strip()
+        return await self._repository.search(telegram_user_id, needle, type=type)
 
     async def semantic_search(
         self,
