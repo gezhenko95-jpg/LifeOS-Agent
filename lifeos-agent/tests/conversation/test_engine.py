@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.conversation.engine import ConversationEngine
+from app.conversation.intent import Intent, ParsedIntent
 
 
 @pytest.fixture
@@ -67,6 +68,44 @@ async def test_add_task_result_includes_created_task(
     result = await engine.handle_message(1, "Купить молоко")
 
     assert result.created_task is task
+
+
+async def test_handle_message_uses_pre_parsed_intent_when_given(
+    task_service, habit_service, memory_service, monkeypatch
+):
+    """Раньше handlers.py разбирал text (чтобы решить, не LIST_* ли это
+    для inline-клавиатуры), а движок разбирал тот же text ЕЩЁ РАЗ —
+    двойной parse_intent на одно сообщение (см. AUDIT.md, A-5). Если
+    вызывающий код уже разобрал text и передал результат — движок не
+    должен звать parse_intent повторно."""
+    spy = AsyncMock()
+    monkeypatch.setattr("app.conversation.engine.parse_intent", spy)
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+    already_parsed = ParsedIntent(intent=Intent.HELP)
+
+    await engine.handle_message(1, "❓ Помощь", parsed=already_parsed)
+
+    spy.assert_not_called()
+
+
+async def test_handle_message_parses_when_not_given(
+    task_service, habit_service, memory_service, monkeypatch
+):
+    import app.conversation.engine as engine_module
+
+    real_parse_intent = engine_module.parse_intent
+    calls = []
+
+    def _spy(text):
+        calls.append(text)
+        return real_parse_intent(text)
+
+    monkeypatch.setattr("app.conversation.engine.parse_intent", _spy)
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    await engine.handle_message(1, "/help")
+
+    assert calls == ["/help"]
 
 
 async def test_non_task_result_has_no_created_task(
