@@ -16,7 +16,7 @@ from telegram import Update
 from telegram.constants import ChatAction, ParseMode
 from telegram.ext import ContextTypes
 
-from app.ai.client import get_ai_client
+from app.ai.client import AIServiceError, get_ai_client
 from app.conversation.intent import Intent, ParsedIntent
 from app.conversation.parser import parse_intent
 from app.core.config import get_settings
@@ -189,12 +189,16 @@ async def handle_text_message(
 
     1. `_MENU_ACTIONS` — точное совпадение с текстом кнопки постоянного
        меню. Обслуживает в т.ч. действия, которых нет в `Intent` вообще
-       (goals, insights, add_task-подсказка, дневник, сайт).
-    2. `parse_intent(text)` — ЕСЛИ результат `LIST_TASKS`/`LIST_HABITS`/
-       `LIST_WATCHLIST`, ответ уходит напрямую с inline-клавиатурой
-       (`keyboards.py`) — это единственные три intent'а, для которых
-       `ConversationEngine` (Telegram-агностичный) не может построить
-       кнопки сам, только текстовый фолбэк.
+       (goals, insights, add_task-подсказка, дневник, сайт). Голосовые
+       сообщения (`handle_voice_message`) через этот шаг не проходят —
+       распознанный текст физически не может буквально совпасть с
+       текстом кнопки.
+    2. `parse_intent(text)` (см. `_route_parsed_text` ниже — общий хвост
+       и для текста, и для голоса после транскрипции) — ЕСЛИ результат
+       `LIST_TASKS`/`LIST_HABITS`/`LIST_WATCHLIST`, ответ уходит напрямую
+       с inline-клавиатурой (`keyboards.py`) — это единственные три
+       intent'а, для которых `ConversationEngine` (Telegram-агностичный)
+       не может построить кнопки сам, только текстовый фолбэк.
     3. Иначе — `ConversationEngine.handle_message` (см. `engine.py`):
        перехват дневникового pending → тот же `parse_intent` (уже
        посчитан здесь на шаге 2, вторым разбором внутри движка не
@@ -248,6 +252,18 @@ async def handle_text_message(
         await _send_site_link(update)
         return
 
+    await _route_parsed_text(update, context, text)
+
+
+async def _route_parsed_text(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, text: str
+) -> None:
+    """Общий хвост для текстовых (после проверки `_MENU_ACTIONS`) и
+    голосовых (`handle_voice_message`, после транскрипции) сообщений —
+    решает, не LIST_TASKS/LIST_HABITS/LIST_WATCHLIST ли это (нужна
+    Telegram-специфичная inline-клавиатура, движок сам её не построит),
+    иначе отдаёт в движок. Было продублировано дословно между
+    handle_text_message и handle_voice_message — вынесено в одно место."""
     parsed = parse_intent(text)
     if parsed.intent is Intent.LIST_TASKS:
         await _send_tasks_keyboard(update)
@@ -260,6 +276,65 @@ async def handle_text_message(
         return
 
     await _reply_via_engine(update, context, text, parsed=parsed)
+
+
+async def handle_voice_message(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Голосовое → текст (OpenRouter STT, см. specs/012-voice-input.md)
+    → тот же путь, что у обычного текстового сообщения (_route_parsed_text,
+    без _MENU_ACTIONS — голос не совпадает с текстом кнопки буквально).
+
+    Конвертация формата не нужна: Telegram отдаёт voice в OGG (Opus
+    внутри), а `ogg` — среди официально поддерживаемых форматов и у
+    OpenRouter, и у самого OpenAI whisper."""
+    if update.message is None or update.message.voice is None:
+        return
+    if update.effective_user is None:
+        return
+    telegram_user_id = update.effective_user.id
+
+    ai_client = get_ai_client()
+    if ai_client is None:
+        await update.message.reply_text(
+            "Голосовой ввод ещё не настроен (нет ключа OpenRouter)."
+        )
+        return
+
+    voice = update.message.voice
+    max_seconds = get_settings().voice_max_duration_seconds
+    if voice.duration > max_seconds:
+        await update.message.reply_text(
+            f"Голосовое длиннее {max_seconds // 60} мин — пришлите текстом."
+        )
+        return
+
+    await context.bot.send_chat_action(
+        chat_id=telegram_user_id, action=ChatAction.TYPING
+    )
+    file = await context.bot.get_file(voice.file_id)
+    content = bytes(await file.download_as_bytearray())
+
+    try:
+        text = (await ai_client.transcribe(content)).strip()
+    except AIServiceError as exc:
+        logger.warning("Транскрипция голосового не удалась: %s", exc)
+        await update.message.reply_text(
+            "Не получилось распознать голосовое — попробуйте текстом?"
+        )
+        return
+
+    if not text:
+        await update.message.reply_text(
+            "Не расслышал — тишина или не разобрал ни слова."
+        )
+        return
+
+    # Показываем распознанное ДО ответа движка — иначе ошибку STT
+    # (перепутанное слово в названии задачи) невозможно заметить
+    # постфактум.
+    await update.message.reply_text(f"🎤 «{text}»")
+    await _route_parsed_text(update, context, text)
 
 
 async def _send_tasks_keyboard(update: Update) -> None:
