@@ -11,7 +11,6 @@ inline-кнопками (app/telegram/keyboards.py) — ConversationEngine не
 
 import asyncio
 import logging
-import re
 
 from telegram import Update
 from telegram.constants import ChatAction, ParseMode
@@ -21,10 +20,7 @@ from app.ai.client import get_ai_client
 from app.conversation.intent import Intent
 from app.conversation.parser import parse_intent
 from app.core.config import get_settings
-from app.core.container import (
-    build_engine,
-    build_task_service,
-)
+from app.core.container import build_engine
 from app.db.session import AsyncSessionLocal
 from app.drive.client import get_drive_client
 from app.goals.repository import GoalRepository
@@ -64,18 +60,6 @@ logger = logging.getLogger(__name__)
 
 _ADD_TASK_HINT = "Окей, пиши, что за задача — с датой или без, я пойму."
 _JOURNAL_PROMPT = "Что запишем в дневник? Пиши как есть — сохраню без изменений."
-
-# Реплика ConversationEngine._add_task ("«{prefix}Добавил задачу: «{title}»…»")
-# — по этому паттерну распознаём "движок только что создал задачу", чтобы
-# прицепить быстрые кнопки (❗ Важно / 📅 Завтра), не меняя сам движок
-# (он намеренно Telegram-агностичен, см. модуль-докстринг выше).
-_TASK_CREATED_PATTERN = re.compile(r"^(?:❗ )?Добавил задачу: «(.+?)»")
-
-
-def extract_created_task_title(reply: str) -> str | None:
-    match = _TASK_CREATED_PATTERN.match(reply)
-    return match.group(1) if match else None
-
 
 _START_TEXT = (
     "Привет! Я LifeOS — помогаю не забывать задачи.\n"
@@ -386,27 +370,24 @@ async def _reply_via_engine(
     )
 
     async with AsyncSessionLocal() as session:
-        task_service = build_task_service(session)
         engine = build_engine(session, ai_client=get_ai_client())
-        reply = await engine.handle_message(telegram_user_id, text)
+        result = await engine.handle_message(telegram_user_id, text)
 
-        markup = None
-        created_title = extract_created_task_title(reply)
-        if created_title:
-            matches = await task_service.find_active_by_title(
-                telegram_user_id, created_title
-            )
-            if matches:
-                # Нужна именно только что созданная задача — а не первая
-                # по времени, как в find_active_by_title для complete/delete
-                # (см. flows/003-manage-tasks.md), иначе кнопки могли бы
-                # прицепиться к старой одноимённой задаче.
-                newest = max(matches, key=lambda t: t.created_at)
-                markup = build_task_quick_actions_keyboard(newest)
+    # created_task приходит от движка напрямую (см. EngineResult,
+    # app/conversation/engine.py) — раньше здесь распознавали "задача
+    # создана" regex'ом по тексту ответа и заново шли в БД за задачей
+    # через find_active_by_title (AUDIT.md, A-4).
+    markup = (
+        build_task_quick_actions_keyboard(result.created_task)
+        if result.created_task is not None
+        else None
+    )
 
     # Если inline-кнопок нет, место под клавиатуру свободно — освежаем
     # постоянное меню. Telegram не принимает inline- и reply-клавиатуру в
     # одном сообщении, поэтому только в этой ветке. Пользователь разницы
     # не видит (меню заменяется таким же), зато новые кнопки появляются
     # сами, без /start и /menu.
-    await update.message.reply_text(reply, reply_markup=markup or build_main_menu())
+    await update.message.reply_text(
+        result.text, reply_markup=markup or build_main_menu()
+    )

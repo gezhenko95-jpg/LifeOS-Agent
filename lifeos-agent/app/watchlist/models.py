@@ -11,6 +11,11 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
+# Общая для ConversationEngine (Telegram-агностичен, не должен зависеть
+# от app/telegram/) и app/telegram/keyboards.py — раньше был продублирован
+# дословно в трёх местах (см. AUDIT.md, раздел 4).
+MEDIA_TYPE_EMOJI = {"movie": "🎬", "book": "📖"}
+
 
 class WatchlistItem(Base):
     """Запись в списке "посмотреть/прочитать позже"."""

@@ -87,6 +87,16 @@ def format_due_human(due_date: datetime, today: date | None = None) -> str:
     return f"{_WEEKDAY_SHORT[due_day.weekday()]}, {due_date:%d.%m} в {clock}"
 
 
+def task_created_prefix(task: Task) -> str:
+    """«❗ Добавил задачу: «Название»» (без ❗ для обычного приоритета) —
+    общая часть, собиравшаяся дословно в двух местах: ConversationEngine
+    (ответ на сообщение) и keyboards.build_task_confirmation_message
+    (ответ на нажатие кнопки). Суффикс (срок/повтор) у них разный —
+    собирается отдельно на месте вызова."""
+    prefix = "❗ " if task.priority == "high" else ""
+    return f"{prefix}Добавил задачу: «{task.title}»"
+
+
 def task_status_emoji(task: Task, today: date | None = None) -> str:
     """Кружок по срочности. Задача без срока — «когда-нибудь», это тоже
     состояние, а не отсутствие данных."""
