@@ -18,10 +18,13 @@ from telegram.constants import ChatAction, ParseMode
 from telegram.ext import ContextTypes
 
 from app.ai.client import get_ai_client
-from app.conversation.engine import ConversationEngine
 from app.conversation.intent import Intent
 from app.conversation.parser import parse_intent
 from app.core.config import get_settings
+from app.core.container import (
+    build_engine,
+    build_task_service,
+)
 from app.db.session import AsyncSessionLocal
 from app.drive.client import get_drive_client
 from app.goals.repository import GoalRepository
@@ -34,7 +37,6 @@ from app.media_inbox.service import MediaInboxService
 from app.memory.repository import MemoryRepository
 from app.memory.service import MemoryService
 from app.proactive.repository import PendingPromptRepository
-from app.proactive.service import PendingPromptService
 from app.tasks.repository import TaskRepository
 from app.tasks.service import TaskService
 from app.telegram.keyboards import (
@@ -382,21 +384,8 @@ async def _reply_via_engine(
     )
 
     async with AsyncSessionLocal() as session:
-        task_service = TaskService(TaskRepository(session))
-        engine = ConversationEngine(
-            task_service,
-            HabitService(HabitRepository(session)),
-            MemoryService(MemoryRepository(session)),
-            ai_client=get_ai_client(),
-            goal_service=GoalService(GoalRepository(session)),
-            pending_prompt_service=PendingPromptService(
-                PendingPromptRepository(session),
-                GoalService(GoalRepository(session)),
-                HabitService(HabitRepository(session)),
-                MemoryService(MemoryRepository(session)),
-            ),
-            watchlist_service=WatchlistService(WatchlistRepository(session)),
-        )
+        task_service = build_task_service(session)
+        engine = build_engine(session, ai_client=get_ai_client())
         reply = await engine.handle_message(telegram_user_id, text)
 
         markup = None

@@ -11,6 +11,7 @@ from telegram.ext import ContextTypes
 
 from app.ai.client import get_ai_client
 from app.core.config import get_settings
+from app.core.container import build_prompt_service
 from app.db.session import AsyncSessionLocal
 from app.goals.repository import GoalRepository
 from app.goals.service import GoalService
@@ -21,7 +22,6 @@ from app.insights.service import InsightsService
 from app.memory.repository import MemoryRepository
 from app.memory.service import MemoryService
 from app.proactive.repository import PendingPromptRepository
-from app.proactive.service import PendingPromptService
 from app.scheduler.briefing import build_morning_briefing
 from app.scheduler.charts import gather_chart_data, render_chart
 from app.scheduler.evening_checkin import build_evening_checkin_text
@@ -114,12 +114,7 @@ async def send_morning_reflection_job(context: ContextTypes.DEFAULT_TYPE) -> Non
     ai_client = get_ai_client(settings)
 
     async with AsyncSessionLocal() as session:
-        service = PendingPromptService(
-            PendingPromptRepository(session),
-            GoalService(GoalRepository(session)),
-            HabitService(HabitRepository(session)),
-            MemoryService(MemoryRepository(session)),
-        )
+        service = build_prompt_service(session)
         question = await service.pick_morning_reflection(
             telegram_user_id, allow_gap=ai_client is not None
         )
@@ -186,12 +181,7 @@ async def send_evening_checkin_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
         if ai_client is not None and random.random() < _EVENING_GAP_CHANCE:
-            service = PendingPromptService(
-                PendingPromptRepository(session),
-                GoalService(GoalRepository(session)),
-                habit_service,
-                MemoryService(MemoryRepository(session)),
-            )
+            service = build_prompt_service(session)
             gap_question = await service.pick_gap_question_if_any(telegram_user_id)
             if gap_question:
                 text = f"{text}\n\n{gap_question}"
