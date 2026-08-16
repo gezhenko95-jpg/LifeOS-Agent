@@ -96,6 +96,13 @@ class Settings(BaseSettings):
     openrouter_model: str = "openai/gpt-4o-mini"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_embedding_model: str = "openai/text-embedding-3-small"
+    openrouter_transcription_model: str = "openai/whisper-large-v3"
+
+    # Голосовой ввод (см. specs/012-voice-input.md) — включён неявно тем
+    # же openrouter_api_key, что и остальной AI, отдельного _enabled не
+    # заводим (тот же паттерн, что у Media Inbox с drive_token_file).
+    # Голосовые длиннее лимита не расшифровываем — дороже и дольше.
+    voice_max_duration_seconds: int = 300
 
     # Семантический поиск по памяти (см. specs/011-semantic-memory-
     # search.md) — фоновая доливка embedding для новых записей.

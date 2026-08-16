@@ -21,6 +21,7 @@ from app.telegram.handlers import (
     habits_command,
     handle_photo_message,
     handle_text_message,
+    handle_voice_message,
     help_command,
     menu_command,
     start_command,
@@ -90,6 +91,7 @@ def build_application() -> Application:
         MessageHandler(filters.TEXT & ~filters.COMMAND & owner, handle_text_message)
     )
     application.add_handler(MessageHandler(filters.PHOTO & owner, handle_photo_message))
+    application.add_handler(MessageHandler(filters.VOICE & owner, handle_voice_message))
     # У CallbackQueryHandler нет параметра filters — проверка владельца
     # живёт внутри самого хендлера (app/telegram/callbacks.py).
     application.add_handler(CallbackQueryHandler(handle_callback_query))
