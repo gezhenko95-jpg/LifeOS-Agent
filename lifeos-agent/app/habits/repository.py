@@ -7,33 +7,15 @@
 
 from collections import defaultdict
 from datetime import date
-from typing import Optional
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.repository import BaseRepository, escape_like
 from app.habits.models import Habit, HabitLog
 
 
-def _escape_like(text: str) -> str:
-    """Экранировать %, _ и сам escape-символ (см. app/tasks/repository.py
-    — тот же приём, здесь не переиспользован ради избежания циклического
-    импорта между доменами)."""
-    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
-class HabitRepository:
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
-
-    async def add(self, habit: Habit) -> Habit:
-        self._session.add(habit)
-        await self._session.commit()
-        await self._session.refresh(habit)
-        return habit
-
-    async def get_by_id(self, habit_id: int) -> Optional[Habit]:
-        return await self._session.get(Habit, habit_id)
+class HabitRepository(BaseRepository[Habit]):
+    model = Habit
 
     async def list_by_user(
         self, telegram_user_id: int, include_archived: bool = False
@@ -54,15 +36,11 @@ class HabitRepository:
         query = select(Habit).where(
             Habit.telegram_user_id == telegram_user_id,
             Habit.archived.is_(False),
-            Habit.title.ilike(f"%{_escape_like(needle)}%", escape="\\"),
+            Habit.title.ilike(f"%{escape_like(needle)}%", escape="\\"),
         )
         query = query.order_by(Habit.created_at)
         result = await self._session.execute(query)
         return list(result.scalars().all())
-
-    async def delete(self, habit: Habit) -> None:
-        await self._session.delete(habit)
-        await self._session.commit()
 
     async def has_log_on(self, habit_id: int, day: date) -> bool:
         query = select(HabitLog).where(
