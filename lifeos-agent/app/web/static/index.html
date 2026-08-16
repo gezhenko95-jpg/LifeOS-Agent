@@ -207,6 +207,7 @@
   .grid > .card:nth-child(3) { animation-delay: 0.14s; }
   .grid > .card:nth-child(4) { animation-delay: 0.2s; }
   .grid > .card:nth-child(5) { animation-delay: 0.26s; }
+  .grid > .card:nth-child(6) { animation-delay: 0.32s; }
   @keyframes card-in {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
@@ -308,6 +309,94 @@
     font-weight: 700;
     color: var(--accent);
   }
+
+  /* --- Мини-игра "🪙 Ежедневный визит" --- */
+  .rewards-card {
+    /* Едва заметная тёплая рамка — карточка первая в сетке, должна
+       читаться как "особенная", а не как ещё один список. */
+    background: linear-gradient(
+      160deg,
+      var(--card-bg) 0%,
+      color-mix(in srgb, var(--accent) 6%, var(--card-bg)) 100%
+    );
+  }
+  .rewards-row {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    flex-wrap: wrap;
+  }
+  .rewards-stat { display: flex; flex-direction: column; }
+  .rewards-number {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .rewards-label { color: var(--muted); font-size: 0.78rem; }
+  .claim-button {
+    margin-left: auto;
+    font-size: 0.95rem;
+    padding: 9px 18px;
+    /* Лёгкая пульсация — единственное место на странице, где кнопка
+       сама привлекает внимание, а не только реагирует на курсор:
+       это и есть "побуждение зайти и забрать", про которое просили. */
+    animation: claim-pulse 2.2s ease-in-out infinite;
+  }
+  .claim-button:disabled {
+    animation: none;
+    background: var(--border);
+    color: var(--muted);
+    cursor: default;
+    filter: none;
+  }
+  @keyframes claim-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); }
+    50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 0%, transparent); }
+  }
+  @keyframes coin-pop {
+    0% { transform: scale(1); }
+    35% { transform: scale(1.35) rotate(-8deg); }
+    65% { transform: scale(0.92) rotate(4deg); }
+    100% { transform: scale(1) rotate(0); }
+  }
+  .rewards-number.coin-pop { animation: coin-pop 0.5s ease; }
+  @media (prefers-reduced-motion: reduce) {
+    .claim-button { animation: none; }
+    .rewards-number.coin-pop { animation: none; }
+  }
+
+  .achievements {
+    list-style: none;
+    margin: 14px 0 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .achievements li {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    /* Достижения появляются/пропадают при пересчёте (список привычек
+       обновился, задача выполнена и т.д.) — та же анимация, что у
+       строк списков, здесь тоже уместна. */
+    animation: item-in 0.25s ease backwards;
+  }
+  .achievements li.unlocked {
+    color: var(--text);
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .achievements li .lock { opacity: 0.5; }
+  @media (prefers-reduced-motion: reduce) {
+    .achievements li { animation: none; }
+  }
 </style>
 </head>
 <body>
@@ -336,6 +425,22 @@
 </details>
 
 <div class="grid">
+
+  <section class="card rewards-card">
+    <h2>🪙 Ежедневный визит</h2>
+    <div class="rewards-row">
+      <div class="rewards-stat">
+        <span class="rewards-number" id="coinsCount">0</span>
+        <span class="rewards-label">монет</span>
+      </div>
+      <div class="rewards-stat">
+        <span class="rewards-number" id="streakCount">0</span>
+        <span class="rewards-label">🔥 серия</span>
+      </div>
+      <button id="claimButton" class="claim-button">Забрать</button>
+    </div>
+    <ul class="achievements" id="achievementsList"></ul>
+  </section>
 
   <section class="card">
     <h2>Задачи</h2>
@@ -537,6 +642,86 @@ function formatDueHuman(iso) {
   return `${d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" })} в ${clock}`;
 }
 
+// ---- Rewards (мини-игра "🪙 Ежедневный визит") + достижения ----
+//
+// Достижения считаются НА ФРОНТЕ из данных, которые страница и так уже
+// загружает для остальных карточек (задачи/привычки/цели/полка) — не
+// заводили под это отдельный бэкенд-сервис (по образцу InsightsService
+// было бы избыточно для восьми статических порогов). Единственное, что
+// реально требует своего состояния в БД — сами монеты и серия визитов,
+// это RewardsService (см. app/rewards/).
+let lastRewards = { claimedToday: false, streak: 0, totalCoins: 0 };
+let lastHabits = [];
+let lastGoals = [];
+let lastWatchlist = [];
+let lastWeeklyCount = 0;
+
+const ACHIEVEMENTS = [
+  { icon: "🌱", label: "Первый визит", check: () => lastRewards.totalCoins > 0 },
+  { icon: "🔥", label: "Неделя визитов подряд", check: () => lastRewards.streak >= 7 },
+  { icon: "🔥🔥", label: "Месяц визитов подряд", check: () => lastRewards.streak >= 30 },
+  { icon: "💰", label: "100 монет", check: () => lastRewards.totalCoins >= 100 },
+  { icon: "✅", label: "10 задач за неделю", check: () => lastWeeklyCount >= 10 },
+  { icon: "🔁", label: "Серия привычки 7 дней", check: () => lastHabits.some((h) => h.streak >= 7) },
+  { icon: "📚", label: "5 просмотрено/прочитано", check: () => lastWatchlist.filter((i) => i.status === "done").length >= 5 },
+  { icon: "🎯", label: "Цель почти достигнута", check: () => lastGoals.some((g) => g.progress >= 80) },
+];
+
+function renderAchievements() {
+  const list = document.getElementById("achievementsList");
+  list.innerHTML = ACHIEVEMENTS.map((a) => {
+    const unlocked = a.check();
+    const icon = unlocked ? a.icon : '<span class="lock">🔒</span>';
+    return `<li class="${unlocked ? "unlocked" : ""}">${icon} ${escapeHtml(a.label)}</li>`;
+  }).join("");
+}
+
+function renderRewards() {
+  animateNumber(document.getElementById("coinsCount"), lastRewards.totalCoins);
+  document.getElementById("streakCount").textContent = lastRewards.streak;
+  const btn = document.getElementById("claimButton");
+  btn.disabled = lastRewards.claimedToday;
+  btn.textContent = lastRewards.claimedToday ? "Забрано ✓" : "Забрать";
+}
+
+async function loadRewards() {
+  const id = getUserId();
+  if (!id) { renderRewards(); return; }
+  const status = await api(`/rewards/status?telegram_user_id=${encodeURIComponent(id)}`);
+  lastRewards = {
+    claimedToday: status.claimed_today,
+    streak: status.streak,
+    totalCoins: status.total_coins,
+  };
+  renderRewards();
+}
+
+document.getElementById("claimButton").addEventListener("click", async () => {
+  const btn = document.getElementById("claimButton");
+  if (btn.disabled) return;
+  const id = requireUserId();
+
+  const status = await api("/rewards/checkin", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ telegram_user_id: Number(id) }),
+  });
+  lastRewards = {
+    claimedToday: status.claimed_today,
+    streak: status.streak,
+    totalCoins: status.total_coins,
+  };
+  renderRewards();
+  renderAchievements();
+
+  if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    const coinsEl = document.getElementById("coinsCount");
+    coinsEl.classList.remove("coin-pop");
+    void coinsEl.offsetWidth; // перезапуск CSS-анимации с нуля
+    coinsEl.classList.add("coin-pop");
+  }
+});
+
 // ---- Tasks ----
 
 async function loadTasks() {
@@ -604,6 +789,7 @@ async function loadHabits() {
   const list = document.getElementById("habitList");
   if (!id) { list.innerHTML = ""; return; }
   const habits = await api(`/habits?telegram_user_id=${encodeURIComponent(id)}`);
+  lastHabits = habits; // до early return — иначе достижение "серия 7 дней" не обнулится, когда привычек не осталось
   if (!habits.length) {
     list.innerHTML = '<li class="empty">Активных привычек нет.</li>';
     return;
@@ -661,6 +847,7 @@ async function loadGoals() {
   const list = document.getElementById("goalList");
   if (!id) { list.innerHTML = ""; return; }
   const goals = await api(`/goals?telegram_user_id=${encodeURIComponent(id)}`);
+  lastGoals = goals;
   if (!goals.length) {
     list.innerHTML = '<li class="empty">Активных целей нет.</li>';
     return;
@@ -736,6 +923,7 @@ async function loadWatchlist() {
     return;
   }
   const items = await api(`/watchlist?telegram_user_id=${encodeURIComponent(id)}`);
+  lastWatchlist = items;
   const by = (mediaType, statusValue) =>
     items.filter((i) => i.media_type === mediaType && i.status === statusValue);
 
@@ -776,6 +964,7 @@ async function loadWeeklyStats() {
   const el = document.getElementById("weeklyTasksCount");
   if (!id) { el.textContent = "—"; return; }
   const stats = await api(`/tasks/stats?telegram_user_id=${encodeURIComponent(id)}`);
+  lastWeeklyCount = stats.completed_this_week;
   animateNumber(el, stats.completed_this_week);
 }
 
@@ -815,7 +1004,11 @@ async function loadAll() {
     loadGoals(),
     loadWatchlist(),
     loadWeeklyStats(),
+    loadRewards(),
   ]);
+  // Достижения зависят от данных всех карточек разом — считаем после
+  // того, как все они точно загрузились, а не по одной.
+  renderAchievements();
 }
 
 refreshUserIdStatus();

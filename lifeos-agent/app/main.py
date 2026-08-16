@@ -9,7 +9,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api import goals, habits, health, memory, tasks, watchlist
+from app.api import goals, habits, health, memory, rewards, tasks, watchlist
 from app.api.deps import require_api_token
 from app.core.config import get_settings
 
@@ -54,6 +54,7 @@ app.include_router(memory.router, tags=["memory"], dependencies=_protected)
 app.include_router(habits.router, tags=["habits"], dependencies=_protected)
 app.include_router(goals.router, tags=["goals"], dependencies=_protected)
 app.include_router(watchlist.router, tags=["watchlist"], dependencies=_protected)
+app.include_router(rewards.router, tags=["rewards"], dependencies=_protected)
 
 # Простейший веб-интерфейс — статическая страница, использует REST API выше.
 app.mount("/ui", StaticFiles(directory=_WEB_STATIC_DIR, html=True), name="ui")
