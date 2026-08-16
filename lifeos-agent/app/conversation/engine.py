@@ -130,13 +130,27 @@ class ConversationEngine:
         self._pending_prompts = pending_prompt_service
         self._watchlist = watchlist_service
 
-    async def handle_message(self, telegram_user_id: int, text: str) -> EngineResult:
+    async def handle_message(
+        self,
+        telegram_user_id: int,
+        text: str,
+        parsed: ParsedIntent | None = None,
+    ) -> EngineResult:
+        """`parsed` — если вызывающий код (handlers.py) уже разобрал text
+        сам (например, чтобы решить, не LIST_TASKS/LIST_HABITS/
+        LIST_WATCHLIST ли это, для Telegram-специфичной клавиатуры), можно
+        передать готовый результат — раньше `parse_intent` вызывался
+        дважды на одно и то же сообщение (см. AUDIT.md, A-5). Если
+        `_try_capture_journal` ниже перехватит сообщение — переданный
+        `parsed` просто не используется, не проблема (разбор дешёвый,
+        rule-based, без сети)."""
         if self._pending_prompts is not None:
             journal_reply = await self._try_capture_journal(telegram_user_id, text)
             if journal_reply is not None:
                 return EngineResult(journal_reply)
 
-        parsed = parse_intent(text)
+        if parsed is None:
+            parsed = parse_intent(text)
         unanswered_question: str | None = None
 
         if (

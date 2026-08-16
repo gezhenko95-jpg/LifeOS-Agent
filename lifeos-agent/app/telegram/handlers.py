@@ -17,7 +17,7 @@ from telegram.constants import ChatAction, ParseMode
 from telegram.ext import ContextTypes
 
 from app.ai.client import get_ai_client
-from app.conversation.intent import Intent
+from app.conversation.intent import Intent, ParsedIntent
 from app.conversation.parser import parse_intent
 from app.core.config import get_settings
 from app.core.container import build_engine
@@ -184,6 +184,30 @@ async def handle_photo_message(
 async def handle_text_message(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
+    """Полный порядок разбора одного текстового сообщения (см.
+    AUDIT.md, A-6 — раньше нигде не был описан одним куском):
+
+    1. `_MENU_ACTIONS` — точное совпадение с текстом кнопки постоянного
+       меню. Обслуживает в т.ч. действия, которых нет в `Intent` вообще
+       (goals, insights, add_task-подсказка, дневник, сайт).
+    2. `parse_intent(text)` — ЕСЛИ результат `LIST_TASKS`/`LIST_HABITS`/
+       `LIST_WATCHLIST`, ответ уходит напрямую с inline-клавиатурой
+       (`keyboards.py`) — это единственные три intent'а, для которых
+       `ConversationEngine` (Telegram-агностичный) не может построить
+       кнопки сам, только текстовый фолбэк.
+    3. Иначе — `ConversationEngine.handle_message` (см. `engine.py`):
+       перехват дневникового pending → тот же `parse_intent` (уже
+       посчитан здесь на шаге 2, вторым разбором внутри движка не
+       делается, см. AUDIT.md A-5) → попытка понять как ответ на
+       проактивный вопрос → AI-фолбэк → диспетчеризация по intent.
+
+    Известный (узкий) edge-case: шаг 2 идёт РАНЬШЕ шага 3 — если открыт
+    дневниковый pending и ответ пользователя случайно совпадает с
+    LIST-триггером («привычки», «покажи задачи»), уйдёт клавиатура
+    вместо записи в дневник. Не переупорядочиваем ради этого (нужен
+    отдельный поход в БД за pending-состоянием до решения о маршруте на
+    КАЖДОЕ сообщение) — задокументировано, не спрятано.
+    """
     if update.message is None or update.message.text is None:
         return
 
@@ -224,18 +248,18 @@ async def handle_text_message(
         await _send_site_link(update)
         return
 
-    intent = parse_intent(text).intent
-    if intent is Intent.LIST_TASKS:
+    parsed = parse_intent(text)
+    if parsed.intent is Intent.LIST_TASKS:
         await _send_tasks_keyboard(update)
         return
-    if intent is Intent.LIST_HABITS:
+    if parsed.intent is Intent.LIST_HABITS:
         await _send_habits_keyboard(update)
         return
-    if intent is Intent.LIST_WATCHLIST:
+    if parsed.intent is Intent.LIST_WATCHLIST:
         await _send_watchlist_keyboard(update)
         return
 
-    await _reply_via_engine(update, context, text)
+    await _reply_via_engine(update, context, text, parsed=parsed)
 
 
 async def _send_tasks_keyboard(update: Update) -> None:
@@ -356,7 +380,10 @@ async def _open_journal_prompt(update: Update) -> None:
 
 
 async def _reply_via_engine(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, text: str
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    text: str,
+    parsed: ParsedIntent | None = None,
 ) -> None:
     if update.message is None or update.effective_user is None:
         return
@@ -371,7 +398,7 @@ async def _reply_via_engine(
 
     async with AsyncSessionLocal() as session:
         engine = build_engine(session, ai_client=get_ai_client())
-        result = await engine.handle_message(telegram_user_id, text)
+        result = await engine.handle_message(telegram_user_id, text, parsed)
 
     # created_task приходит от движка напрямую (см. EngineResult,
     # app/conversation/engine.py) — раньше здесь распознавали "задача
