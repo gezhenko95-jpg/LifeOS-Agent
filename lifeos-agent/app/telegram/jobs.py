@@ -11,8 +11,9 @@ from telegram.ext import ContextTypes
 
 from app.ai.client import get_ai_client
 from app.core.config import get_settings
-from app.core.container import build_prompt_service
+from app.core.container import build_digest_service, build_prompt_service
 from app.db.session import AsyncSessionLocal
+from app.digest.service import DAILY, WEEKLY
 from app.goals.repository import GoalRepository
 from app.goals.service import GoalService
 from app.habits.repository import HabitRepository
@@ -44,6 +45,12 @@ _MIDDAY_TEXT_NO_HABITS = "Как проходит твой день? 🌤"
 # Вечерний итоговый слот 19:00: доля сообщений, к которым снизу
 # добавляется gap-вопрос про профиль (только если гэп реально есть).
 _EVENING_GAP_CHANCE = 0.5
+
+# 0=понедельник..6=воскресенье, как date.weekday() и как days= у PTB
+# run_daily. Живёт здесь, а не в bot.py: им пользуются и еженедельный
+# дайджест (через bot._SUNDAY), и send_digests_job (частота "weekly"),
+# а bot.py и так импортирует jobs.py — обратный импорт был бы циклом.
+SUNDAY_WEEKDAY = 6
 
 
 async def send_morning_briefing_job(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -215,6 +222,46 @@ async def send_weekly_digest_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         chart = await _try_build_chart(telegram_user_id, task_service, habit_service)
 
     await _send_text_or_photo(context, telegram_user_id, text, chart)
+
+
+async def send_digests_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Дайджесты Telegram-каналов (см. specs/013-channel-digests.md).
+
+    Одна общая job на ВСЕ дайджесты владельца, а не по job на дайджест:
+    динамическая регистрация/снятие job при каждом /digest_new — лишняя
+    сложность ради того же результата (ADR-004). Частота живёт в данных:
+    "daily" — каждый прогон, "weekly" — только по воскресеньям, NULL —
+    только по команде /digest <name>.
+
+    Дайджест без новых постов пропускается тихо (build_digest_text
+    вернул None) — фоновая рассылка не должна слать "нечего показать",
+    это шум (как send_monthly_insights_job).
+    """
+    settings = get_settings()
+    telegram_user_id = settings.owner_telegram_user_id
+    if not telegram_user_id:
+        return
+
+    is_sunday = date.today().weekday() == SUNDAY_WEEKDAY
+    ai_client = get_ai_client(settings)
+
+    async with AsyncSessionLocal() as session:
+        service = build_digest_service(session)
+        digests = await service.list_digests(telegram_user_id)
+
+        texts = []
+        for digest in digests:
+            if digest.auto_frequency == DAILY or (
+                digest.auto_frequency == WEEKLY and is_sunday
+            ):
+                text = await service.build_digest_text(
+                    telegram_user_id, digest.name, ai_client=ai_client
+                )
+                if text:
+                    texts.append(text)
+
+    for text in texts:
+        await context.bot.send_message(chat_id=telegram_user_id, text=text)
 
 
 async def _try_build_chart(
