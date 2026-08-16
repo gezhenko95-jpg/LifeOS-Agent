@@ -20,8 +20,9 @@ from app.ai.client import AIServiceError, get_ai_client
 from app.conversation.intent import Intent, ParsedIntent
 from app.conversation.parser import parse_intent
 from app.core.config import get_settings
-from app.core.container import build_engine
+from app.core.container import build_digest_service, build_engine
 from app.db.session import AsyncSessionLocal
+from app.digest.scraper import ChannelScrapeError
 from app.drive.client import get_drive_client
 from app.goals.repository import GoalRepository
 from app.goals.service import GoalService
@@ -398,6 +399,175 @@ async def _send_watchlist_keyboard(update: Update) -> None:
     await update.message.reply_text(
         text, reply_markup=markup, parse_mode=ParseMode.HTML
     )
+
+
+# --- Дайджесты Telegram-каналов (см. specs/013-channel-digests.md) ---
+#
+# Первые команды проекта с аргументами: python-telegram-bot кладёт слова
+# после команды в context.args (list[str]). Каждая команда — тонкий
+# враппер: разобрать args, на неверный синтаксис ответить подсказкой (не
+# исключением), остальное — в DigestService.
+
+_DIGEST_NEW_USAGE = "Как это работает: /digest_new <имя> [daily|weekly]"
+_DIGEST_ADD_USAGE = "Как это работает: /digest_add <имя> <канал>"
+_DIGEST_REMOVE_USAGE = "Как это работает: /digest_remove <имя> <канал>"
+_DIGEST_NOW_USAGE = "Как это работает: /digest <имя>"
+_DIGEST_EMPTY = "Пока ни одного дайджеста. Создайте: /digest_new ESG"
+
+_FREQUENCY_LABELS = {"daily": "каждый день", "weekly": "по воскресеньям"}
+
+
+async def digest_new_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    if update.message is None or update.effective_user is None:
+        return
+    args = context.args or []
+    if not 1 <= len(args) <= 2:
+        await update.message.reply_text(_DIGEST_NEW_USAGE)
+        return
+
+    name = args[0]
+    frequency = args[1].lower() if len(args) == 2 else None
+
+    async with AsyncSessionLocal() as session:
+        service = build_digest_service(session)
+        try:
+            digest = await service.create_digest(
+                update.effective_user.id, name, frequency
+            )
+        except ValueError as exc:
+            await update.message.reply_text(f"{exc}\n{_DIGEST_NEW_USAGE}")
+            return
+
+    schedule = _FREQUENCY_LABELS.get(digest.auto_frequency or "", "только по запросу")
+    await update.message.reply_text(
+        f"✅ Дайджест «{digest.name}» создан ({schedule}).\n"
+        f"Добавьте каналы: /digest_add {digest.name} <канал>"
+    )
+
+
+async def digest_add_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    if update.message is None or update.effective_user is None:
+        return
+    args = context.args or []
+    if len(args) != 2:
+        await update.message.reply_text(_DIGEST_ADD_USAGE)
+        return
+
+    name, channel = args
+    async with AsyncSessionLocal() as session:
+        service = build_digest_service(session)
+        try:
+            added = await service.add_channel(update.effective_user.id, name, channel)
+        except ValueError as exc:
+            await update.message.reply_text(str(exc))
+            return
+        except ChannelScrapeError as exc:
+            logger.warning("Канал не добавлен в дайджест: %s", exc)
+            await update.message.reply_text(
+                f"Не нашёл канал «{channel}» — он существует и публичный?"
+            )
+            return
+
+    await update.message.reply_text(
+        f"✅ @{added.channel_username} добавлен в «{name}». "
+        "Дальше присылаю только новые посты."
+    )
+
+
+async def digest_remove_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    if update.message is None or update.effective_user is None:
+        return
+    args = context.args or []
+    if len(args) != 2:
+        await update.message.reply_text(_DIGEST_REMOVE_USAGE)
+        return
+
+    name, channel = args
+    async with AsyncSessionLocal() as session:
+        service = build_digest_service(session)
+        try:
+            removed = await service.remove_channel(
+                update.effective_user.id, name, channel
+            )
+        except ValueError as exc:
+            await update.message.reply_text(str(exc))
+            return
+
+    if removed:
+        await update.message.reply_text(f"🗑 Канал убран из «{name}».")
+    else:
+        await update.message.reply_text(f"Такого канала в «{name}» и не было.")
+
+
+async def digest_list_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    if update.message is None or update.effective_user is None:
+        return
+    telegram_user_id = update.effective_user.id
+
+    async with AsyncSessionLocal() as session:
+        service = build_digest_service(session)
+        digests = await service.list_digests(telegram_user_id)
+        channels = {
+            digest.id: await service.list_channels(digest.id) for digest in digests
+        }
+
+    if not digests:
+        await update.message.reply_text(_DIGEST_EMPTY)
+        return
+
+    lines: list[str] = []
+    for digest in digests:
+        schedule = _FREQUENCY_LABELS.get(
+            digest.auto_frequency or "", "только по запросу"
+        )
+        lines.append(f"📰 {digest.name} — {schedule}")
+        items = channels.get(digest.id, [])
+        if items:
+            lines.extend(f"   • @{channel.channel_username}" for channel in items)
+        else:
+            lines.append("   (каналов пока нет)")
+    await update.message.reply_text("\n".join(lines))
+
+
+async def digest_now_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Дайджест по запросу, вне расписания. Читает каналы по сети и
+    (если есть ключ) идёт в AI — секунды, поэтому «печатает…», как в
+    _reply_via_engine."""
+    if update.message is None or update.effective_user is None:
+        return
+    args = context.args or []
+    if len(args) != 1:
+        await update.message.reply_text(_DIGEST_NOW_USAGE)
+        return
+
+    telegram_user_id = update.effective_user.id
+    await context.bot.send_chat_action(
+        chat_id=telegram_user_id, action=ChatAction.TYPING
+    )
+
+    async with AsyncSessionLocal() as session:
+        service = build_digest_service(session)
+        try:
+            text = await service.build_digest_text(
+                telegram_user_id, args[0], ai_client=get_ai_client()
+            )
+        except ValueError as exc:
+            await update.message.reply_text(str(exc))
+            return
+
+    # В отличие от фоновой job (тихий пропуск), по запросу отвечаем
+    # всегда — пользователь сам спросил (тот же принцип, что у «📊 Инсайты»).
+    await update.message.reply_text(text or "Новых постов пока нет.")
 
 
 async def _send_site_link(update: Update) -> None:

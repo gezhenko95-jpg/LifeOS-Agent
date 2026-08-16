@@ -17,6 +17,11 @@ from telegram.ext import (
 from app.core.config import Settings, get_settings
 from app.telegram.callbacks import handle_callback_query
 from app.telegram.handlers import (
+    digest_add_command,
+    digest_list_command,
+    digest_new_command,
+    digest_now_command,
+    digest_remove_command,
     goals_command,
     habits_command,
     handle_photo_message,
@@ -28,7 +33,9 @@ from app.telegram.handlers import (
     tasks_command,
 )
 from app.telegram.jobs import (
+    SUNDAY_WEEKDAY,
     embed_pending_memories_job,
+    send_digests_job,
     send_evening_checkin_job,
     send_evening_reflection_job,
     send_midday_checkin_job,
@@ -88,6 +95,19 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("habits", habits_command, filters=owner))
     application.add_handler(CommandHandler("goals", goals_command, filters=owner))
     application.add_handler(
+        CommandHandler("digest_new", digest_new_command, filters=owner)
+    )
+    application.add_handler(
+        CommandHandler("digest_add", digest_add_command, filters=owner)
+    )
+    application.add_handler(
+        CommandHandler("digest_remove", digest_remove_command, filters=owner)
+    )
+    application.add_handler(
+        CommandHandler("digest_list", digest_list_command, filters=owner)
+    )
+    application.add_handler(CommandHandler("digest", digest_now_command, filters=owner))
+    application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND & owner, handle_text_message)
     )
     application.add_handler(MessageHandler(filters.PHOTO & owner, handle_photo_message))
@@ -103,6 +123,7 @@ def build_application() -> Application:
     _register_task_reminders(application, settings)
     _register_proactive_prompts(application, settings)
     _register_weekly_digest(application, settings)
+    _register_digests(application, settings)
     _register_nudges(application, settings)
     _register_monthly_insights(application, settings)
     _register_memory_embeddings(application, settings)
@@ -192,7 +213,10 @@ def _register_proactive_prompts(application: Application, settings: Settings) ->
     )
 
 
-_SUNDAY = (6,)  # PTB: 0=понедельник..6=воскресенье, как date.weekday()
+# PTB: 0=понедельник..6=воскресенье, как date.weekday(). Само число
+# живёт в jobs.py — им же пользуется send_digests_job для частоты
+# "weekly" (см. app/telegram/jobs.py::SUNDAY_WEEKDAY).
+_SUNDAY = (SUNDAY_WEEKDAY,)
 
 
 def _register_weekly_digest(application: Application, settings: Settings) -> None:
@@ -209,6 +233,26 @@ def _register_weekly_digest(application: Application, settings: Settings) -> Non
         ),
         days=_SUNDAY,
         name="weekly_digest",
+    )
+
+
+def _register_digests(application: Application, settings: Settings) -> None:
+    """Одна ежедневная job на все дайджесты каналов — «раз в неделю»
+    для weekly-дайджестов проверяется внутри send_digests_job (частота
+    хранится в данных, а не в расписании, см.
+    specs/013-channel-digests.md)."""
+    if not settings.digest_enabled or not settings.owner_telegram_user_id:
+        return
+
+    local_tz = datetime.now().astimezone().tzinfo
+    application.job_queue.run_daily(
+        send_digests_job,
+        time=time(
+            hour=settings.digest_hour,
+            minute=settings.digest_minute,
+            tzinfo=local_tz,
+        ),
+        name="channel_digests",
     )
 
 

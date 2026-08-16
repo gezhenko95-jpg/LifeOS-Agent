@@ -77,6 +77,14 @@ class Settings(BaseSettings):
     weekly_digest_hour: int = 20
     weekly_digest_minute: int = 0
 
+    # Дайджесты Telegram-каналов (см. specs/013-channel-digests.md). Одна
+    # ежедневная job на ВСЕ дайджесты владельца: "daily" обрабатываются
+    # каждый прогон, "weekly" — только по воскресеньям, без частоты —
+    # только по команде /digest <name>.
+    digest_enabled: bool = True
+    digest_hour: int = 9
+    digest_minute: int = 30
+
     # Нэджи по целям/привычкам, раз в день (см. app/scheduler/nudges.py).
     nudges_enabled: bool = True
     nudges_hour: int = 9

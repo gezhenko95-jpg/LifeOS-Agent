@@ -14,6 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.client import AIClient
 from app.conversation.engine import ConversationEngine
+from app.digest.repository import DigestRepository
+from app.digest.scraper import get_channel_scraper
+from app.digest.service import DigestService
 from app.goals.repository import GoalRepository
 from app.goals.service import GoalService
 from app.habits.repository import HabitRepository
@@ -46,6 +49,13 @@ def build_goal_service(session: AsyncSession) -> GoalService:
 
 def build_watchlist_service(session: AsyncSession) -> WatchlistService:
     return WatchlistService(WatchlistRepository(session))
+
+
+def build_digest_service(session: AsyncSession) -> DigestService:
+    """Скрейпер отдаётся фабрикой, а не создаётся здесь: внутри — один
+    httpx.AsyncClient на процесс (keep-alive, см. app/digest/scraper.py),
+    новый на каждое сообщение обнулил бы весь его смысл."""
+    return DigestService(DigestRepository(session), get_channel_scraper())
 
 
 def build_prompt_service(session: AsyncSession) -> PendingPromptService:
