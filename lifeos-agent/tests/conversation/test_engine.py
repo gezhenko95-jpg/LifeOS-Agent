@@ -666,7 +666,7 @@ async def test_pending_prompt_unrelated_stale_question_no_note(
     pending_prompt_service.get_open.return_value = SimpleNamespace(
         category="goal",
         question_text="Какая у тебя цель?",
-        asked_at=datetime.now(timezone.utc) - timedelta(hours=5),
+        asked_at=datetime.now(timezone.utc) - timedelta(days=2),
     )
     monkeypatch.setattr(
         "app.conversation.engine.extract_prompt_answer",
@@ -808,7 +808,10 @@ async def test_journal_capture_stale_pending_falls_back_to_normal_processing(
     pending_prompt_service.get_open.return_value = SimpleNamespace(
         category="journal",
         question_text="Что тебе снилось?",
-        asked_at=datetime.now(timezone.utc) - timedelta(hours=5),
+        # Двое суток — заведомо дальше следующего дневного слота (макс.
+        # разрыв между слотами ~5ч, см. _UNANSWERED_PROMPT_NOTE_WINDOW),
+        # то есть однозначно ДРУГОЙ, забытый день, а не задержка с ответом.
+        asked_at=datetime.now(timezone.utc) - timedelta(days=2),
     )
     task_service.create_task.return_value = SimpleNamespace(
         title="Купить молоко", due_date=None, priority="normal", recurrence=None
@@ -1063,13 +1066,19 @@ async def test_add_task_reply_names_the_time(
 ):
     from app.tasks.models import Task
 
+    # "Завтра" считается относительно РЕАЛЬНОГО today() (см.
+    # app/tasks/formatting.py::format_due_human) — хардкод конкретной
+    # календарной даты делал тест зависимым от того, в какой день его
+    # запустили: 2026-08-16 было "завтра" 15-го, но стало "сегодня"
+    # 16-го, и тест сломался бы сам по себе безо всякой правки кода.
+    tomorrow = datetime.now() + timedelta(days=1)
     task_service.create_task.return_value = Task(
         id=1,
         telegram_user_id=1,
         title="позвонить маме",
         # Наивная дата: to_local оставляет её как есть, поэтому тест
         # не зависит от таймзоны машины, на которой запущен.
-        due_date=datetime(2026, 8, 16, 19, 0),
+        due_date=tomorrow.replace(hour=19, minute=0, second=0, microsecond=0),
         status="active",
         priority="normal",
     )
@@ -1142,3 +1151,37 @@ async def test_journal_still_captures_prose_containing_command_words(
 
     assert reply == "📝 Записал в дневник."
     memory_service.save.assert_awaited_once()
+
+
+async def test_journal_capture_delayed_reply_within_same_day_still_works(
+    task_service, habit_service, memory_service, goal_service, pending_prompt_service
+):
+    """Регрессия с живого использования: утренний вопрос "что снилось?"
+    задан в 10:30, ответ пришёл в 12:56 — 2ч26м спустя. Со старым окном
+    в 30 минут это улетало в обычный разбор и создавало бессмысленную
+    задачу "Ничего не снилось, я вчера перепил" без срока."""
+    from app.memory.models import MemoryType
+
+    pending_prompt_service.get_open.return_value = SimpleNamespace(
+        category="journal",
+        question_text="Что тебе снилось этой ночью?",
+        asked_at=datetime.now(timezone.utc) - timedelta(hours=2, minutes=26),
+    )
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        goal_service=goal_service,
+        pending_prompt_service=pending_prompt_service,
+    )
+
+    reply = await engine.handle_message(1, "Ничего не снилось, я вчера перепил")
+
+    assert reply == "📝 Записал в дневник."
+    memory_service.save.assert_awaited_once_with(
+        1,
+        MemoryType.JOURNAL,
+        "Ничего не снилось, я вчера перепил",
+        source="quick_capture",
+    )
+    task_service.create_task.assert_not_awaited()
