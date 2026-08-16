@@ -14,6 +14,7 @@ Conversation Engine.
 Оба — тихий fallback: любая ошибка AI не показывается пользователю.
 """
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from app.ai.client import AIClient
@@ -27,10 +28,27 @@ from app.memory.models import MemoryType
 from app.memory.service import MemoryService
 from app.proactive.ai_extract import extract_prompt_answer
 from app.proactive.service import PendingPromptService
-from app.tasks.formatting import format_due_human
+from app.tasks.formatting import format_due_human, task_created_prefix
 from app.tasks.models import Task
 from app.tasks.service import TaskService
+from app.watchlist.models import MEDIA_TYPE_EMOJI
 from app.watchlist.service import WatchlistService
+
+
+@dataclass(frozen=True)
+class EngineResult:
+    """Ответ движка: текст + опционально только что созданная задача.
+
+    Раньше handlers.py распознавал «задача создана» regex'ом по тексту
+    ответа (`_TASK_CREATED_PATTERN`) и заново шёл в БД за задачей через
+    find_active_by_title — притом что движок уже держал объект Task в
+    руках. Хрупкая связка (см. AUDIT.md, A-4): поменяй формулировку
+    «Добавил задачу: …» — кнопки молча исчезнут, тесты этого не увидят.
+    """
+
+    text: str
+    created_task: Task | None = None
+
 
 _HELP_TEXT = (
     "Я умею:\n"
@@ -112,11 +130,11 @@ class ConversationEngine:
         self._pending_prompts = pending_prompt_service
         self._watchlist = watchlist_service
 
-    async def handle_message(self, telegram_user_id: int, text: str) -> str:
+    async def handle_message(self, telegram_user_id: int, text: str) -> EngineResult:
         if self._pending_prompts is not None:
             journal_reply = await self._try_capture_journal(telegram_user_id, text)
             if journal_reply is not None:
-                return journal_reply
+                return EngineResult(journal_reply)
 
         parsed = parse_intent(text)
         unanswered_question: str | None = None
@@ -130,7 +148,7 @@ class ConversationEngine:
                 telegram_user_id, text
             )
             if prompt_reply is not None:
-                return prompt_reply
+                return EngineResult(prompt_reply)
 
         if (
             parsed.intent is Intent.ADD_TASK
@@ -141,13 +159,17 @@ class ConversationEngine:
             if ai_parsed is not None:
                 parsed = ai_parsed
 
-        reply = await self._dispatch(telegram_user_id, parsed)
+        result = await self._dispatch(telegram_user_id, parsed)
         if unanswered_question is not None:
-            reply += (
-                f"\n\n(Не понял это как ответ на «{unanswered_question}» — "
-                "если хотел ответить, напиши ещё раз.)"
+            result = EngineResult(
+                text=result.text
+                + (
+                    f"\n\n(Не понял это как ответ на «{unanswered_question}» — "
+                    "если хотел ответить, напиши ещё раз.)"
+                ),
+                created_task=result.created_task,
             )
-        return reply
+        return result
 
     async def _try_capture_journal(
         self, telegram_user_id: int, text: str
@@ -218,7 +240,8 @@ class ConversationEngine:
 
         Pending намеренно НЕ чистится, если ответ не распознан — вопрос
         остаётся открытым до следующего успешного ответа или следующего
-        запланированного вопроса (см. PendingPromptService.pick_and_open).
+        запланированного вопроса (см. PendingPromptService.pick_morning_reflection
+        / pick_gap_question_if_any, которые перезаписывают его через upsert).
         """
         assert self._pending_prompts is not None and self._ai_client is not None
 
@@ -263,36 +286,54 @@ class ConversationEngine:
 
         return None, (pending.question_text if is_fresh else None)
 
-    async def _dispatch(self, telegram_user_id: int, parsed: ParsedIntent) -> str:
+    async def _dispatch(
+        self, telegram_user_id: int, parsed: ParsedIntent
+    ) -> EngineResult:
         if parsed.intent is Intent.HELP:
-            return _HELP_TEXT
+            return EngineResult(_HELP_TEXT)
         if parsed.intent is Intent.LIST_TASKS:
-            return await self._list_tasks(telegram_user_id)
+            return EngineResult(await self._list_tasks(telegram_user_id))
         if parsed.intent is Intent.QUERY_TASKS_BY_DATE:
-            return await self._list_tasks_by_date(telegram_user_id, parsed.due_date)
+            return EngineResult(
+                await self._list_tasks_by_date(telegram_user_id, parsed.due_date)
+            )
         if parsed.intent is Intent.RECALL:
-            return await self._recall(telegram_user_id, parsed.title or "")
+            return EngineResult(
+                await self._recall(telegram_user_id, parsed.title or "")
+            )
         if parsed.intent is Intent.COMPLETE_TASK:
-            return await self._complete_task(telegram_user_id, parsed.title or "")
+            return EngineResult(
+                await self._complete_task(telegram_user_id, parsed.title or "")
+            )
         if parsed.intent is Intent.DELETE_TASK:
-            return await self._delete_task(telegram_user_id, parsed.title or "")
+            return EngineResult(
+                await self._delete_task(telegram_user_id, parsed.title or "")
+            )
         if parsed.intent is Intent.LIST_HABITS:
-            return await self._list_habits(telegram_user_id)
+            return EngineResult(await self._list_habits(telegram_user_id))
         if parsed.intent is Intent.HABIT_DONE:
-            return await self._habit_done(telegram_user_id, parsed.title or "")
+            return EngineResult(
+                await self._habit_done(telegram_user_id, parsed.title or "")
+            )
         if parsed.intent is Intent.JOURNAL_ENTRY:
-            return await self._journal_entry(telegram_user_id, parsed.title or "")
+            return EngineResult(
+                await self._journal_entry(telegram_user_id, parsed.title or "")
+            )
         if parsed.intent is Intent.ADD_WATCHLIST_ITEM:
             return await self._add_watchlist_item(telegram_user_id, parsed)
         if parsed.intent is Intent.LIST_WATCHLIST:
-            return await self._list_watchlist(telegram_user_id)
-        return await self._add_task(telegram_user_id, parsed)
+            return EngineResult(await self._list_watchlist(telegram_user_id))
+        text, task = await self._add_task(telegram_user_id, parsed)
+        return EngineResult(text, task)
 
-    async def _add_task(self, telegram_user_id: int, parsed: ParsedIntent) -> str:
+    async def _add_task(
+        self, telegram_user_id: int, parsed: ParsedIntent
+    ) -> tuple[str, Task | None]:
         if not parsed.title:
             return (
                 "Не понял, какую задачу добавить. "
-                "Напишите, например: «Завтра купить молоко»."
+                "Напишите, например: «Завтра купить молоко».",
+                None,
             )
         task = await self._tasks.create_task(
             telegram_user_id,
@@ -301,18 +342,13 @@ class ConversationEngine:
             parsed.priority,
             parsed.recurrence,
         )
-        # ВАЖНО: первая строка обязана начинаться с «Добавил задачу: «…»»
-        # — по этому шаблону app/telegram/handlers.py распознаёт, что
-        # задача создана, и цепляет быстрые кнопки. Всё остальное можно
-        # менять свободно, дополнительные строки шаблону не мешают.
-        prefix = "❗ " if task.priority == "high" else ""
+        prefix_line = task_created_prefix(task)
         repeat = "  🔁 повторяется" if task.recurrence else ""
         if task.due_date:
-            return (
-                f"{prefix}Добавил задачу: «{task.title}»\n"
-                f"🕘 {format_due_human(task.due_date)}{repeat}"
-            )
-        return f"{prefix}Добавил задачу: «{task.title}»\n🗓 без срока{repeat}"
+            text = f"{prefix_line}\n🕘 {format_due_human(task.due_date)}{repeat}"
+        else:
+            text = f"{prefix_line}\n🗓 без срока{repeat}"
+        return text, task
 
     async def _list_tasks(self, telegram_user_id: int) -> str:
         tasks = await self._tasks.list_active_tasks(telegram_user_id)
@@ -400,7 +436,9 @@ class ConversationEngine:
         habits = await self._habits.list_active_habits(telegram_user_id)
         if not habits:
             return "Активных привычек нет."
-        streaks = await self._habits.get_streaks_bulk([h.id for h in habits])
+        streaks = await self._habits.get_streaks_bulk(
+            telegram_user_id, [h.id for h in habits]
+        )
         lines = []
         for index, habit in enumerate(habits, start=1):
             streak = streaks.get(habit.id, 0)
@@ -417,7 +455,7 @@ class ConversationEngine:
         habit = await self._habits.mark_done_today(telegram_user_id, title_query)
         if habit is None:
             return f"🤔 Не нашёл активную привычку «{title_query}»."
-        streak = await self._habits.get_streak(habit.id)
+        streak = await self._habits.get_streak(telegram_user_id, habit.id)
         note = _ambiguity_note(matches, title_query)
         # Число серии уже названо строкой выше — юбилей его не повторяет,
         # иначе сообщение выглядит как заевшая пластинка.
@@ -428,20 +466,21 @@ class ConversationEngine:
 
     async def _add_watchlist_item(
         self, telegram_user_id: int, parsed: ParsedIntent
-    ) -> str:
+    ) -> EngineResult:
         if not parsed.title:
-            return "Что посмотреть-то? Например: «посмотреть фильм Дюна»."
+            return EngineResult("Что посмотреть-то? Например: «посмотреть фильм Дюна».")
         if self._watchlist is None:
             # Сервис не подключён (не должно случаться в проде, см.
             # handlers.py) — не терять сообщение молча, а хотя бы
             # сохранить как задачу.
-            return await self._add_task(telegram_user_id, parsed)
+            text, task = await self._add_task(telegram_user_id, parsed)
+            return EngineResult(text, task)
 
         item = await self._watchlist.create_item(
             telegram_user_id, parsed.title, parsed.media_type or "other"
         )
-        emoji = {"movie": "🎬", "book": "📖"}.get(item.media_type, "🎯")
-        return f"{emoji} Добавил в список: «{item.title}»"
+        emoji = MEDIA_TYPE_EMOJI.get(item.media_type, "🎯")
+        return EngineResult(f"{emoji} Добавил в список: «{item.title}»")
 
     async def _list_watchlist(self, telegram_user_id: int) -> str:
         """Текстовый фолбэк (без кнопок) — обычно перехватывается раньше
@@ -454,7 +493,7 @@ class ConversationEngine:
             return "Смотреть/читать пока нечего."
         lines = []
         for index, item in enumerate(items, start=1):
-            emoji = {"movie": "🎬", "book": "📖"}.get(item.media_type, "🎯")
+            emoji = MEDIA_TYPE_EMOJI.get(item.media_type, "🎯")
             lines.append(f"{index}. {emoji} {item.title}")
         return "\n".join(lines)
 

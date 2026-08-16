@@ -43,13 +43,40 @@ async def test_add_task_without_date(task_service, habit_service, memory_service
     )
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Купить молоко")
+    reply = (await engine.handle_message(1, "Купить молоко")).text
 
     assert "Купить молоко" in reply
     assert "❗" not in reply
     task_service.create_task.assert_awaited_once_with(
         1, "Купить молоко", None, "normal", None
     )
+
+
+async def test_add_task_result_includes_created_task(
+    task_service, habit_service, memory_service
+):
+    """EngineResult.created_task должен нести созданный объект напрямую —
+    без этого handlers.py пришлось бы заново идти в БД за задачей, чтобы
+    прицепить быстрые кнопки (см. AUDIT.md, A-4)."""
+    task = SimpleNamespace(
+        title="Купить молоко", due_date=None, priority="normal", recurrence=None
+    )
+    task_service.create_task.return_value = task
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    result = await engine.handle_message(1, "Купить молоко")
+
+    assert result.created_task is task
+
+
+async def test_non_task_result_has_no_created_task(
+    task_service, habit_service, memory_service
+):
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    result = await engine.handle_message(1, "/help")
+
+    assert result.created_task is None
 
 
 async def test_add_task_with_date_shown_in_reply(
@@ -63,7 +90,7 @@ async def test_add_task_with_date_shown_in_reply(
     )
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Завтра купить молоко")
+    reply = (await engine.handle_message(1, "Завтра купить молоко")).text
 
     assert "13.08" in reply
 
@@ -76,7 +103,7 @@ async def test_add_task_with_high_priority_marker(
     )
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Важно позвонить в банк")
+    reply = (await engine.handle_message(1, "Важно позвонить в банк")).text
 
     assert "❗" in reply
     task_service.create_task.assert_awaited_once_with(
@@ -97,7 +124,9 @@ async def test_add_recurring_task_shows_recurrence_marker(
     )
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Каждый понедельник оплатить интернет")
+    reply = (
+        await engine.handle_message(1, "Каждый понедельник оплатить интернет")
+    ).text
 
     assert "🔁" in reply
     task_service.create_task.assert_awaited_once()
@@ -110,7 +139,7 @@ async def test_add_task_empty_title_does_not_call_service(
 ):
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Завтра")
+    reply = (await engine.handle_message(1, "Завтра")).text
 
     task_service.create_task.assert_not_awaited()
     assert "Не понял" in reply
@@ -120,7 +149,7 @@ async def test_list_tasks_empty(task_service, habit_service, memory_service):
     task_service.list_active_tasks.return_value = []
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "покажи задачи")
+    reply = (await engine.handle_message(1, "покажи задачи")).text
 
     assert reply == "Активных задач нет."
 
@@ -132,7 +161,7 @@ async def test_list_tasks_with_items(task_service, habit_service, memory_service
     ]
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "покажи задачи")
+    reply = (await engine.handle_message(1, "покажи задачи")).text
 
     assert "1. ❗ Купить молоко" in reply
     assert "2. Позвонить маме" in reply
@@ -150,7 +179,7 @@ async def test_query_tasks_by_date_filters_only_matching_date(
     ]
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Что на завтра?")
+    reply = (await engine.handle_message(1, "Что на завтра?")).text
 
     assert "Купить молоко" in reply
     assert "Сдать отчёт" not in reply
@@ -162,7 +191,7 @@ async def test_query_tasks_by_date_empty(task_service, habit_service, memory_ser
     task_service.list_active_tasks.return_value = []
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Что я собирался сделать завтра?")
+    reply = (await engine.handle_message(1, "Что я собирался сделать завтра?")).text
 
     assert "задач нет" in reply
 
@@ -176,7 +205,7 @@ async def test_query_tasks_by_date_shows_priority_marker(
     ]
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Что на завтра?")
+    reply = (await engine.handle_message(1, "Что на завтра?")).text
 
     assert "❗ Позвонить в банк" in reply
 
@@ -187,7 +216,7 @@ async def test_recall_with_results(task_service, habit_service, memory_service):
     ]
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Напомни про отпуск")
+    reply = (await engine.handle_message(1, "Напомни про отпуск")).text
 
     assert "Хочу съездить в отпуск в сентябре" in reply
     memory_service.search.assert_awaited_once_with(1, "отпуск")
@@ -197,7 +226,7 @@ async def test_recall_no_results(task_service, habit_service, memory_service):
     memory_service.search.return_value = []
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Напомни про единорогов")
+    reply = (await engine.handle_message(1, "Напомни про единорогов")).text
 
     assert "Ничего не нашёл" in reply
 
@@ -207,7 +236,7 @@ async def test_recall_empty_query_asks_what(
 ):
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Вспомни")
+    reply = (await engine.handle_message(1, "Вспомни")).text
 
     assert "Что напомнить" in reply
     memory_service.search.assert_not_awaited()
@@ -225,7 +254,7 @@ async def test_recall_falls_back_to_semantic_search_when_literal_empty(
         task_service, habit_service, memory_service, ai_client=ai_client
     )
 
-    reply = await engine.handle_message(1, "Напомни про смену работы")
+    reply = (await engine.handle_message(1, "Напомни про смену работы")).text
 
     assert "Думаю уволиться и сменить сферу" in reply
     assert "Точных совпадений" in reply
@@ -243,7 +272,7 @@ async def test_recall_skips_semantic_search_when_literal_found_results(
         task_service, habit_service, memory_service, ai_client=ai_client
     )
 
-    reply = await engine.handle_message(1, "Напомни про отпуск")
+    reply = (await engine.handle_message(1, "Напомни про отпуск")).text
 
     assert "Найдено буквально" in reply
     memory_service.semantic_search.assert_not_awaited()
@@ -255,7 +284,7 @@ async def test_recall_no_semantic_fallback_without_ai_client(
     memory_service.search.return_value = []
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Напомни про единорогов")
+    reply = (await engine.handle_message(1, "Напомни про единорогов")).text
 
     assert "Ничего не нашёл" in reply
     memory_service.semantic_search.assert_not_awaited()
@@ -267,7 +296,7 @@ async def test_complete_task_found(task_service, habit_service, memory_service):
     task_service.complete_task_by_title.return_value = task
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Выполнил молоко")
+    reply = (await engine.handle_message(1, "Выполнил молоко")).text
 
     assert "сделано" in reply
     assert "Под «" not in reply
@@ -282,7 +311,7 @@ async def test_complete_recurring_task_mentions_next_occurrence(
     task_service.complete_task_by_title.return_value = task
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Выполнил пить воду")
+    reply = (await engine.handle_message(1, "Выполнил пить воду")).text
 
     assert "сделано" in reply
     assert "повторится автоматически" in reply
@@ -292,7 +321,7 @@ async def test_complete_task_not_found(task_service, habit_service, memory_servi
     task_service.find_active_by_title.return_value = []
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Выполнил молоко")
+    reply = (await engine.handle_message(1, "Выполнил молоко")).text
 
     assert "Не нашёл" in reply
     task_service.complete_task_by_title.assert_not_awaited()
@@ -307,7 +336,7 @@ async def test_complete_task_ambiguous_lists_other_matches(
     task_service.complete_task_by_title.return_value = task
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Выполнил молоко")
+    reply = (await engine.handle_message(1, "Выполнил молоко")).text
 
     assert "сделано" in reply
     assert "Купить молоко и хлеб" in reply
@@ -319,7 +348,7 @@ async def test_delete_task_found(task_service, habit_service, memory_service):
     task_service.delete_task_by_title.return_value = task
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Удали молоко")
+    reply = (await engine.handle_message(1, "Удали молоко")).text
 
     assert "Удалил" in reply
     assert "Под «" not in reply
@@ -329,7 +358,7 @@ async def test_delete_task_not_found(task_service, habit_service, memory_service
     task_service.find_active_by_title.return_value = []
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Удали молоко")
+    reply = (await engine.handle_message(1, "Удали молоко")).text
 
     assert "Не нашёл" in reply
     task_service.delete_task_by_title.assert_not_awaited()
@@ -338,7 +367,7 @@ async def test_delete_task_not_found(task_service, habit_service, memory_service
 async def test_help(task_service, habit_service, memory_service):
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "/help")
+    reply = (await engine.handle_message(1, "/help")).text
 
     assert "умею" in reply
 
@@ -347,7 +376,7 @@ async def test_list_habits_empty(task_service, habit_service, memory_service):
     habit_service.list_active_habits.return_value = []
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "привычки")
+    reply = (await engine.handle_message(1, "привычки")).text
 
     assert reply == "Активных привычек нет."
 
@@ -360,7 +389,7 @@ async def test_list_habits_with_streak(task_service, habit_service, memory_servi
     habit_service.get_streaks_bulk.return_value = {1: 3, 2: 0}
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "привычки")
+    reply = (await engine.handle_message(1, "привычки")).text
 
     assert "1. Читать — 🔥 3 дней подряд" in reply
     assert "2. Спорт" in reply
@@ -374,7 +403,7 @@ async def test_habit_done_found(task_service, habit_service, memory_service):
     habit_service.get_streak.return_value = 1
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Привычка читать")
+    reply = (await engine.handle_message(1, "Привычка читать")).text
 
     assert "подряд" in reply
     assert "🔥" in reply and "1 дн" in reply
@@ -390,7 +419,7 @@ async def test_habit_done_celebrates_streak_milestone(
     habit_service.get_streak.return_value = 7
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Привычка читать")
+    reply = (await engine.handle_message(1, "Привычка читать")).text
 
     assert "🎉" in reply
     # Число серии называется строкой выше — юбилей его не повторяет.
@@ -406,7 +435,7 @@ async def test_habit_done_no_celebration_outside_milestone(
     habit_service.get_streak.return_value = 8
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Привычка читать")
+    reply = (await engine.handle_message(1, "Привычка читать")).text
 
     assert "🎉" not in reply
 
@@ -415,7 +444,7 @@ async def test_habit_done_not_found(task_service, habit_service, memory_service)
     habit_service.find_active_by_title.return_value = []
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Привычка читать")
+    reply = (await engine.handle_message(1, "Привычка читать")).text
 
     assert "Не нашёл" in reply
     habit_service.mark_done_today.assert_not_awaited()
@@ -426,7 +455,7 @@ async def test_journal_entry_saved_to_memory(
 ):
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Дневник: продуктивный день")
+    reply = (await engine.handle_message(1, "Дневник: продуктивный день")).text
 
     assert reply == "📝 Записал в дневник."
     from app.memory.models import MemoryType
@@ -441,7 +470,7 @@ async def test_journal_entry_empty_content_asks_to_reformulate(
 ):
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Дневник")
+    reply = (await engine.handle_message(1, "Дневник")).text
 
     assert "Что записать" in reply
     memory_service.save.assert_not_awaited()
@@ -456,7 +485,7 @@ async def test_ai_fallback_not_used_when_client_not_configured(
         task_service, habit_service, memory_service, ai_client=None
     )
 
-    reply = await engine.handle_message(1, "Завтра")
+    reply = (await engine.handle_message(1, "Завтра")).text
 
     called.assert_not_called()
     assert "Не понял" in reply
@@ -483,7 +512,7 @@ async def test_ai_fallback_used_when_rule_based_fails(
         task_service, habit_service, memory_service, ai_client=fake_ai_client
     )
 
-    reply = await engine.handle_message(1, "Завтра")
+    reply = (await engine.handle_message(1, "Завтра")).text
 
     task_service.create_task.assert_awaited_once_with(
         1, "День рождения сестры", None, "normal", None
@@ -521,7 +550,7 @@ async def test_pending_prompt_answer_creates_goal(
         pending_prompt_service=pending_prompt_service,
     )
 
-    reply = await engine.handle_message(1, "Хочу пробежать марафон")
+    reply = (await engine.handle_message(1, "Хочу пробежать марафон")).text
 
     assert "Марафон" in reply
     goal_service.create_goal.assert_awaited_once_with(1, "Марафон", None)
@@ -559,7 +588,7 @@ async def test_pending_prompt_answer_creates_habit(
         pending_prompt_service=pending_prompt_service,
     )
 
-    reply = await engine.handle_message(1, "Хочу медитировать")
+    reply = (await engine.handle_message(1, "Хочу медитировать")).text
 
     assert "Медитация" in reply
     habit_service.create_habit.assert_awaited_once_with(1, "Медитация")
@@ -602,7 +631,7 @@ async def test_pending_prompt_answer_saves_memory(
         pending_prompt_service=pending_prompt_service,
     )
 
-    reply = await engine.handle_message(1, "Я лучше работаю утром")
+    reply = (await engine.handle_message(1, "Я лучше работаю утром")).text
 
     assert "Утренний человек" in reply
     memory_service.save.assert_awaited_once_with(
@@ -643,7 +672,7 @@ async def test_pending_prompt_unrelated_falls_back_to_add_task(
         pending_prompt_service=pending_prompt_service,
     )
 
-    reply = await engine.handle_message(1, "Купить молоко")
+    reply = (await engine.handle_message(1, "Купить молоко")).text
 
     assert "Купить молоко" in reply
     task_service.create_task.assert_awaited_once()
@@ -685,7 +714,7 @@ async def test_pending_prompt_unrelated_stale_question_no_note(
         pending_prompt_service=pending_prompt_service,
     )
 
-    reply = await engine.handle_message(1, "Купить молоко")
+    reply = (await engine.handle_message(1, "Купить молоко")).text
 
     assert "Купить молоко" in reply
     # Вопрос давно неактуален — не нагружаем пользователя пояснением
@@ -716,7 +745,7 @@ async def test_no_open_pending_prompt_behaves_normally(
         pending_prompt_service=pending_prompt_service,
     )
 
-    reply = await engine.handle_message(1, "Купить молоко")
+    reply = (await engine.handle_message(1, "Купить молоко")).text
 
     assert "Купить молоко" in reply
     called.assert_not_called()
@@ -737,7 +766,7 @@ async def test_pending_prompt_service_not_configured_keeps_old_behavior(
         task_service, habit_service, memory_service, ai_client=AsyncMock()
     )  # pending_prompt_service не передан — как в проде до этой фичи
 
-    reply = await engine.handle_message(1, "Купить молоко")
+    reply = (await engine.handle_message(1, "Купить молоко")).text
 
     assert "Купить молоко" in reply
     called.assert_not_called()
@@ -761,7 +790,7 @@ async def test_journal_capture_fresh_pending_saves_verbatim(
         pending_prompt_service=pending_prompt_service,
     )  # ai_client не передан — журнал не должен его требовать вообще
 
-    reply = await engine.handle_message(1, "Сегодня выполнил кучу дел, устал")
+    reply = (await engine.handle_message(1, "Сегодня выполнил кучу дел, устал")).text
 
     assert reply == "📝 Записал в дневник."
     memory_service.save.assert_awaited_once_with(
@@ -793,9 +822,11 @@ async def test_journal_capture_intercepts_before_keyword_matching(
         pending_prompt_service=pending_prompt_service,
     )
 
-    reply = await engine.handle_message(
-        1, "Мне снилось, что я выполнил привычка какую-то марафонскую дистанцию"
-    )
+    reply = (
+        await engine.handle_message(
+            1, "Мне снилось, что я выполнил привычка какую-то марафонскую дистанцию"
+        )
+    ).text
 
     assert reply == "📝 Записал в дневник."
     memory_service.save.assert_awaited_once()
@@ -824,7 +855,7 @@ async def test_journal_capture_stale_pending_falls_back_to_normal_processing(
         pending_prompt_service=pending_prompt_service,
     )
 
-    reply = await engine.handle_message(1, "Купить молоко")
+    reply = (await engine.handle_message(1, "Купить молоко")).text
 
     assert "Добавил задачу" in reply
     assert "Записал в дневник" not in reply
@@ -841,7 +872,7 @@ async def test_journal_category_ignored_when_no_pending_service(
     )
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "Купить молоко")
+    reply = (await engine.handle_message(1, "Купить молоко")).text
 
     assert "Добавил задачу" in reply
     memory_service.save.assert_not_awaited()
@@ -858,7 +889,7 @@ async def test_ai_fallback_failure_keeps_old_message(
         task_service, habit_service, memory_service, ai_client=fake_ai_client
     )
 
-    reply = await engine.handle_message(1, "Завтра")
+    reply = (await engine.handle_message(1, "Завтра")).text
 
     task_service.create_task.assert_not_awaited()
     assert "Не понял" in reply
@@ -880,7 +911,7 @@ async def test_add_watchlist_item(
         watchlist_service=watchlist_service,
     )
 
-    reply = await engine.handle_message(1, "посмотреть фильм Дюна")
+    reply = (await engine.handle_message(1, "посмотреть фильм Дюна")).text
 
     watchlist_service.create_item.assert_awaited_once_with(1, "Дюна", "movie")
     assert reply == "🎬 Добавил в список: «Дюна»"
@@ -899,7 +930,7 @@ async def test_add_watchlist_item_book_emoji(
         watchlist_service=watchlist_service,
     )
 
-    reply = await engine.handle_message(1, "прочитать книгу Дюна")
+    reply = (await engine.handle_message(1, "прочитать книгу Дюна")).text
 
     assert "📖" in reply
 
@@ -914,7 +945,7 @@ async def test_add_watchlist_item_empty_title(
         watchlist_service=watchlist_service,
     )
 
-    reply = await engine.handle_message(1, "посмотреть фильм")
+    reply = (await engine.handle_message(1, "посмотреть фильм")).text
 
     watchlist_service.create_item.assert_not_awaited()
     assert "Что посмотреть" in reply
@@ -928,7 +959,7 @@ async def test_add_watchlist_item_without_service_falls_back_to_task(
     )
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "посмотреть фильм Дюна")
+    reply = (await engine.handle_message(1, "посмотреть фильм Дюна")).text
 
     task_service.create_task.assert_awaited_once()
     assert "Добавил задачу" in reply
@@ -951,7 +982,7 @@ async def test_list_watchlist_with_items(
         watchlist_service=watchlist_service,
     )
 
-    reply = await engine.handle_message(1, "список книг")
+    reply = (await engine.handle_message(1, "список книг")).text
 
     assert "Дюна" in reply
     assert "1984" in reply
@@ -968,7 +999,7 @@ async def test_list_watchlist_empty(
         watchlist_service=watchlist_service,
     )
 
-    reply = await engine.handle_message(1, "полка")
+    reply = (await engine.handle_message(1, "полка")).text
 
     assert "нечего" in reply
 
@@ -978,7 +1009,7 @@ async def test_list_watchlist_without_service(
 ):
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "список фильмов")
+    reply = (await engine.handle_message(1, "список фильмов")).text
 
     assert "нечего" in reply
 
@@ -1002,7 +1033,7 @@ async def test_command_is_not_swallowed_by_open_journal_prompt(
         pending_prompt_service=pending_prompt_service,
     )
 
-    reply = await engine.handle_message(1, "/help")
+    reply = (await engine.handle_message(1, "/help")).text
 
     assert "Я умею" in reply
     memory_service.save.assert_not_awaited()
@@ -1030,7 +1061,7 @@ async def test_journal_still_captures_text_that_merely_contains_a_slash(
         pending_prompt_service=pending_prompt_service,
     )
 
-    reply = await engine.handle_message(1, "Работал 9/10 часов, вымотался")
+    reply = (await engine.handle_message(1, "Работал 9/10 часов, вымотался")).text
 
     assert reply == "📝 Записал в дневник."
     memory_service.save.assert_awaited_once_with(
@@ -1084,7 +1115,7 @@ async def test_add_task_reply_names_the_time(
     )
     engine = ConversationEngine(task_service, habit_service, memory_service)
 
-    reply = await engine.handle_message(1, "напомни в 19:00 позвонить маме")
+    reply = (await engine.handle_message(1, "напомни в 19:00 позвонить маме")).text
 
     assert reply == "Добавил задачу: «позвонить маме»\n🕘 завтра в 19:00"
 
@@ -1118,9 +1149,9 @@ async def test_reminder_is_not_swallowed_by_open_journal_prompt(
         pending_prompt_service=pending_prompt_service,
     )
 
-    reply = await engine.handle_message(
-        1, "напомни сегодня в 9 утра запустить стиралку"
-    )
+    reply = (
+        await engine.handle_message(1, "напомни сегодня в 9 утра запустить стиралку")
+    ).text
 
     assert "Добавил задачу" in reply
     memory_service.save.assert_not_awaited()
@@ -1145,9 +1176,11 @@ async def test_journal_still_captures_prose_containing_command_words(
         pending_prompt_service=pending_prompt_service,
     )
 
-    reply = await engine.handle_message(
-        1, "Весь день крутилось в голове, надо напомни себе не тянуть с отчётом"
-    )
+    reply = (
+        await engine.handle_message(
+            1, "Весь день крутилось в голове, надо напомни себе не тянуть с отчётом"
+        )
+    ).text
 
     assert reply == "📝 Записал в дневник."
     memory_service.save.assert_awaited_once()
@@ -1175,7 +1208,7 @@ async def test_journal_capture_delayed_reply_within_same_day_still_works(
         pending_prompt_service=pending_prompt_service,
     )
 
-    reply = await engine.handle_message(1, "Ничего не снилось, я вчера перепил")
+    reply = (await engine.handle_message(1, "Ничего не снилось, я вчера перепил")).text
 
     assert reply == "📝 Записал в дневник."
     memory_service.save.assert_awaited_once_with(

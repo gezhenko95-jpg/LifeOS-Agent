@@ -8,6 +8,7 @@ API — только вызывает этот сервис. См. specs/005-goa
 from datetime import date, datetime, timezone
 from typing import Optional
 
+from app.core.ownership import owned_or_none
 from app.goals.models import Goal
 from app.goals.repository import GoalRepository
 
@@ -44,11 +45,14 @@ class GoalService:
     async def list_active_goals(self, telegram_user_id: int) -> list[Goal]:
         return await self._repository.list_by_user(telegram_user_id, status=ACTIVE)
 
-    async def update_progress(self, goal_id: int, progress: int) -> Optional[Goal]:
-        return await self.update_goal(goal_id, progress=progress)
+    async def update_progress(
+        self, telegram_user_id: int, goal_id: int, progress: int
+    ) -> Optional[Goal]:
+        return await self.update_goal(telegram_user_id, goal_id, progress=progress)
 
     async def update_goal(
         self,
+        telegram_user_id: int,
         goal_id: int,
         title: Optional[str] = None,
         target_date: Optional[date] = None,
@@ -60,7 +64,9 @@ class GoalService:
         if progress is not None and not 0 <= progress <= 100:
             raise ValueError("Прогресс должен быть от 0 до 100")
 
-        goal = await self._repository.get_by_id(goal_id)
+        goal = owned_or_none(
+            await self._repository.get_by_id(goal_id), telegram_user_id
+        )
         if goal is None:
             return None
         if title is not None:
@@ -74,11 +80,15 @@ class GoalService:
         goal.updated_at = datetime.now(timezone.utc)
         return await self._repository.save(goal)
 
-    async def complete_goal(self, goal_id: int) -> Optional[Goal]:
-        return await self.update_goal(goal_id, status=COMPLETED)
+    async def complete_goal(
+        self, telegram_user_id: int, goal_id: int
+    ) -> Optional[Goal]:
+        return await self.update_goal(telegram_user_id, goal_id, status=COMPLETED)
 
-    async def delete_goal(self, goal_id: int) -> Optional[Goal]:
-        goal = await self._repository.get_by_id(goal_id)
+    async def delete_goal(self, telegram_user_id: int, goal_id: int) -> Optional[Goal]:
+        goal = owned_or_none(
+            await self._repository.get_by_id(goal_id), telegram_user_id
+        )
         if goal is None:
             return None
         await self._repository.delete(goal)

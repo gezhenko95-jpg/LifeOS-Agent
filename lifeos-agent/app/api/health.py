@@ -4,8 +4,13 @@
 
 from pathlib import Path
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.session import get_session
 
 router = APIRouter(prefix="/health", tags=["health"])
 
@@ -47,11 +52,20 @@ async def health_check():
 
 
 @router.get("/ready")
-async def readiness_check():
+async def readiness_check(session: AsyncSession = Depends(get_session)):
     """
-    Проверка готовности системы (для kubernetes)
+    Проверка готовности системы (для kubernetes) — реальный поход в БД,
+    а не только "процесс запущен". Раньше отвечал "ready" всегда, даже
+    если Postgres недоступен — хуже, чем отсутствие эндпоинта: он врал
+    (см. AUDIT.md, раздел 5).
     """
-    # TODO: Добавить проверку подключения к базе данных
+    try:
+        await session.execute(text("SELECT 1"))
+    except SQLAlchemyError:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "not ready"},
+        )
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content={"status": "ready"},

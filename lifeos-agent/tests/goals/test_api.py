@@ -67,7 +67,9 @@ async def test_update_goal_progress(client):
     )
     goal_id = create_resp.json()["id"]
 
-    patch_resp = await client.patch(f"/goals/{goal_id}", json={"progress": 40})
+    patch_resp = await client.patch(
+        f"/goals/{goal_id}", params={"telegram_user_id": 2}, json={"progress": 40}
+    )
 
     assert patch_resp.status_code == 200
     assert patch_resp.json()["progress"] == 40
@@ -79,9 +81,24 @@ async def test_update_goal_progress_out_of_range_returns_400(client):
     )
     goal_id = create_resp.json()["id"]
 
-    response = await client.patch(f"/goals/{goal_id}", json={"progress": 150})
+    response = await client.patch(
+        f"/goals/{goal_id}", params={"telegram_user_id": 2}, json={"progress": 150}
+    )
 
     assert response.status_code == 422
+
+
+async def test_update_goal_wrong_owner_returns_404(client):
+    create_resp = await client.post(
+        "/goals", json={"telegram_user_id": 2, "title": "Марафон"}
+    )
+    goal_id = create_resp.json()["id"]
+
+    response = await client.patch(
+        f"/goals/{goal_id}", params={"telegram_user_id": 999}, json={"progress": 40}
+    )
+
+    assert response.status_code == 404
 
 
 async def test_complete_goal_via_status_update(client):
@@ -90,7 +107,11 @@ async def test_complete_goal_via_status_update(client):
     )
     goal_id = create_resp.json()["id"]
 
-    patch_resp = await client.patch(f"/goals/{goal_id}", json={"status": "completed"})
+    patch_resp = await client.patch(
+        f"/goals/{goal_id}",
+        params={"telegram_user_id": 3},
+        json={"status": "completed"},
+    )
     assert patch_resp.status_code == 200
     assert patch_resp.json()["status"] == "completed"
 
@@ -104,7 +125,9 @@ async def test_delete_goal(client):
     )
     goal_id = create_resp.json()["id"]
 
-    delete_resp = await client.delete(f"/goals/{goal_id}")
+    delete_resp = await client.delete(
+        f"/goals/{goal_id}", params={"telegram_user_id": 4}
+    )
     assert delete_resp.status_code == 204
 
     list_resp = await client.get("/goals", params={"telegram_user_id": 4})
@@ -112,12 +135,14 @@ async def test_delete_goal(client):
 
 
 async def test_update_nonexistent_goal_returns_404(client):
-    response = await client.patch("/goals/999999", json={"progress": 10})
+    response = await client.patch(
+        "/goals/999999", params={"telegram_user_id": 1}, json={"progress": 10}
+    )
 
     assert response.status_code == 404
 
 
 async def test_delete_nonexistent_goal_returns_404(client):
-    response = await client.delete("/goals/999999")
+    response = await client.delete("/goals/999999", params={"telegram_user_id": 1})
 
     assert response.status_code == 404

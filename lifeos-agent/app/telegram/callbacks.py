@@ -134,19 +134,23 @@ async def _handle_task_action(
     service = TaskService(TaskRepository(session))
 
     if action == "p":
-        task = await service.update_task(int(item_id), priority="high")
+        task = await service.update_task(
+            telegram_user_id, int(item_id), priority="high"
+        )
         return _quick_action_result(task)
     if action == "w":
         tomorrow = datetime.combine(
             date.today() + timedelta(days=1), time(hour=_DEFAULT_HOUR)
         ).astimezone()
-        task = await service.update_task(int(item_id), due_date=tomorrow)
+        task = await service.update_task(
+            telegram_user_id, int(item_id), due_date=tomorrow
+        )
         return _quick_action_result(task)
 
     if action == "c":
-        await service.update_task(int(item_id), status="completed")
+        await service.update_task(telegram_user_id, int(item_id), status="completed")
     elif action == "d":
-        await service.delete_task(int(item_id))
+        await service.delete_task(telegram_user_id, int(item_id))
     tasks = await service.list_active_tasks(telegram_user_id)
     return build_tasks_message(tasks)
 
@@ -163,11 +167,11 @@ async def _handle_habit_action(
 ) -> tuple[str, InlineKeyboardMarkup]:
     service = HabitService(HabitRepository(session))
     if action == "d":
-        await service.mark_done_by_id(int(item_id))
+        await service.mark_done_by_id(telegram_user_id, int(item_id))
     elif action == "x":
-        await service.delete_habit(int(item_id))
+        await service.delete_habit(telegram_user_id, int(item_id))
     habits = await service.list_active_habits(telegram_user_id)
-    streaks = await service.get_streaks_bulk([h.id for h in habits])
+    streaks = await service.get_streaks_bulk(telegram_user_id, [h.id for h in habits])
     return build_habits_message(habits, streaks)
 
 
@@ -181,11 +185,11 @@ async def _handle_goal_action(
         if goal is not None:
             delta = 10 if action == "u" else -10
             new_progress = max(0, min(100, goal.progress + delta))
-            await service.update_progress(goal.id, new_progress)
+            await service.update_progress(telegram_user_id, goal.id, new_progress)
     elif action == "c":
-        await service.complete_goal(int(item_id))
+        await service.complete_goal(telegram_user_id, int(item_id))
     elif action == "x":
-        await service.delete_goal(int(item_id))
+        await service.delete_goal(telegram_user_id, int(item_id))
     goals = await service.list_active_goals(telegram_user_id)
     return build_goals_message(goals)
 
@@ -195,9 +199,9 @@ async def _handle_watchlist_action(
 ) -> tuple[str, InlineKeyboardMarkup]:
     service = WatchlistService(WatchlistRepository(session))
     if action == "d":
-        await service.mark_done(int(item_id))
+        await service.mark_done(telegram_user_id, int(item_id))
     elif action == "x":
-        await service.delete_item(int(item_id))
+        await service.delete_item(telegram_user_id, int(item_id))
     elif action == "r":
         recommendation = await service.pick_recommendation(
             telegram_user_id, get_ai_client()

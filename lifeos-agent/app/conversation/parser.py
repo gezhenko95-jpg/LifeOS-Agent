@@ -9,6 +9,9 @@ from app.conversation.date_parser import extract_due_date, extract_recurrence
 from app.conversation.intent import Intent, ParsedIntent
 
 _HELP_KEYWORDS = ("/help", "помощь", "что ты умеешь")
+# Все три — якорем на начало сообщения (см. _COMPLETE_KEYWORDS выше,
+# AUDIT.md B-6): без якоря «нужна помощь с отчётом» ловилась как HELP,
+# хотя это описание задачи, а не просьба о справке боту.
 # Проверяются РАНЬШЕ общего _LIST_KEYWORDS (там голое "покажи" перехватило
 # бы "покажи книги" как список задач) — см. живой баг с "список книг".
 _LIST_WATCHLIST_KEYWORDS = (
@@ -24,7 +27,12 @@ _LIST_WATCHLIST_KEYWORDS = (
     "что почитать",
     "полка",
 )
-_LIST_KEYWORDS = ("/tasks", "покажи", "список задач", "мои задачи")
+_LIST_KEYWORDS = ("/tasks", "список задач", "мои задачи")
+# "покажи" — командное слово, проверяется отдельно, ЯКОРЕМ на начало
+# сообщения (см. _LIST_TASKS_START_KEYWORDS ниже, AUDIT.md B-6): голое
+# "покажи" где угодно в фразе цепляло LIST_TASKS даже у «покажи
+# презентацию клиенту» — там это часть задачи, а не команда боту.
+_LIST_TASKS_START_KEYWORDS = ("покажи",)
 # Вопрос про конкретный день («что на завтра») — не путать с ADD_TASK: дата
 # в тексте есть, но это вопрос, а не новое дело. Без даты в тексте — просто
 # LIST_TASKS (см. QUERY_BY_DATE-ветку в parse_intent).
@@ -62,6 +70,10 @@ _EXPLICIT_RECALL_PHRASES = (
 )
 _COMPLETE_KEYWORDS = ("выполнил", "сделал", "готово", "закрой")
 _DELETE_KEYWORDS = ("удали", "убери", "отмени")
+# COMPLETE/DELETE — командные слова, срабатывающие ЯКОРЕМ на начало
+# сообщения (см. AUDIT.md B-6: «команда почти всегда в начале») — без
+# якоря «не могу решить, сделал ли я уже отчёт» превращалось бы в
+# отметку задачи выполненной на слове «сделал» посреди фразы.
 _HIGH_PRIORITY_KEYWORDS = ("важно", "срочно")
 _LIST_HABITS_KEYWORDS = ("привычки",)
 # С пробелом — чтобы отличать команду («привычка чтение») от разговорного
@@ -101,13 +113,15 @@ def parse_intent(text: str) -> ParsedIntent:
     stripped = text.strip()
     lowered = stripped.lower()
 
-    if _contains_any(lowered, _HELP_KEYWORDS):
+    if _starts_with_any(lowered, _HELP_KEYWORDS):
         return ParsedIntent(intent=Intent.HELP)
 
     if _contains_any(lowered, _LIST_WATCHLIST_KEYWORDS):
         return ParsedIntent(intent=Intent.LIST_WATCHLIST)
 
-    if _contains_any(lowered, _LIST_KEYWORDS):
+    if _contains_any(lowered, _LIST_KEYWORDS) or _starts_with_any(
+        lowered, _LIST_TASKS_START_KEYWORDS
+    ):
         return ParsedIntent(intent=Intent.LIST_TASKS)
 
     if _contains_any(lowered, _QUERY_BY_DATE_KEYWORDS):
@@ -132,13 +146,13 @@ def parse_intent(text: str) -> ParsedIntent:
             title=_remove_keyword(stripped, "привычка"),
         )
 
-    keyword = _contains_any(lowered, _COMPLETE_KEYWORDS)
+    keyword = _starts_with_any(lowered, _COMPLETE_KEYWORDS)
     if keyword:
         return ParsedIntent(
             intent=Intent.COMPLETE_TASK, title=_remove_keyword(stripped, keyword)
         )
 
-    keyword = _contains_any(lowered, _DELETE_KEYWORDS)
+    keyword = _starts_with_any(lowered, _DELETE_KEYWORDS)
     if keyword:
         return ParsedIntent(
             intent=Intent.DELETE_TASK, title=_remove_keyword(stripped, keyword)
@@ -170,8 +184,33 @@ def parse_intent(text: str) -> ParsedIntent:
 
 
 def _contains_any(lowered: str, keywords: tuple[str, ...]) -> Optional[str]:
+    """Первое совпавшее ключевое слово ЦЕЛИКОМ (границы слова, не любая
+    подстрока) — «отмени» матчит «отмени встречу», но не «отменить»
+    (см. AUDIT.md, B-6). Не защищает от слова, оказавшегося не к месту
+    ПОСЕРЕДИНЕ фразы (для этого — см. _starts_with_any ниже, для
+    командных слов, которые почти всегда идут первыми).
+
+    Лукахед/лукбехайнд вместо \\b: у `\\b` нет границы перед словом,
+    которое начинается с небуквенного символа («/tasks» — `\\b/tasks\\b`
+    не матчит вообще ничего, `/` сам не словообразующий, см. re.search
+    с `\\b` вживую)."""
     for keyword in keywords:
-        if keyword in lowered:
+        if re.search(rf"(?<!\w){re.escape(keyword)}(?!\w)", lowered):
+            return keyword
+    return None
+
+
+def _starts_with_any(lowered: str, keywords: tuple[str, ...]) -> Optional[str]:
+    """Первое ключевое слово, с которого НАЧИНАЕТСЯ сообщение (после
+    ведущих пробелов и вежливого филлера вроде «пожалуйста», см.
+    _strip_filler — иначе «пожалуйста, покажи задачи» переставало бы
+    матчить LIST_TASKS), границы слова соблюдены. Для командных слов
+    («покажи», «удали», «выполнил» и т.п.) — команда боту почти всегда
+    идёт в начале сообщения, а не посреди описания чего-то другого
+    (см. AUDIT.md, B-6)."""
+    stripped = _strip_filler(lowered.lstrip())
+    for keyword in keywords:
+        if re.match(rf"{re.escape(keyword)}\b", stripped):
             return keyword
     return None
 
@@ -265,7 +304,7 @@ def _extract_journal_entry(stripped: str, lowered: str) -> Optional[str]:
 
 def _match_watchlist_trigger(lowered: str) -> Optional[tuple[str, str]]:
     for phrase, media_type in _WATCHLIST_TRIGGERS:
-        if phrase in lowered:
+        if re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", lowered):
             return phrase, media_type
     return None
 
@@ -273,6 +312,6 @@ def _match_watchlist_trigger(lowered: str) -> Optional[tuple[str, str]]:
 def _extract_priority(text: str) -> tuple[str, str]:
     lowered = text.lower()
     for keyword in _HIGH_PRIORITY_KEYWORDS:
-        if keyword in lowered:
+        if re.search(rf"(?<!\w){re.escape(keyword)}(?!\w)", lowered):
             return "high", _remove_keyword(text, keyword)
     return "normal", text

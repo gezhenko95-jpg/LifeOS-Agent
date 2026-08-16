@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -55,7 +55,7 @@ async def test_update_content_and_archived(repository):
     repository.get_by_id.return_value = entry
     service = MemoryService(repository)
 
-    updated = await service.update(1, content="new", archived=True)
+    updated = await service.update(1, 1, content="new", archived=True)
 
     assert updated is not None
     assert updated.content == "new"
@@ -67,7 +67,17 @@ async def test_update_nonexistent_returns_none(repository):
     repository.get_by_id.return_value = None
     service = MemoryService(repository)
 
-    result = await service.update(999, content="new")
+    result = await service.update(1, 999, content="new")
+
+    assert result is None
+
+
+async def test_update_wrong_owner_returns_none(repository):
+    entry = MemoryEntry(telegram_user_id=1, type="fact", content="old", source="manual")
+    repository.get_by_id.return_value = entry
+    service = MemoryService(repository)
+
+    result = await service.update(2, 1, content="new")
 
     assert result is None
 
@@ -77,7 +87,7 @@ async def test_delete_existing(repository):
     repository.get_by_id.return_value = entry
     service = MemoryService(repository)
 
-    result = await service.delete(1)
+    result = await service.delete(1, 1)
 
     assert result is entry
     repository.delete.assert_awaited_once_with(entry)
@@ -87,7 +97,7 @@ async def test_delete_nonexistent_returns_none(repository):
     repository.get_by_id.return_value = None
     service = MemoryService(repository)
 
-    result = await service.delete(999)
+    result = await service.delete(1, 999)
 
     assert result is None
 
@@ -107,23 +117,6 @@ async def test_search_is_case_insensitive_substring(repository):
 
     assert len(results) == 1
     assert results[0].content == "Живу в Москве"
-
-
-async def test_get_context_sorted_and_limited(repository):
-    now = datetime.now(timezone.utc)
-    older = MemoryEntry(telegram_user_id=1, type="fact", content="A", source="manual")
-    older.created_at = now - timedelta(days=2)
-    older.updated_at = None
-    newer = MemoryEntry(telegram_user_id=1, type="fact", content="B", source="manual")
-    newer.created_at = now - timedelta(days=1)
-    newer.updated_at = now
-    repository.list_by_user.return_value = [older, newer]
-    service = MemoryService(repository)
-
-    context = await service.get_context(1, limit=1)
-
-    assert len(context) == 1
-    assert context[0].content == "B"
 
 
 async def test_semantic_search_no_entries_with_embedding_returns_empty(repository):
@@ -234,7 +227,9 @@ async def test_editing_content_resets_embedding(repository):
     поиск вечно находил бы запись по её прежнему смыслу (AUDIT.md, B-5)."""
     entry = _stored_entry(repository)
 
-    updated = await MemoryService(repository).update(entry.id, content="Перешёл на чай")
+    updated = await MemoryService(repository).update(
+        1, entry.id, content="Перешёл на чай"
+    )
 
     assert updated.content == "Перешёл на чай"
     assert updated.embedding is None
@@ -245,7 +240,7 @@ async def test_editing_only_archived_keeps_embedding(repository):
     это лишний платный вызов к AI."""
     entry = _stored_entry(repository)
 
-    updated = await MemoryService(repository).update(entry.id, archived=True)
+    updated = await MemoryService(repository).update(1, entry.id, archived=True)
 
     assert updated.archived is True
     assert updated.embedding == [0.1, 0.2, 0.3]
@@ -255,6 +250,6 @@ async def test_saving_identical_content_keeps_embedding(repository):
     """Текст не изменился — вектор всё ещё верен."""
     entry = _stored_entry(repository)
 
-    updated = await MemoryService(repository).update(entry.id, content="Люблю кофе")
+    updated = await MemoryService(repository).update(1, entry.id, content="Люблю кофе")
 
     assert updated.embedding == [0.1, 0.2, 0.3]

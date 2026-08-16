@@ -45,10 +45,11 @@ from app.habits.models import Habit
 from app.tasks.formatting import (
     count_overdue,
     format_due_human,
+    task_created_prefix,
     task_status_emoji,
 )
 from app.tasks.models import Task
-from app.watchlist.models import WatchlistItem
+from app.watchlist.models import MEDIA_TYPE_EMOJI, WatchlistItem
 
 _MAX_ITEMS = 10
 # Кнопок в ряду: больше пяти на узком экране схлопывается в нечитаемую кашу.
@@ -66,8 +67,6 @@ MENU_INSIGHTS = "📊 Инсайты"
 MENU_WATCHLIST = "🎬 Посмотреть"
 MENU_SITE = "🌐 Сайт"
 MENU_HELP = "❓ Помощь"
-
-_MEDIA_TYPE_EMOJI = {"movie": "🎬", "book": "📖"}
 
 
 def _esc(text: str) -> str:
@@ -191,11 +190,12 @@ def build_task_confirmation_message(task: Task) -> tuple[str, InlineKeyboardMark
     """Текст+кнопки после изменения задачи через быструю кнопку (см.
     app/telegram/callbacks.py) — тот же формат, что и у ConversationEngine
     при создании (app/conversation/engine.py::_add_task), чтобы не было
-    расхождения в стиле."""
-    prefix = "❗ " if task.priority == "high" else ""
+    расхождения в стиле. Префикс "Добавил задачу: «…»" — общий хелпер
+    (см. app/tasks/formatting.py::task_created_prefix), суффикс
+    (срок/повтор) здесь однострочный, в отличие от engine.py."""
     suffix = f" на {format_due_human(task.due_date)}" if task.due_date else ""
     recurrence_suffix = " 🔁" if task.recurrence else ""
-    text = f"{prefix}Добавил задачу: «{task.title}»{suffix}{recurrence_suffix}"
+    text = f"{task_created_prefix(task)}{suffix}{recurrence_suffix}"
     markup = build_task_quick_actions_keyboard(task) or InlineKeyboardMarkup([])
     return text, markup
 
@@ -254,7 +254,7 @@ def build_watchlist_message(
     shown = items[:_MAX_ITEMS]
     lines = ["🎬 <b>Посмотреть и почитать</b>", ""]
     for index, item in enumerate(shown, start=1):
-        emoji = _MEDIA_TYPE_EMOJI.get(item.media_type, "🎯")
+        emoji = MEDIA_TYPE_EMOJI.get(item.media_type, "🎯")
         lines.append(f"<b>{index}</b>  {emoji} {_esc(item.title)}")
     lines.append("")
     lines.append(_DIVIDER)

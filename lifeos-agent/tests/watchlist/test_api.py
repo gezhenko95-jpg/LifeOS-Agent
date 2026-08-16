@@ -74,7 +74,7 @@ async def test_list_includes_both_statuses(client):
         "/watchlist", json={"telegram_user_id": 2, "title": "Дюна"}
     )
     item_id = create_resp.json()["id"]
-    await client.post(f"/watchlist/{item_id}/complete")
+    await client.post(f"/watchlist/{item_id}/complete", params={"telegram_user_id": 2})
     await client.post("/watchlist", json={"telegram_user_id": 2, "title": "1984"})
 
     response = await client.get("/watchlist", params={"telegram_user_id": 2})
@@ -89,14 +89,31 @@ async def test_complete_item(client):
     )
     item_id = create_resp.json()["id"]
 
-    complete_resp = await client.post(f"/watchlist/{item_id}/complete")
+    complete_resp = await client.post(
+        f"/watchlist/{item_id}/complete", params={"telegram_user_id": 3}
+    )
 
     assert complete_resp.status_code == 200
     assert complete_resp.json()["status"] == "done"
 
 
 async def test_complete_nonexistent_item_returns_404(client):
-    response = await client.post("/watchlist/999999/complete")
+    response = await client.post(
+        "/watchlist/999999/complete", params={"telegram_user_id": 1}
+    )
+
+    assert response.status_code == 404
+
+
+async def test_complete_item_wrong_owner_returns_404(client):
+    create_resp = await client.post(
+        "/watchlist", json={"telegram_user_id": 3, "title": "Дюна"}
+    )
+    item_id = create_resp.json()["id"]
+
+    response = await client.post(
+        f"/watchlist/{item_id}/complete", params={"telegram_user_id": 999}
+    )
 
     assert response.status_code == 404
 
@@ -107,7 +124,9 @@ async def test_delete_item(client):
     )
     item_id = create_resp.json()["id"]
 
-    delete_resp = await client.delete(f"/watchlist/{item_id}")
+    delete_resp = await client.delete(
+        f"/watchlist/{item_id}", params={"telegram_user_id": 4}
+    )
     assert delete_resp.status_code == 204
 
     list_resp = await client.get("/watchlist", params={"telegram_user_id": 4})
@@ -115,6 +134,6 @@ async def test_delete_item(client):
 
 
 async def test_delete_nonexistent_item_returns_404(client):
-    response = await client.delete("/watchlist/999999")
+    response = await client.delete("/watchlist/999999", params={"telegram_user_id": 1})
 
     assert response.status_code == 404

@@ -9,33 +9,15 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.repository import BaseRepository, escape_like
 from app.tasks.models import Task
 
 
-def _escape_like(text: str) -> str:
-    """Экранировать %, _ и сам escape-символ — иначе поиск по названию,
-    содержащему %, вёл бы себя как SQL-паттерн, а не как буквальная
-    подстрока (Python `in`, который эта функция заменяет, был буквальным
-    по определению)."""
-    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
-class TaskRepository:
+class TaskRepository(BaseRepository[Task]):
     """Доступ к таблице `tasks` через AsyncSession."""
 
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
-
-    async def add(self, task: Task) -> Task:
-        self._session.add(task)
-        await self._session.commit()
-        await self._session.refresh(task)
-        return task
-
-    async def get_by_id(self, task_id: int) -> Optional[Task]:
-        return await self._session.get(Task, task_id)
+    model = Task
 
     async def list_by_user(
         self, telegram_user_id: int, status: Optional[str] = None
@@ -58,21 +40,11 @@ class TaskRepository:
         query = select(Task).where(
             Task.telegram_user_id == telegram_user_id,
             Task.status == "active",
-            Task.title.ilike(f"%{_escape_like(needle)}%", escape="\\"),
+            Task.title.ilike(f"%{escape_like(needle)}%", escape="\\"),
         )
         query = query.order_by(Task.created_at)
         result = await self._session.execute(query)
         return list(result.scalars().all())
-
-    async def save(self, task: Task) -> Task:
-        """Сохранить изменения существующей задачи (update)."""
-        await self._session.commit()
-        await self._session.refresh(task)
-        return task
-
-    async def delete(self, task: Task) -> None:
-        await self._session.delete(task)
-        await self._session.commit()
 
     async def list_due_unreminded(self, now: datetime) -> list[Task]:
         """Активные задачи с наступившим сроком, по которым ещё не напомнили."""

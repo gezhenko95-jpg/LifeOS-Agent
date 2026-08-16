@@ -998,7 +998,7 @@ document.getElementById("taskList").addEventListener("click", async (e) => {
   const taskId = btn.dataset.id;
   if (btn.dataset.action === "complete-task") {
     await flashAndReload(btn, async () => {
-      await api(`/tasks/${taskId}`, {
+      await api(`/tasks/${taskId}?telegram_user_id=${getUserId()}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "completed" }),
@@ -1006,7 +1006,9 @@ document.getElementById("taskList").addEventListener("click", async (e) => {
       await loadTasks();
     });
   } else if (btn.dataset.action === "delete-task") {
-    await api(`/tasks/${taskId}`, { method: "DELETE" });
+    await api(`/tasks/${taskId}?telegram_user_id=${getUserId()}`, {
+      method: "DELETE",
+    });
     await loadTasks();
   }
 });
@@ -1060,11 +1062,15 @@ document.getElementById("habitList").addEventListener("click", async (e) => {
   const habitId = btn.dataset.id;
   if (btn.dataset.action === "complete-habit") {
     await flashAndReload(btn, async () => {
-      await api(`/habits/${habitId}/complete`, { method: "POST" });
+      await api(`/habits/${habitId}/complete?telegram_user_id=${getUserId()}`, {
+        method: "POST",
+      });
       await loadHabits();
     });
   } else if (btn.dataset.action === "delete-habit") {
-    await api(`/habits/${habitId}`, { method: "DELETE" });
+    await api(`/habits/${habitId}?telegram_user_id=${getUserId()}`, {
+      method: "DELETE",
+    });
     await loadHabits();
   }
 });
@@ -1115,14 +1121,16 @@ document.getElementById("goalList").addEventListener("click", async (e) => {
   const goalId = btn.dataset.id;
   if (btn.dataset.action === "save-progress") {
     const input = document.querySelector(`input[data-action="progress-input"][data-id="${goalId}"]`);
-    await api(`/goals/${goalId}`, {
+    await api(`/goals/${goalId}?telegram_user_id=${getUserId()}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ progress: Number(input.value) }),
     });
     await loadGoals();
   } else if (btn.dataset.action === "delete-goal") {
-    await api(`/goals/${goalId}`, { method: "DELETE" });
+    await api(`/goals/${goalId}?telegram_user_id=${getUserId()}`, {
+      method: "DELETE",
+    });
     await loadGoals();
   }
 });
@@ -1174,11 +1182,15 @@ async function handleShelfClick(e) {
   const itemId = btn.dataset.id;
   if (btn.dataset.action === "complete-watchlist") {
     await flashAndReload(btn, async () => {
-      await api(`/watchlist/${itemId}/complete`, { method: "POST" });
+      await api(`/watchlist/${itemId}/complete?telegram_user_id=${getUserId()}`, {
+        method: "POST",
+      });
       await loadWatchlist();
     });
   } else if (btn.dataset.action === "delete-watchlist") {
-    await api(`/watchlist/${itemId}`, { method: "DELETE" });
+    await api(`/watchlist/${itemId}?telegram_user_id=${getUserId()}`, {
+      method: "DELETE",
+    });
     await loadWatchlist();
   }
 }

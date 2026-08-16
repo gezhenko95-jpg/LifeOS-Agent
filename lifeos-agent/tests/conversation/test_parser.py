@@ -463,3 +463,71 @@ def test_vspomni_stays_recall():
 
     assert parsed.intent is Intent.RECALL
     assert parsed.title == "Сохрани лес"
+
+
+# --- B-6: границы слов и якорь на начало сообщения для командных слов
+# (см. AUDIT.md, B-6) ---
+#
+# Из четырёх примеров AUDIT.md реально фиксится якорем только первый —
+# в остальных трёх триггерное слово само оказывается ПЕРВЫМ словом
+# фразы («сделал заметку…», «покажи презентацию…», «отдать книгу…»),
+# и якорь на начало сообщения его не отсекает. Это подтверждённый
+# осознанный компромисс ADR-004 (см. комментарий у _WATCHLIST_TRIGGERS
+# в parser.py) — не переписываем на семантический разбор ради него.
+
+
+def test_help_word_mid_sentence_no_longer_triggers_help():
+    """«нужна помощь с отчётом» раньше ловилась как HELP по одному
+    вхождению слова «помощь» где угодно во фразе (AUDIT.md, B-6)."""
+    parsed = parse_intent("нужна помощь с отчётом")
+
+    assert parsed.intent is not Intent.HELP
+    assert parsed.intent is Intent.ADD_TASK
+
+
+def test_complete_word_mid_sentence_no_longer_triggers_complete():
+    """«сделал» посреди фразы (не первым словом) больше не отмечает
+    случайную задачу выполненной."""
+    parsed = parse_intent("не могу решить, сделал ли я уже отчёт")
+
+    assert parsed.intent is not Intent.COMPLETE_TASK
+
+
+def test_list_tasks_word_mid_sentence_no_longer_triggers_list():
+    """«покажи» посреди фразы, не первым словом — не список задач."""
+    parsed = parse_intent("а ты можешь мне покажи как это работает")
+
+    assert parsed.intent is not Intent.LIST_TASKS
+
+
+def test_delete_word_substring_inside_another_word_does_not_match():
+    """«отмени» — подстрока «отменить», но не то же самое слово (границы
+    слова, см. AUDIT.md, B-6)."""
+    parsed = parse_intent("нужно отменить встречу с клиентом завтра")
+
+    assert parsed.intent is not Intent.DELETE_TASK
+
+
+def test_priority_word_substring_inside_another_word_does_not_match():
+    """«важно» — подстрока «важность», границы слова не дают ложного
+    приоритета."""
+    parsed = parse_intent("обсудить важность проекта")
+
+    assert parsed.priority == "normal"
+
+
+def test_polite_prefix_before_command_word_still_works():
+    """Якорь на начало сообщения не должен ломать вежливые формы —
+    филлер («пожалуйста») уже снимается для команд-напоминаний
+    (_strip_filler), теперь так же и для якоримых командных слов."""
+    parsed = parse_intent("пожалуйста, покажи задачи")
+
+    assert parsed.intent is Intent.LIST_TASKS
+
+
+def test_command_word_at_start_still_works():
+    """Регрессия: якорь не должен ломать штатный случай — команда,
+    стоящая в начале, как и раньше."""
+    assert parse_intent("Удали молоко").intent is Intent.DELETE_TASK
+    assert parse_intent("Выполнил молоко").intent is Intent.COMPLETE_TASK
+    assert parse_intent("Покажи задачи").intent is Intent.LIST_TASKS

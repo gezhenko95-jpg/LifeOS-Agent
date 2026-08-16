@@ -55,7 +55,9 @@ async def _format_habits_section(
     if not habits:
         return ""
 
-    streaks = await habit_service.get_streaks_bulk([h.id for h in habits])
+    streaks = await habit_service.get_streaks_bulk(
+        telegram_user_id, [h.id for h in habits]
+    )
     lines = ["", "Привычки:"]
     for habit in habits:
         streak = streaks.get(habit.id, 0)

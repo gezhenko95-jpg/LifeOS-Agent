@@ -68,7 +68,9 @@ async def test_complete_habit_increments_streak(client):
     )
     habit_id = create_resp.json()["id"]
 
-    complete_resp = await client.post(f"/habits/{habit_id}/complete")
+    complete_resp = await client.post(
+        f"/habits/{habit_id}/complete", params={"telegram_user_id": 2}
+    )
 
     assert complete_resp.status_code == 200
     assert complete_resp.json()["streak"] == 1
@@ -80,14 +82,31 @@ async def test_complete_habit_is_idempotent_same_day(client):
     )
     habit_id = create_resp.json()["id"]
 
-    await client.post(f"/habits/{habit_id}/complete")
-    second_resp = await client.post(f"/habits/{habit_id}/complete")
+    await client.post(f"/habits/{habit_id}/complete", params={"telegram_user_id": 2})
+    second_resp = await client.post(
+        f"/habits/{habit_id}/complete", params={"telegram_user_id": 2}
+    )
 
     assert second_resp.json()["streak"] == 1
 
 
 async def test_complete_nonexistent_habit_returns_404(client):
-    response = await client.post("/habits/999999/complete")
+    response = await client.post(
+        "/habits/999999/complete", params={"telegram_user_id": 1}
+    )
+
+    assert response.status_code == 404
+
+
+async def test_complete_habit_wrong_owner_returns_404(client):
+    create_resp = await client.post(
+        "/habits", json={"telegram_user_id": 2, "title": "Спорт"}
+    )
+    habit_id = create_resp.json()["id"]
+
+    response = await client.post(
+        f"/habits/{habit_id}/complete", params={"telegram_user_id": 999}
+    )
 
     assert response.status_code == 404
 
@@ -98,7 +117,9 @@ async def test_delete_habit(client):
     )
     habit_id = create_resp.json()["id"]
 
-    delete_resp = await client.delete(f"/habits/{habit_id}")
+    delete_resp = await client.delete(
+        f"/habits/{habit_id}", params={"telegram_user_id": 3}
+    )
     assert delete_resp.status_code == 204
 
     list_resp = await client.get("/habits", params={"telegram_user_id": 3})
@@ -106,6 +127,6 @@ async def test_delete_habit(client):
 
 
 async def test_delete_nonexistent_habit_returns_404(client):
-    response = await client.delete("/habits/999999")
+    response = await client.delete("/habits/999999", params={"telegram_user_id": 1})
 
     assert response.status_code == 404

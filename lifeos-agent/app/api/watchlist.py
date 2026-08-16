@@ -50,9 +50,11 @@ async def list_items(
 
 @router.post("/{item_id}/complete", response_model=WatchlistRead)
 async def complete_item(
-    item_id: int, service: WatchlistService = Depends(get_watchlist_service)
+    item_id: int,
+    telegram_user_id: int,
+    service: WatchlistService = Depends(get_watchlist_service),
 ) -> WatchlistRead:
-    item = await service.mark_done(item_id)
+    item = await service.mark_done(telegram_user_id, item_id)
     if item is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Запись не найдена"
@@ -62,9 +64,11 @@ async def complete_item(
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_item(
-    item_id: int, service: WatchlistService = Depends(get_watchlist_service)
+    item_id: int,
+    telegram_user_id: int,
+    service: WatchlistService = Depends(get_watchlist_service),
 ) -> None:
-    item = await service.delete_item(item_id)
+    item = await service.delete_item(telegram_user_id, item_id)
     if item is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Запись не найдена"

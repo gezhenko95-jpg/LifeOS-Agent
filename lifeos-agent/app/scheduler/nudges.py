@@ -46,7 +46,7 @@ async def _habit_streak_break_nudges(
 ) -> list[str]:
     habits = await habit_service.list_active_habits(telegram_user_id)
     days_since_by_habit = await habit_service.days_since_last_completion_bulk(
-        [h.id for h in habits]
+        telegram_user_id, [h.id for h in habits]
     )
     lines = []
     for habit in habits:

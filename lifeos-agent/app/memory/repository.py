@@ -9,32 +9,15 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.repository import BaseRepository, escape_like
 from app.memory.models import MemoryEntry, MemoryType
 
 
-def _escape_like(text: str) -> str:
-    """Экранировать %, _ и сам escape-символ — иначе поиск "5% скидка"
-    вёл бы себя как SQL-паттерн, а не как буквальная подстрока (Python
-    `in`, который эта функция заменяет, был буквальным по определению)."""
-    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
-class MemoryRepository:
+class MemoryRepository(BaseRepository[MemoryEntry]):
     """Доступ к таблице `memory_entries` через AsyncSession."""
 
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
-
-    async def add(self, entry: MemoryEntry) -> MemoryEntry:
-        self._session.add(entry)
-        await self._session.commit()
-        await self._session.refresh(entry)
-        return entry
-
-    async def get_by_id(self, entry_id: int) -> Optional[MemoryEntry]:
-        return await self._session.get(MemoryEntry, entry_id)
+    model = MemoryEntry
 
     async def list_by_user(
         self,
@@ -81,7 +64,7 @@ class MemoryRepository:
         поведение не поменялось для вызывающего кода."""
         query = select(MemoryEntry).where(
             MemoryEntry.telegram_user_id == telegram_user_id,
-            MemoryEntry.content.ilike(f"%{_escape_like(needle)}%", escape="\\"),
+            MemoryEntry.content.ilike(f"%{escape_like(needle)}%", escape="\\"),
         )
         if type is not None:
             query = query.where(MemoryEntry.type == type.value)
@@ -119,13 +102,3 @@ class MemoryRepository:
         )
         result = await self._session.execute(query)
         return list(result.scalars().all())
-
-    async def save(self, entry: MemoryEntry) -> MemoryEntry:
-        """Сохранить изменения существующей записи (update)."""
-        await self._session.commit()
-        await self._session.refresh(entry)
-        return entry
-
-    async def delete(self, entry: MemoryEntry) -> None:
-        await self._session.delete(entry)
-        await self._session.commit()
