@@ -13,3 +13,5 @@ class RewardsStatusRead(BaseModel):
     claimed_today: bool
     streak: int
     total_coins: int
+    coins_today: int
+    lucky_today: bool

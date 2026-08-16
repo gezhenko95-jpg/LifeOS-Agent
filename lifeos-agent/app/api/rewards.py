@@ -4,6 +4,8 @@ REST API для мини-игры "🪙 Зайди и забери" (ежедн�
 Эндпоинты не содержат бизнес-логики — только вызывают RewardsService.
 """
 
+from dataclasses import asdict
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,11 +28,7 @@ async def get_status(
     telegram_user_id: int, service: RewardsService = Depends(get_rewards_service)
 ) -> RewardsStatusRead:
     status_ = await service.get_status(telegram_user_id)
-    return RewardsStatusRead(
-        claimed_today=status_.claimed_today,
-        streak=status_.streak,
-        total_coins=status_.total_coins,
-    )
+    return RewardsStatusRead(**asdict(status_))
 
 
 @router.post("/checkin", response_model=RewardsStatusRead)
@@ -40,8 +38,4 @@ async def claim_checkin(
     """Идемпотентно: повторный вызов в тот же день не даёт монет дважды,
     просто возвращает уже известное состояние (claimed_today=true)."""
     status_ = await service.claim_today(payload.telegram_user_id)
-    return RewardsStatusRead(
-        claimed_today=status_.claimed_today,
-        streak=status_.streak,
-        total_coins=status_.total_coins,
-    )
+    return RewardsStatusRead(**asdict(status_))
