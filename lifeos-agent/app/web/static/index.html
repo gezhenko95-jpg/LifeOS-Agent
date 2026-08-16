@@ -44,14 +44,63 @@
     }
   }
   * { box-sizing: border-box; }
+  html { background: var(--bg); }
   body {
+    position: relative;
     margin: 0 auto;
     max-width: 1100px;
-    background: var(--bg);
+    background: transparent;
     color: var(--text);
     font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     line-height: 1.5;
     padding: 28px 20px 56px;
+    /* overflow-x: clip, не hidden — так .bg-blobs (position: fixed) не
+       обрезается сам по себе, но горизонтальный скролл от их движения
+       по-прежнему невозможен. */
+    overflow-x: clip;
+  }
+
+  /* Фон: два размытых пятна медленно дрейфуют по экрану — минимальная
+     "живость" страницы без единого лишнего элемента интерфейса. Fixed +
+     -1 + pointer-events:none, чтобы ничего не перекрывать и не мешать
+     кликам. Останавливаются для reduced-motion (см. блок ниже). */
+  .bg-blobs {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .bg-blobs > span {
+    position: absolute;
+    width: 46vmax;
+    height: 46vmax;
+    border-radius: 50%;
+    filter: blur(70px);
+    opacity: 0.16;
+    background: var(--accent);
+  }
+  .bg-blobs > span:nth-child(1) {
+    top: -18vmax;
+    left: -12vmax;
+    animation: blob-drift-a 34s ease-in-out infinite;
+  }
+  .bg-blobs > span:nth-child(2) {
+    bottom: -20vmax;
+    right: -14vmax;
+    background: var(--ok);
+    animation: blob-drift-b 40s ease-in-out infinite;
+  }
+  @keyframes blob-drift-a {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(6vmax, 8vmax) scale(1.12); }
+  }
+  @keyframes blob-drift-b {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(-7vmax, -5vmax) scale(1.08); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .bg-blobs > span { animation: none; }
   }
   h1 {
     font-size: 1.6rem;
@@ -118,7 +167,7 @@
     transition: filter 0.15s, background 0.15s;
   }
   button:hover { filter: brightness(1.08); }
-  button:active { filter: brightness(0.94); }
+  button:active { filter: brightness(0.94); transform: scale(0.96); }
   button.secondary {
     background: transparent;
     color: var(--muted);
@@ -144,6 +193,27 @@
     border-radius: 14px;
     padding: 18px 18px 14px;
     box-shadow: var(--shadow);
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+    /* Появление карточек при загрузке страницы — лёгкий сдвиг+прозрачность,
+       со сдвигом по времени через nth-child ниже, чтобы не мелькали разом. */
+    animation: card-in 0.5s ease backwards;
+  }
+  .card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 8px rgba(16, 24, 40, 0.08), 0 12px 24px rgba(16, 24, 40, 0.08);
+  }
+  .grid > .card:nth-child(1) { animation-delay: 0.02s; }
+  .grid > .card:nth-child(2) { animation-delay: 0.08s; }
+  .grid > .card:nth-child(3) { animation-delay: 0.14s; }
+  .grid > .card:nth-child(4) { animation-delay: 0.2s; }
+  .grid > .card:nth-child(5) { animation-delay: 0.26s; }
+  @keyframes card-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .card { animation: none; }
+    .card:hover { transform: none; }
   }
   .card h2 {
     margin: 0 0 14px;
@@ -171,9 +241,32 @@
     border-bottom: 1px solid var(--border);
     flex-wrap: wrap;
     transition: background 0.12s;
+    /* Каждая строка проигрывает эту анимацию заново, когда её создают
+       заново через innerHTML (см. loadTasks/loadHabits/...) — без
+       ручного управления классами, браузер сам запускает keyframes на
+       свежедобавленных элементах. */
+    animation: item-in 0.25s ease backwards;
   }
   ul.item-list li:hover { background: var(--accent-soft); }
   ul.item-list li:last-child { border-bottom: none; }
+  @keyframes item-in {
+    from { opacity: 0; transform: translateX(-4px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  /* Вспышка при отметке "выполнено" — короткая пауза перед перерисовкой
+     списка (см. flashAndReload в <script>), чтобы действие ощущалось
+     как результат клика, а не мгновенная подмена содержимого. */
+  ul.item-list li.done-flash {
+    animation: done-flash 0.4s ease;
+  }
+  @keyframes done-flash {
+    0% { background: transparent; }
+    30% { background: color-mix(in srgb, var(--ok) 22%, transparent); }
+    100% { background: transparent; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    ul.item-list li { animation: none; }
+  }
   .item-title { flex: 1; min-width: 120px; }
   .item-title.high { color: var(--high); font-weight: 600; }
   .meta { color: var(--muted); font-size: 0.8rem; white-space: nowrap; }
@@ -218,6 +311,8 @@
 </style>
 </head>
 <body>
+
+<div class="bg-blobs" aria-hidden="true"><span></span><span></span></div>
 
 <h1>LifeOS Agent</h1>
 <p class="subtitle">Задачи, привычки, цели и полка — то же, что в боте, только целиком на одном экране.</p>
@@ -350,6 +445,61 @@ function escapeHtml(text) {
   }[c]));
 }
 
+// Короткая вспышка на строке списка перед тем, как её унесёт
+// перерисовка — без неё "выполнено" ощущается как мгновенная подмена
+// содержимого, а не как результат нажатия. matchMedia проверяется один
+// раз при клике, не при загрузке — пользователь может переключить
+// системную настройку, не перезагружая страницу.
+async function flashAndReload(button, reload) {
+  const prefersNoMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const row = button.closest("li");
+  if (row && !prefersNoMotion) {
+    row.classList.add("done-flash");
+    await new Promise((resolve) => setTimeout(resolve, 220));
+  }
+  await reload();
+}
+
+// Прогресс-бары рендерятся сразу с итоговой шириной (innerHTML), поэтому
+// CSS-transition на width не срабатывает при первой отрисовке — играть
+// анимации не от чего. Здесь ширина временно обнуляется, а на следующий
+// кадр возвращается к цели: тот же приём, что и card-in/item-in, но
+// через JS, потому что итоговое значение приходит с сервера.
+function animateProgressBars(container) {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const bars = container.querySelectorAll(".progress-bar > span");
+  bars.forEach((bar) => {
+    const target = bar.style.width;
+    bar.style.transition = "none";
+    bar.style.width = "0%";
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        bar.style.transition = "";
+        bar.style.width = target;
+      });
+    });
+  });
+}
+
+// Считает от текущего показанного числа до нового — используется только
+// для недельной статистики, единственного "голого числа" на странице.
+function animateNumber(el, to) {
+  const from = Number(el.textContent) || 0;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || from === to) {
+    el.textContent = to;
+    return;
+  }
+  const duration = 500;
+  const start = performance.now();
+  function tick(now) {
+    const progress = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - progress, 3); // ease-out
+    el.textContent = Math.round(from + (to - from) * eased);
+    if (progress < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
 function formatDate(iso) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -433,15 +583,18 @@ document.getElementById("taskList").addEventListener("click", async (e) => {
   if (!btn) return;
   const taskId = btn.dataset.id;
   if (btn.dataset.action === "complete-task") {
-    await api(`/tasks/${taskId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "completed" }),
+    await flashAndReload(btn, async () => {
+      await api(`/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed" }),
+      });
+      await loadTasks();
     });
   } else if (btn.dataset.action === "delete-task") {
     await api(`/tasks/${taskId}`, { method: "DELETE" });
+    await loadTasks();
   }
-  await loadTasks();
 });
 
 // ---- Habits ----
@@ -469,6 +622,7 @@ async function loadHabits() {
     </li>
   `;
   }).join("");
+  animateProgressBars(list);
 }
 
 document.getElementById("habitForm").addEventListener("submit", async (e) => {
@@ -490,11 +644,14 @@ document.getElementById("habitList").addEventListener("click", async (e) => {
   if (!btn) return;
   const habitId = btn.dataset.id;
   if (btn.dataset.action === "complete-habit") {
-    await api(`/habits/${habitId}/complete`, { method: "POST" });
+    await flashAndReload(btn, async () => {
+      await api(`/habits/${habitId}/complete`, { method: "POST" });
+      await loadHabits();
+    });
   } else if (btn.dataset.action === "delete-habit") {
     await api(`/habits/${habitId}`, { method: "DELETE" });
+    await loadHabits();
   }
-  await loadHabits();
 });
 
 // ---- Goals ----
@@ -519,6 +676,7 @@ async function loadGoals() {
       <button class="danger" data-action="delete-goal" data-id="${goal.id}">✕</button>
     </li>
   `).join("");
+  animateProgressBars(list);
 }
 
 document.getElementById("goalForm").addEventListener("submit", async (e) => {
@@ -598,11 +756,14 @@ async function handleShelfClick(e) {
   if (!btn) return;
   const itemId = btn.dataset.id;
   if (btn.dataset.action === "complete-watchlist") {
-    await api(`/watchlist/${itemId}/complete`, { method: "POST" });
+    await flashAndReload(btn, async () => {
+      await api(`/watchlist/${itemId}/complete`, { method: "POST" });
+      await loadWatchlist();
+    });
   } else if (btn.dataset.action === "delete-watchlist") {
     await api(`/watchlist/${itemId}`, { method: "DELETE" });
+    await loadWatchlist();
   }
-  await loadWatchlist();
 }
 
 ["shelfMovieToWatch", "shelfMovieDone", "shelfBookToWatch", "shelfBookDone", "shelfOtherToWatch"]
@@ -615,7 +776,7 @@ async function loadWeeklyStats() {
   const el = document.getElementById("weeklyTasksCount");
   if (!id) { el.textContent = "—"; return; }
   const stats = await api(`/tasks/stats?telegram_user_id=${encodeURIComponent(id)}`);
-  el.textContent = stats.completed_this_week;
+  animateNumber(el, stats.completed_this_week);
 }
 
 // ---- User id + init ----
