@@ -117,26 +117,6 @@ async def test_update_entry_wrong_owner_returns_404(client):
     assert response.status_code == 404
 
 
-async def test_get_context_returns_recent_entries(client):
-    await client.post(
-        "/memory",
-        json={"telegram_user_id": 7, "type": "fact", "content": "Первая запись"},
-    )
-    await client.post(
-        "/memory",
-        json={"telegram_user_id": 7, "type": "fact", "content": "Вторая запись"},
-    )
-
-    response = await client.get(
-        "/memory/context", params={"telegram_user_id": 7, "limit": 1}
-    )
-
-    assert response.status_code == 200
-    entries = response.json()
-    assert len(entries) == 1
-    assert entries[0]["content"] == "Вторая запись"
-
-
 async def test_delete_entry(client):
     create_resp = await client.post(
         "/memory",

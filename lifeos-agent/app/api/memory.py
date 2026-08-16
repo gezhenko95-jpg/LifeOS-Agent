@@ -54,16 +54,6 @@ async def list_entries(
     return [MemoryEntryRead.model_validate(entry) for entry in entries]
 
 
-@router.get("/context", response_model=list[MemoryEntryRead])
-async def get_context(
-    telegram_user_id: int,
-    limit: int = 10,
-    service: MemoryService = Depends(get_memory_service),
-) -> list[MemoryEntryRead]:
-    entries = await service.get_context(telegram_user_id, limit=limit)
-    return [MemoryEntryRead.model_validate(entry) for entry in entries]
-
-
 @router.patch("/{entry_id}", response_model=MemoryEntryRead)
 async def update_entry(
     entry_id: int,

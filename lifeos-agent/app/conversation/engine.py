@@ -240,7 +240,8 @@ class ConversationEngine:
 
         Pending намеренно НЕ чистится, если ответ не распознан — вопрос
         остаётся открытым до следующего успешного ответа или следующего
-        запланированного вопроса (см. PendingPromptService.pick_and_open).
+        запланированного вопроса (см. PendingPromptService.pick_morning_reflection
+        / pick_gap_question_if_any, которые перезаписывают его через upsert).
         """
         assert self._pending_prompts is not None and self._ai_client is not None
 

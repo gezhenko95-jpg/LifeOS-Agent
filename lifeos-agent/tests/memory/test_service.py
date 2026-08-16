@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -117,23 +117,6 @@ async def test_search_is_case_insensitive_substring(repository):
 
     assert len(results) == 1
     assert results[0].content == "Живу в Москве"
-
-
-async def test_get_context_sorted_and_limited(repository):
-    now = datetime.now(timezone.utc)
-    older = MemoryEntry(telegram_user_id=1, type="fact", content="A", source="manual")
-    older.created_at = now - timedelta(days=2)
-    older.updated_at = None
-    newer = MemoryEntry(telegram_user_id=1, type="fact", content="B", source="manual")
-    newer.created_at = now - timedelta(days=1)
-    newer.updated_at = now
-    repository.list_by_user.return_value = [older, newer]
-    service = MemoryService(repository)
-
-    context = await service.get_context(1, limit=1)
-
-    assert len(context) == 1
-    assert context[0].content == "B"
 
 
 async def test_semantic_search_no_entries_with_embedding_returns_empty(repository):

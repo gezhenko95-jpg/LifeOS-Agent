@@ -50,18 +50,6 @@ class PendingPromptService:
         self._habits = habit_service
         self._memory = memory_service
 
-    async def pick_and_open(self, telegram_user_id: int) -> str:
-        category, question_text = await self._pick_question(telegram_user_id)
-        # В pending_prompts уходит ЧИСТЫЙ вопрос (без musing) — именно он
-        # даёт AI контекст при разборе ответа (ai_extract.py). Musing —
-        # только украшение отправляемого сообщения, к разбору ответа
-        # отношения не имеет: если пользователь ответит именно на него,
-        # extract_prompt_answer справедливо сочтёт это "unrelated" к
-        # основной категории и сообщение уйдёт по обычному пути (см.
-        # specs/006-proactive-engagement.md).
-        await self._repository.upsert(telegram_user_id, category, question_text)
-        return _with_musing(question_text)
-
     async def pick_morning_reflection(
         self, telegram_user_id: int, allow_gap: bool = True
     ) -> str:

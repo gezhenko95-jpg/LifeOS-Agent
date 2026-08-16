@@ -150,20 +150,3 @@ class MemoryService:
             await self._repository.save(entry)
             embedded += 1
         return embedded
-
-    async def get_context(
-        self, telegram_user_id: int, limit: int = 10
-    ) -> list[MemoryEntry]:
-        """Простой вариант "релевантного контекста" — последние N записей.
-
-        Оценка важности и семантический поиск — будущее развитие
-        (см. specs/001-memory.md), сейчас достаточно последних по времени.
-        """
-        entries = await self._repository.list_by_user(telegram_user_id)
-        # id как второй ключ сортировки — тай-брейкер, если несколько записей
-        # созданы в один и тот же момент (например, зависит от точности БД).
-        entries.sort(
-            key=lambda entry: (entry.updated_at or entry.created_at, entry.id),
-            reverse=True,
-        )
-        return entries[:limit]
