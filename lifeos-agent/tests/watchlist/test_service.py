@@ -95,7 +95,7 @@ async def test_mark_done_found(repository):
     repository.get_by_id.return_value = item
     service = WatchlistService(repository)
 
-    result = await service.mark_done(1)
+    result = await service.mark_done(1, 1)
 
     assert result.status == "done"
     assert result.completed_at is not None
@@ -105,7 +105,17 @@ async def test_mark_done_not_found(repository):
     repository.get_by_id.return_value = None
     service = WatchlistService(repository)
 
-    result = await service.mark_done(999)
+    result = await service.mark_done(1, 999)
+
+    assert result is None
+
+
+async def test_mark_done_wrong_owner_returns_none(repository):
+    item = WatchlistItem(id=1, telegram_user_id=1, title="Дюна", status="to_watch")
+    repository.get_by_id.return_value = item
+    service = WatchlistService(repository)
+
+    result = await service.mark_done(2, 1)
 
     assert result is None
 
@@ -115,7 +125,7 @@ async def test_delete_item_found(repository):
     repository.get_by_id.return_value = item
     service = WatchlistService(repository)
 
-    result = await service.delete_item(1)
+    result = await service.delete_item(1, 1)
 
     assert result is item
     repository.delete.assert_awaited_once_with(item)
@@ -125,7 +135,17 @@ async def test_delete_item_not_found(repository):
     repository.get_by_id.return_value = None
     service = WatchlistService(repository)
 
-    result = await service.delete_item(999)
+    result = await service.delete_item(1, 999)
+
+    assert result is None
+
+
+async def test_delete_item_wrong_owner_returns_none(repository):
+    item = WatchlistItem(id=1, telegram_user_id=1, title="Дюна")
+    repository.get_by_id.return_value = item
+    service = WatchlistService(repository)
+
+    result = await service.delete_item(2, 1)
 
     assert result is None
 

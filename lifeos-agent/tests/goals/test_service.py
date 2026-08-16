@@ -61,7 +61,7 @@ async def test_update_progress(repository):
     repository.get_by_id.return_value = goal
     service = GoalService(repository)
 
-    updated = await service.update_progress(1, 40)
+    updated = await service.update_progress(1, 1, 40)
 
     assert updated is not None
     assert updated.progress == 40
@@ -72,10 +72,10 @@ async def test_update_progress_out_of_range_raises(repository):
     service = GoalService(repository)
 
     with pytest.raises(ValueError):
-        await service.update_progress(1, 150)
+        await service.update_progress(1, 1, 150)
 
     with pytest.raises(ValueError):
-        await service.update_progress(1, -1)
+        await service.update_progress(1, 1, -1)
 
 
 async def test_update_progress_does_not_auto_complete(repository):
@@ -83,7 +83,7 @@ async def test_update_progress_does_not_auto_complete(repository):
     repository.get_by_id.return_value = goal
     service = GoalService(repository)
 
-    updated = await service.update_progress(1, 100)
+    updated = await service.update_progress(1, 1, 100)
 
     assert updated is not None
     assert updated.status == "active"
@@ -93,7 +93,17 @@ async def test_update_progress_not_found(repository):
     repository.get_by_id.return_value = None
     service = GoalService(repository)
 
-    result = await service.update_progress(999, 50)
+    result = await service.update_progress(1, 999, 50)
+
+    assert result is None
+
+
+async def test_update_progress_wrong_owner_returns_none(repository):
+    goal = Goal(telegram_user_id=1, title="X", status="active", progress=0)
+    repository.get_by_id.return_value = goal
+    service = GoalService(repository)
+
+    result = await service.update_progress(2, 1, 40)
 
     assert result is None
 
@@ -103,7 +113,7 @@ async def test_complete_goal(repository):
     repository.get_by_id.return_value = goal
     service = GoalService(repository)
 
-    completed = await service.complete_goal(1)
+    completed = await service.complete_goal(1, 1)
 
     assert completed is not None
     assert completed.status == "completed"
@@ -113,7 +123,7 @@ async def test_update_goal_invalid_status_raises(repository):
     service = GoalService(repository)
 
     with pytest.raises(ValueError):
-        await service.update_goal(1, status="not_a_status")
+        await service.update_goal(1, 1, status="not_a_status")
 
 
 async def test_delete_goal_found(repository):
@@ -121,7 +131,7 @@ async def test_delete_goal_found(repository):
     repository.get_by_id.return_value = goal
     service = GoalService(repository)
 
-    result = await service.delete_goal(1)
+    result = await service.delete_goal(1, 1)
 
     assert result is goal
     repository.delete.assert_awaited_once_with(goal)
@@ -131,6 +141,16 @@ async def test_delete_goal_not_found(repository):
     repository.get_by_id.return_value = None
     service = GoalService(repository)
 
-    result = await service.delete_goal(999)
+    result = await service.delete_goal(1, 999)
+
+    assert result is None
+
+
+async def test_delete_goal_wrong_owner_returns_none(repository):
+    goal = Goal(telegram_user_id=1, title="X", status="active", progress=0)
+    repository.get_by_id.return_value = goal
+    service = GoalService(repository)
+
+    result = await service.delete_goal(2, 1)
 
     assert result is None

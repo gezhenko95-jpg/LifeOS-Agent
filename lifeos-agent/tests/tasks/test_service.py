@@ -170,7 +170,7 @@ async def test_update_task_priority(repository):
     repository.get_by_id.return_value = task
     service = TaskService(repository)
 
-    updated = await service.update_task(task_id=1, priority="high")
+    updated = await service.update_task(1, task_id=1, priority="high")
 
     assert updated is not None
     assert updated.priority == "high"
@@ -180,7 +180,17 @@ async def test_update_task_invalid_priority_raises(repository):
     service = TaskService(repository)
 
     with pytest.raises(ValueError):
-        await service.update_task(task_id=1, priority="urgent")
+        await service.update_task(1, task_id=1, priority="urgent")
+
+
+async def test_update_task_wrong_owner_returns_none(repository):
+    task = Task(telegram_user_id=1, title="X", status="active", priority="normal")
+    repository.get_by_id.return_value = task
+    service = TaskService(repository)
+
+    updated = await service.update_task(2, task_id=1, priority="high")
+
+    assert updated is None
 
 
 async def test_list_due_reminders_delegates_to_repository(repository):
@@ -219,7 +229,7 @@ async def test_update_task_status_to_completed_sets_completed_at(repository):
     repository.get_by_id.return_value = task
     service = TaskService(repository)
 
-    updated = await service.update_task(task_id=1, status="completed")
+    updated = await service.update_task(1, task_id=1, status="completed")
 
     assert updated is not None
     assert updated.completed_at is not None
@@ -230,7 +240,7 @@ async def test_update_task_status_to_active_does_not_set_completed_at(repository
     repository.get_by_id.return_value = task
     service = TaskService(repository)
 
-    updated = await service.update_task(task_id=1, priority="high")
+    updated = await service.update_task(1, task_id=1, priority="high")
 
     assert updated is not None
     assert updated.completed_at is None
@@ -395,7 +405,7 @@ async def test_update_task_to_completed_also_creates_next_occurrence(repository)
     repository.get_by_id.return_value = task
     service = TaskService(repository)
 
-    await service.update_task(task_id=1, status="completed")
+    await service.update_task(1, task_id=1, status="completed")
 
     next_task = repository.add.await_args.args[0]
     assert next_task.due_date == _dt(2026, 8, 14)
@@ -405,4 +415,4 @@ async def test_update_task_invalid_recurrence_raises(repository):
     service = TaskService(repository)
 
     with pytest.raises(ValueError):
-        await service.update_task(task_id=1, recurrence="yearly")
+        await service.update_task(1, task_id=1, recurrence="yearly")

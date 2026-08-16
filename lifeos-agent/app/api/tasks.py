@@ -63,11 +63,13 @@ async def get_task_stats(
 @router.patch("/{task_id}", response_model=TaskRead)
 async def update_task(
     task_id: int,
+    telegram_user_id: int,
     payload: TaskUpdate,
     service: TaskService = Depends(get_task_service),
 ) -> TaskRead:
     try:
         task = await service.update_task(
+            telegram_user_id=telegram_user_id,
             task_id=task_id,
             title=payload.title,
             due_date=payload.due_date,
@@ -88,9 +90,11 @@ async def update_task(
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_task(
-    task_id: int, service: TaskService = Depends(get_task_service)
+    task_id: int,
+    telegram_user_id: int,
+    service: TaskService = Depends(get_task_service),
 ) -> None:
-    task = await service.delete_task(task_id)
+    task = await service.delete_task(telegram_user_id, task_id)
     if task is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Задача не найдена"

@@ -68,7 +68,7 @@ class InsightsService:
         if deadline_finding:
             findings.append(deadline_finding)
 
-        streak_finding = await self._longest_streak(habits)
+        streak_finding = await self._longest_streak(telegram_user_id, habits)
         if streak_finding:
             findings.append(streak_finding)
 
@@ -82,7 +82,7 @@ class InsightsService:
 
         since_date = since.date()
         completed_by_habit = await self._habit_service.get_completed_days_bulk(
-            [h.id for h in habits], since_date
+            telegram_user_id, [h.id for h in habits], since_date
         )
         completion_counts: Counter[date] = Counter()
         for completed_days in completed_by_habit.values():
@@ -101,12 +101,14 @@ class InsightsService:
             window_days, journal_dates, completion_counts, len(habits)
         )
 
-    async def _longest_streak(self, habits: list[Habit]) -> str | None:
+    async def _longest_streak(
+        self, telegram_user_id: int, habits: list[Habit]
+    ) -> str | None:
         if not habits:
             return None
 
         by_id = await self._habit_service.get_longest_streaks_bulk(
-            [h.id for h in habits]
+            telegram_user_id, [h.id for h in habits]
         )
         streaks = {habit.title: by_id.get(habit.id, 0) for habit in habits}
         return longest_streak_finding(streaks)

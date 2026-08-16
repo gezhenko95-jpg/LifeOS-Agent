@@ -55,7 +55,7 @@ async def test_update_content_and_archived(repository):
     repository.get_by_id.return_value = entry
     service = MemoryService(repository)
 
-    updated = await service.update(1, content="new", archived=True)
+    updated = await service.update(1, 1, content="new", archived=True)
 
     assert updated is not None
     assert updated.content == "new"
@@ -67,7 +67,17 @@ async def test_update_nonexistent_returns_none(repository):
     repository.get_by_id.return_value = None
     service = MemoryService(repository)
 
-    result = await service.update(999, content="new")
+    result = await service.update(1, 999, content="new")
+
+    assert result is None
+
+
+async def test_update_wrong_owner_returns_none(repository):
+    entry = MemoryEntry(telegram_user_id=1, type="fact", content="old", source="manual")
+    repository.get_by_id.return_value = entry
+    service = MemoryService(repository)
+
+    result = await service.update(2, 1, content="new")
 
     assert result is None
 
@@ -77,7 +87,7 @@ async def test_delete_existing(repository):
     repository.get_by_id.return_value = entry
     service = MemoryService(repository)
 
-    result = await service.delete(1)
+    result = await service.delete(1, 1)
 
     assert result is entry
     repository.delete.assert_awaited_once_with(entry)
@@ -87,7 +97,7 @@ async def test_delete_nonexistent_returns_none(repository):
     repository.get_by_id.return_value = None
     service = MemoryService(repository)
 
-    result = await service.delete(999)
+    result = await service.delete(1, 999)
 
     assert result is None
 
@@ -234,7 +244,9 @@ async def test_editing_content_resets_embedding(repository):
     поиск вечно находил бы запись по её прежнему смыслу (AUDIT.md, B-5)."""
     entry = _stored_entry(repository)
 
-    updated = await MemoryService(repository).update(entry.id, content="Перешёл на чай")
+    updated = await MemoryService(repository).update(
+        1, entry.id, content="Перешёл на чай"
+    )
 
     assert updated.content == "Перешёл на чай"
     assert updated.embedding is None
@@ -245,7 +257,7 @@ async def test_editing_only_archived_keeps_embedding(repository):
     это лишний платный вызов к AI."""
     entry = _stored_entry(repository)
 
-    updated = await MemoryService(repository).update(entry.id, archived=True)
+    updated = await MemoryService(repository).update(1, entry.id, archived=True)
 
     assert updated.archived is True
     assert updated.embedding == [0.1, 0.2, 0.3]
@@ -255,6 +267,6 @@ async def test_saving_identical_content_keeps_embedding(repository):
     """Текст не изменился — вектор всё ещё верен."""
     entry = _stored_entry(repository)
 
-    updated = await MemoryService(repository).update(entry.id, content="Люблю кофе")
+    updated = await MemoryService(repository).update(1, entry.id, content="Люблю кофе")
 
     assert updated.embedding == [0.1, 0.2, 0.3]

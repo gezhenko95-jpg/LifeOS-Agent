@@ -9,6 +9,7 @@ import calendar
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from app.core.ownership import owned_or_none
 from app.tasks.models import Task
 from app.tasks.repository import TaskRepository
 
@@ -82,6 +83,7 @@ class TaskService:
 
     async def update_task(
         self,
+        telegram_user_id: int,
         task_id: int,
         title: Optional[str] = None,
         due_date: Optional[datetime] = None,
@@ -94,7 +96,9 @@ class TaskService:
         if recurrence is not None and recurrence not in _RECURRENCE_INTERVALS:
             raise ValueError(f"Неизвестная периодичность: {recurrence}")
 
-        task = await self._repository.get_by_id(task_id)
+        task = owned_or_none(
+            await self._repository.get_by_id(task_id), telegram_user_id
+        )
         if task is None:
             return None
 
@@ -117,8 +121,10 @@ class TaskService:
             await self._maybe_create_next_occurrence(saved)
         return saved
 
-    async def delete_task(self, task_id: int) -> Optional[Task]:
-        task = await self._repository.get_by_id(task_id)
+    async def delete_task(self, telegram_user_id: int, task_id: int) -> Optional[Task]:
+        task = owned_or_none(
+            await self._repository.get_by_id(task_id), telegram_user_id
+        )
         if task is None:
             return None
         await self._repository.delete(task)

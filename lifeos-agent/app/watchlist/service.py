@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from app.ai.client import AIClient, AIServiceError
+from app.core.ownership import owned_or_none
 from app.watchlist.models import WatchlistItem
 from app.watchlist.repository import WatchlistRepository
 
@@ -67,16 +68,24 @@ class WatchlistService:
         нужно видеть и что ещё предстоит, и что уже посмотрено/прочитано."""
         return await self._repository.list_by_user(telegram_user_id, status=None)
 
-    async def mark_done(self, item_id: int) -> Optional[WatchlistItem]:
-        item = await self._repository.get_by_id(item_id)
+    async def mark_done(
+        self, telegram_user_id: int, item_id: int
+    ) -> Optional[WatchlistItem]:
+        item = owned_or_none(
+            await self._repository.get_by_id(item_id), telegram_user_id
+        )
         if item is None:
             return None
         item.status = DONE
         item.completed_at = datetime.now(timezone.utc)
         return await self._repository.save(item)
 
-    async def delete_item(self, item_id: int) -> Optional[WatchlistItem]:
-        item = await self._repository.get_by_id(item_id)
+    async def delete_item(
+        self, telegram_user_id: int, item_id: int
+    ) -> Optional[WatchlistItem]:
+        item = owned_or_none(
+            await self._repository.get_by_id(item_id), telegram_user_id
+        )
         if item is None:
             return None
         await self._repository.delete(item)

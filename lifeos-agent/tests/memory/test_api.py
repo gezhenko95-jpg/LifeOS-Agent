@@ -89,12 +89,32 @@ async def test_update_archives_entry_and_excludes_from_default_list(client):
     )
     entry_id = create_resp.json()["id"]
 
-    patch_resp = await client.patch(f"/memory/{entry_id}", json={"archived": True})
+    patch_resp = await client.patch(
+        f"/memory/{entry_id}",
+        params={"telegram_user_id": 6},
+        json={"archived": True},
+    )
     assert patch_resp.status_code == 200
     assert patch_resp.json()["archived"] is True
 
     list_resp = await client.get("/memory", params={"telegram_user_id": 6})
     assert list_resp.json() == []
+
+
+async def test_update_entry_wrong_owner_returns_404(client):
+    create_resp = await client.post(
+        "/memory",
+        json={"telegram_user_id": 6, "type": "goal", "content": "Чужая запись"},
+    )
+    entry_id = create_resp.json()["id"]
+
+    response = await client.patch(
+        f"/memory/{entry_id}",
+        params={"telegram_user_id": 999},
+        json={"archived": True},
+    )
+
+    assert response.status_code == 404
 
 
 async def test_get_context_returns_recent_entries(client):
@@ -124,7 +144,9 @@ async def test_delete_entry(client):
     )
     entry_id = create_resp.json()["id"]
 
-    delete_resp = await client.delete(f"/memory/{entry_id}")
+    delete_resp = await client.delete(
+        f"/memory/{entry_id}", params={"telegram_user_id": 8}
+    )
     assert delete_resp.status_code == 204
 
     list_resp = await client.get("/memory", params={"telegram_user_id": 8})
@@ -132,12 +154,14 @@ async def test_delete_entry(client):
 
 
 async def test_update_nonexistent_entry_returns_404(client):
-    response = await client.patch("/memory/999999", json={"archived": True})
+    response = await client.patch(
+        "/memory/999999", params={"telegram_user_id": 1}, json={"archived": True}
+    )
 
     assert response.status_code == 404
 
 
 async def test_delete_nonexistent_entry_returns_404(client):
-    response = await client.delete("/memory/999999")
+    response = await client.delete("/memory/999999", params={"telegram_user_id": 1})
 
     assert response.status_code == 404

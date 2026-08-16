@@ -162,12 +162,14 @@ def _format_tasks_section(tasks: list[Task], today: date) -> str:
 
 
 async def _format_habits_section(
-    habits: list[Habit], habit_service: HabitService
+    telegram_user_id: int, habits: list[Habit], habit_service: HabitService
 ) -> str:
     if not habits:
         return ""
 
-    streaks = await habit_service.get_streaks_bulk([h.id for h in habits])
+    streaks = await habit_service.get_streaks_bulk(
+        telegram_user_id, [h.id for h in habits]
+    )
     lines = ["", "🔁 <b>Привычки</b>"]
     for habit in habits:
         streak = streaks.get(habit.id, 0)
@@ -238,7 +240,9 @@ async def build_morning_briefing(
 
     parts = [_format_tasks_section(tasks, date.today())]
 
-    habits_section = await _format_habits_section(habits, habit_service)
+    habits_section = await _format_habits_section(
+        telegram_user_id, habits, habit_service
+    )
     if habits_section:
         parts.append(habits_section)
 

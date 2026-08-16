@@ -77,15 +77,36 @@ async def test_complete_and_delete_task(client):
     )
     task_id = create_resp.json()["id"]
 
-    patch_resp = await client.patch(f"/tasks/{task_id}", json={"status": "completed"})
+    patch_resp = await client.patch(
+        f"/tasks/{task_id}",
+        params={"telegram_user_id": 2},
+        json={"status": "completed"},
+    )
     assert patch_resp.status_code == 200
     assert patch_resp.json()["status"] == "completed"
 
-    delete_resp = await client.delete(f"/tasks/{task_id}")
+    delete_resp = await client.delete(
+        f"/tasks/{task_id}", params={"telegram_user_id": 2}
+    )
     assert delete_resp.status_code == 204
 
     get_resp = await client.get("/tasks", params={"telegram_user_id": 2})
     assert get_resp.json() == []
+
+
+async def test_update_task_wrong_owner_returns_404(client):
+    create_resp = await client.post(
+        "/tasks", json={"telegram_user_id": 2, "title": "Чужая задача"}
+    )
+    task_id = create_resp.json()["id"]
+
+    response = await client.patch(
+        f"/tasks/{task_id}",
+        params={"telegram_user_id": 999},
+        json={"status": "completed"},
+    )
+
+    assert response.status_code == 404
 
 
 async def test_create_task_with_priority_and_sorting(client):
@@ -117,20 +138,26 @@ async def test_update_task_priority(client):
     )
     task_id = create_resp.json()["id"]
 
-    patch_resp = await client.patch(f"/tasks/{task_id}", json={"priority": "low"})
+    patch_resp = await client.patch(
+        f"/tasks/{task_id}", params={"telegram_user_id": 4}, json={"priority": "low"}
+    )
 
     assert patch_resp.status_code == 200
     assert patch_resp.json()["priority"] == "low"
 
 
 async def test_update_nonexistent_task_returns_404(client):
-    response = await client.patch("/tasks/999999", json={"status": "completed"})
+    response = await client.patch(
+        "/tasks/999999",
+        params={"telegram_user_id": 1},
+        json={"status": "completed"},
+    )
 
     assert response.status_code == 404
 
 
 async def test_delete_nonexistent_task_returns_404(client):
-    response = await client.delete("/tasks/999999")
+    response = await client.delete("/tasks/999999", params={"telegram_user_id": 1})
 
     assert response.status_code == 404
 
@@ -164,7 +191,11 @@ async def test_completing_recurring_task_creates_next_occurrence(client):
     )
     task_id = create_resp.json()["id"]
 
-    patch_resp = await client.patch(f"/tasks/{task_id}", json={"status": "completed"})
+    patch_resp = await client.patch(
+        f"/tasks/{task_id}",
+        params={"telegram_user_id": 6},
+        json={"status": "completed"},
+    )
     assert patch_resp.status_code == 200
     assert patch_resp.json()["completed_at"] is not None
 
@@ -181,7 +212,11 @@ async def test_stats_counts_completed_this_week(client):
         "/tasks", json={"telegram_user_id": 7, "title": "Отчёт"}
     )
     task_id = create_resp.json()["id"]
-    await client.patch(f"/tasks/{task_id}", json={"status": "completed"})
+    await client.patch(
+        f"/tasks/{task_id}",
+        params={"telegram_user_id": 7},
+        json={"status": "completed"},
+    )
 
     response = await client.get("/tasks/stats", params={"telegram_user_id": 7})
 

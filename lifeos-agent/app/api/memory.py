@@ -67,11 +67,15 @@ async def get_context(
 @router.patch("/{entry_id}", response_model=MemoryEntryRead)
 async def update_entry(
     entry_id: int,
+    telegram_user_id: int,
     payload: MemoryEntryUpdate,
     service: MemoryService = Depends(get_memory_service),
 ) -> MemoryEntryRead:
     entry = await service.update(
-        entry_id=entry_id, content=payload.content, archived=payload.archived
+        telegram_user_id=telegram_user_id,
+        entry_id=entry_id,
+        content=payload.content,
+        archived=payload.archived,
     )
     if entry is None:
         raise HTTPException(
@@ -82,9 +86,11 @@ async def update_entry(
 
 @router.delete("/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_entry(
-    entry_id: int, service: MemoryService = Depends(get_memory_service)
+    entry_id: int,
+    telegram_user_id: int,
+    service: MemoryService = Depends(get_memory_service),
 ) -> None:
-    entry = await service.delete(entry_id)
+    entry = await service.delete(telegram_user_id, entry_id)
     if entry is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Запись не найдена"

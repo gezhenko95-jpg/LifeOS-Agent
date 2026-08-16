@@ -47,11 +47,13 @@ async def list_goals(
 @router.patch("/{goal_id}", response_model=GoalRead)
 async def update_goal(
     goal_id: int,
+    telegram_user_id: int,
     payload: GoalUpdate,
     service: GoalService = Depends(get_goal_service),
 ) -> GoalRead:
     try:
         goal = await service.update_goal(
+            telegram_user_id=telegram_user_id,
             goal_id=goal_id,
             title=payload.title,
             target_date=payload.target_date,
@@ -71,9 +73,11 @@ async def update_goal(
 
 @router.delete("/{goal_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_goal(
-    goal_id: int, service: GoalService = Depends(get_goal_service)
+    goal_id: int,
+    telegram_user_id: int,
+    service: GoalService = Depends(get_goal_service),
 ) -> None:
-    goal = await service.delete_goal(goal_id)
+    goal = await service.delete_goal(telegram_user_id, goal_id)
     if goal is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Цель не найдена"

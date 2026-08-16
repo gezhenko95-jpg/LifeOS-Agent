@@ -59,7 +59,7 @@ async def gather_chart_data(
     habits = await habit_service.list_active_habits(telegram_user_id)
     since_date = date.today() - timedelta(days=_HABIT_DAYS - 1)
     completed_by_habit = await habit_service.get_completed_days_bulk(
-        [h.id for h in habits], since_date
+        telegram_user_id, [h.id for h in habits], since_date
     )
     habit_series = []
     for habit in habits:

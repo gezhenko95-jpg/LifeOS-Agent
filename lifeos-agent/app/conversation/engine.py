@@ -400,7 +400,9 @@ class ConversationEngine:
         habits = await self._habits.list_active_habits(telegram_user_id)
         if not habits:
             return "Активных привычек нет."
-        streaks = await self._habits.get_streaks_bulk([h.id for h in habits])
+        streaks = await self._habits.get_streaks_bulk(
+            telegram_user_id, [h.id for h in habits]
+        )
         lines = []
         for index, habit in enumerate(habits, start=1):
             streak = streaks.get(habit.id, 0)
@@ -417,7 +419,7 @@ class ConversationEngine:
         habit = await self._habits.mark_done_today(telegram_user_id, title_query)
         if habit is None:
             return f"🤔 Не нашёл активную привычку «{title_query}»."
-        streak = await self._habits.get_streak(habit.id)
+        streak = await self._habits.get_streak(telegram_user_id, habit.id)
         note = _ambiguity_note(matches, title_query)
         # Число серии уже названо строкой выше — юбилей его не повторяет,
         # иначе сообщение выглядит как заевшая пластинка.

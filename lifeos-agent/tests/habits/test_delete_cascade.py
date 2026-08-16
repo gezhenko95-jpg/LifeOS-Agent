@@ -41,7 +41,7 @@ async def test_delete_habit_with_logs_does_not_raise(session):
     await session.commit()
 
     service = HabitService(HabitRepository(session))
-    deleted = await service.delete_habit(habit.id)
+    deleted = await service.delete_habit(1, habit.id)
 
     assert deleted is not None
 
@@ -56,7 +56,7 @@ async def test_delete_habit_removes_its_logs(session):
     await session.commit()
 
     service = HabitService(HabitRepository(session))
-    await service.delete_habit(habit.id)
+    await service.delete_habit(1, habit.id)
 
     remaining = await session.execute(
         select(HabitLog).where(HabitLog.habit_id == habit.id)

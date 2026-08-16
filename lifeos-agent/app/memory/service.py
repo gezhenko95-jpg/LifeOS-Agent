@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from app.ai.client import AIClient, AIServiceError
+from app.core.ownership import owned_or_none
 from app.memory.embeddings import rank_by_similarity
 from app.memory.models import MemoryEntry, MemoryType
 from app.memory.repository import MemoryRepository
@@ -43,11 +44,14 @@ class MemoryService:
 
     async def update(
         self,
+        telegram_user_id: int,
         entry_id: int,
         content: Optional[str] = None,
         archived: Optional[bool] = None,
     ) -> Optional[MemoryEntry]:
-        entry = await self._repository.get_by_id(entry_id)
+        entry = owned_or_none(
+            await self._repository.get_by_id(entry_id), telegram_user_id
+        )
         if entry is None:
             return None
         if content is not None and content != entry.content:
@@ -62,8 +66,12 @@ class MemoryService:
         entry.updated_at = datetime.now(timezone.utc)
         return await self._repository.save(entry)
 
-    async def delete(self, entry_id: int) -> Optional[MemoryEntry]:
-        entry = await self._repository.get_by_id(entry_id)
+    async def delete(
+        self, telegram_user_id: int, entry_id: int
+    ) -> Optional[MemoryEntry]:
+        entry = owned_or_none(
+            await self._repository.get_by_id(entry_id), telegram_user_id
+        )
         if entry is None:
             return None
         await self._repository.delete(entry)
