@@ -8,9 +8,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
+from app.watchlist.books import get_books_client
 from app.watchlist.repository import WatchlistRepository
 from app.watchlist.schemas import WatchlistCreate, WatchlistRead
 from app.watchlist.service import WatchlistService
+from app.watchlist.tmdb import get_tmdb_client
 
 router = APIRouter(prefix="/watchlist", tags=["watchlist"])
 
@@ -30,6 +32,11 @@ async def create_item(
             telegram_user_id=payload.telegram_user_id,
             title=payload.title,
             media_type=payload.media_type,
+            # Добавление с сайта должно давать такую же карточку с
+            # обложкой, как из бота, — иначе полка выглядит по-разному в
+            # зависимости от того, откуда запись пришла.
+            tmdb_client=get_tmdb_client(),
+            books_client=get_books_client(),
         )
     except ValueError as exc:
         raise HTTPException(

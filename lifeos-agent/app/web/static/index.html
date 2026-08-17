@@ -247,7 +247,7 @@
   button.danger:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
     gap: 18px;
   }
   .card {
@@ -552,7 +552,7 @@
   }
   .cal-weekdays, .cal-grid {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 6px;
   }
   .cal-weekdays {
@@ -562,6 +562,7 @@
     text-align: center;
   }
   .cal-day {
+    min-width: 0;
     min-height: 84px;
     border: var(--border-width) solid var(--border);
     border-radius: var(--radius-control);
@@ -609,6 +610,73 @@
     .cal-task { font-size: 0; padding: 3px; height: 6px; }
     .cal-hint { display: none; }
   }
+
+
+  /* Панель дня: часы, записи дневника и добавление. Разворачивается под
+     сеткой, а не в модальном окне — так виден и сам месяц, и выбранный
+     день, и не теряется контекст. */
+  .cal-panel {
+    margin-top: 14px;
+    border-top: var(--border-width) solid var(--border);
+    padding-top: 12px;
+  }
+  .cal-panel-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .cal-panel-head b { flex: 1; font-family: var(--font-display); }
+  .cal-panel-add { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .cal-panel-add input { flex: 1; min-width: 160px; }
+  .cal-at { color: var(--muted); font-size: 0.8rem; align-self: center; }
+  .cal-journal { margin-bottom: 12px; }
+  .cal-journal-entry {
+    background: var(--accent-soft);
+    border-radius: var(--radius-control);
+    padding: 8px 10px;
+    font-size: 0.85rem;
+    margin-bottom: 6px;
+    white-space: pre-wrap;
+  }
+  .cal-journal-empty { color: var(--muted); font-size: 0.82rem; }
+  .cal-hours { display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow-y: auto; }
+  .cal-hour {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    padding: 3px 6px;
+    border-radius: var(--radius-control);
+    cursor: pointer;
+    min-height: 26px;
+  }
+  .cal-hour:hover { background: var(--accent-soft); }
+  .cal-hour.selected { background: var(--accent-soft); outline: 1px solid var(--accent); }
+  .cal-hour-label { color: var(--muted); font-size: 0.75rem; width: 42px; flex: none; font-variant-numeric: tabular-nums; }
+  .cal-hour-items { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; min-width: 0; }
+
+
+  /* --- Свёрнутый режим ------------------------------------------------
+     Страница целиком — это простыня: шесть недель календаря, все задачи,
+     все привычки, вся полка сразу. По умолчанию каждая карточка
+     показывает только начало, а остальное разворачивается кнопкой.
+     Свёрнуто/развёрнуто хранится в localStorage: это привычка
+     конкретного человека, а не данные. */
+  .card-toggle {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-size: 0.78rem;
+    padding: 6px 0 0;
+    cursor: pointer;
+    box-shadow: none;
+    text-transform: none;
+    letter-spacing: normal;
+    font-weight: 400;
+  }
+  .card-toggle:hover { color: var(--accent); background: transparent; }
+  /* Список в свёрнутом виде: показываем первые строки, остальные прячем.
+     Именно через :nth-child, а не max-height — так не остаётся половины
+     обрезанной строки. */
+  .card.collapsed ul.item-list > li:nth-child(n + 4) { display: none; }
+  .card.collapsed .shelf-group:nth-child(n + 3) { display: none; }
+  /* Календарь в свёрнутом виде — только текущая неделя. */
+  .calendar-card.collapsed .cal-hint { display: none; }
 
   /* --- Звание (по накопленным монетам) --- */
   .rank-line {
@@ -900,7 +968,30 @@
       <span>ПН</span><span>ВТ</span><span>СР</span><span>ЧТ</span><span>ПТ</span><span>СБ</span><span>ВС</span>
     </div>
     <div class="cal-grid" id="calGrid"></div>
-    <p class="cal-hint">Клик по дню — новая задача. Задачу можно перетащить на другой день.</p>
+    <p class="cal-hint">Клик по дню открывает часы. Задачу можно перетащить на другой день.</p>
+
+    <div class="cal-panel" id="calPanel" hidden>
+      <div class="cal-panel-head">
+        <b id="calPanelTitle"></b>
+        <button type="button" class="secondary" id="calPanelClose">Закрыть</button>
+      </div>
+
+      <div class="cal-panel-add">
+        <select id="calAddType">
+          <option value="task">Задача</option>
+          <option value="habit">Привычка</option>
+          <option value="movie">Фильм</option>
+          <option value="book">Книга</option>
+          <option value="journal">Запись в дневник</option>
+        </select>
+        <input id="calAddTitle" placeholder="Что добавить?" />
+        <span class="cal-at" id="calAddAt"></span>
+        <button type="button" id="calAddSave">Добавить</button>
+      </div>
+
+      <div class="cal-journal" id="calPanelJournal"></div>
+      <div class="cal-hours" id="calHours"></div>
+    </div>
   </section>
 
   <section class="card rewards-card">
@@ -960,6 +1051,15 @@
 
   <section class="card">
     <h2 data-icon="shelf">Полка</h2>
+    <form class="add-form" id="shelfForm">
+      <input id="shelfTitle" placeholder="Название фильма или книги" />
+      <select id="shelfType">
+        <option value="movie">Фильм</option>
+        <option value="book">Книга</option>
+        <option value="other">Другое</option>
+      </select>
+      <button type="submit">+ Добавить</button>
+    </form>
     <div class="shelf-group">
       <h3 data-icon="film">Посмотреть</h3>
       <ul class="item-list" id="shelfMovieToWatch"></ul>
@@ -1640,6 +1740,63 @@ document.getElementById("goalList").addEventListener("click", async (e) => {
   }
 });
 
+
+// --- Свёрнутые карточки ----------------------------------------------
+//
+// По умолчанию каждая карточка показывает только начало: календарь —
+// неделю вместо шести, списки — первые три строки. Полная страница
+// одним экраном не читается, а свёрнутая отвечает на вопрос «что
+// сегодня» без прокрутки. Состояние помнится по карточкам.
+
+const COLLAPSE_KEY = "lifeos_collapsed";
+// Календарь свёрнут по умолчанию (неделя вместо месяца) — именно этого
+// и просили; списки тоже, чтобы страница начиналась с главного.
+const COLLAPSED_BY_DEFAULT = true;
+
+function collapsedState() {
+  try {
+    return JSON.parse(localStorage.getItem(COLLAPSE_KEY)) || {};
+  } catch {
+    return {};
+  }
+}
+
+function setCollapsed(cardId, collapsed) {
+  const state = collapsedState();
+  state[cardId] = collapsed;
+  localStorage.setItem(COLLAPSE_KEY, JSON.stringify(state));
+}
+
+/** Кнопка-переключатель в каждой карточке, у которой есть что прятать.
+    Вешается один раз при загрузке; сами карточки о ней ничего не знают. */
+function setupCollapsibleCards() {
+  const state = collapsedState();
+  document.querySelectorAll(".card").forEach((card) => {
+    const heading = card.querySelector("h2");
+    if (!heading) return;
+    const cardId = heading.textContent.trim();
+    // Карточка наград и «итоги недели» и так короткие — сворачивать
+    // нечего, кнопка была бы шумом.
+    if (card.classList.contains("rewards-card") || card.dataset.noCollapse) return;
+
+    const collapsed = cardId in state ? state[cardId] : COLLAPSED_BY_DEFAULT;
+    card.classList.toggle("collapsed", collapsed);
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "card-toggle";
+    button.textContent = collapsed ? "Показать всё ▾" : "Свернуть ▴";
+    button.addEventListener("click", () => {
+      const nowCollapsed = !card.classList.contains("collapsed");
+      card.classList.toggle("collapsed", nowCollapsed);
+      button.textContent = nowCollapsed ? "Показать всё ▾" : "Свернуть ▴";
+      setCollapsed(cardId, nowCollapsed);
+      if (card.classList.contains("calendar-card")) renderCalendar();
+    });
+    card.appendChild(button);
+  });
+}
+
 // ---- Календарь ----
 //
 // Данные не запрашиваются отдельно: календарь рисуется по тем же
@@ -1651,6 +1808,17 @@ document.getElementById("goalList").addEventListener("click", async (e) => {
 // со вторника на среду — останется 19:00, а не сбросится на утро.
 
 const CAL_DEFAULT_HOUR = 9; // как у бота для дат без явного времени
+// Названия месяцев прописаны руками: toLocaleDateString дописывает « г.»
+// в конце («август 2026 г.»), и в заголовке это лишний мусор.
+const CAL_MONTHS = [
+  "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+  "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
+];
+// Родительный падеж для заголовка дня: «19 августа», а не «19 август».
+const CAL_MONTHS_GEN = [
+  "января", "февраля", "марта", "апреля", "мая", "июня",
+  "июля", "августа", "сентября", "октября", "ноября", "декабря",
+];
 const CAL_MAX_VISIBLE = 3; // больше не влезает в клетку по высоте
 
 let calMonth = startOfMonth(new Date());
@@ -1667,10 +1835,10 @@ function dayKey(date) {
   return `${date.getFullYear()}-${m}-${d}`;
 }
 
-/** Понедельник недели, в которую попадает 1-е число: сетка всегда
-    начинается с понедельника (в русском календаре неделя с него). */
-function gridStart(monthStart) {
-  const start = new Date(monthStart);
+/** Понедельник недели, в которую попадает переданная дата: сетка
+    всегда начинается с понедельника (в русском календаре неделя с него). */
+function gridStart(date) {
+  const start = new Date(date);
   const weekday = (start.getDay() + 6) % 7; // вс=0 → 6
   start.setDate(start.getDate() - weekday);
   return start;
@@ -1681,10 +1849,7 @@ function renderCalendar() {
   const title = document.getElementById("calTitle");
   if (!grid) return;
 
-  title.textContent = calMonth.toLocaleDateString("ru-RU", {
-    month: "long",
-    year: "numeric",
-  });
+  title.textContent = `${CAL_MONTHS[calMonth.getMonth()]} ${calMonth.getFullYear()}`;
 
   const byDay = new Map();
   for (const task of lastTasks) {
@@ -1695,12 +1860,27 @@ function renderCalendar() {
   }
 
   const todayKey = dayKey(new Date());
-  const cursor = gridStart(calMonth);
+  // Свёрнутый календарь показывает одну неделю — ту, в которой сегодня
+  // (а если открыт другой месяц, то первую его неделю). Обрезать сетку
+  // стилями нельзя: первые семь клеток — это неделя первого числа, а
+  // нужна текущая.
+  const collapsed = document
+    .querySelector(".calendar-card")
+    .classList.contains("collapsed");
+  const today = new Date();
+  const sameMonth =
+    today.getMonth() === calMonth.getMonth() &&
+    today.getFullYear() === calMonth.getFullYear();
+  const cursor = collapsed
+    ? gridStart(sameMonth ? today : calMonth)
+    : gridStart(calMonth);
+  const total = collapsed ? 7 : 42;
   const cells = [];
 
-  // Шесть недель всегда: иначе высота карточки скачет при переключении
-  // месяцев, и кнопки «вперёд/назад» уезжают из-под курсора.
-  for (let i = 0; i < 42; i++) {
+  // Шесть недель всегда (в развёрнутом виде): иначе высота карточки
+  // скачет при переключении месяцев, и кнопки «вперёд/назад» уезжают
+  // из-под курсора.
+  for (let i = 0; i < total; i++) {
     const key = dayKey(cursor);
     const dayTasks = byDay.get(key) || [];
     const classes = ["cal-day"];
@@ -1744,15 +1924,214 @@ document.getElementById("calToday").addEventListener("click", () => {
   renderCalendar();
 });
 
+// --- Панель дня: часы, дневник, добавление любого типа ---------------
+//
+// Клик по дню больше не создаёт задачу сразу: открывается панель с
+// часами. Так задачу можно поставить на конкретное время, увидеть, что
+// уже стоит в этот день, прочитать дневниковую запись за него — и
+// добавить не только задачу, но и привычку, фильм, книгу или запись.
+
+const CAL_FIRST_HOUR = 6; // до шести утра пустые строки только мешают
+const CAL_LAST_HOUR = 23;
+
+let calSelectedDay = null;
+let calSelectedHour = CAL_DEFAULT_HOUR;
+let lastJournal = [];
+
+function openDayPanel(dayKeyValue) {
+  calSelectedDay = dayKeyValue;
+  calSelectedHour = CAL_DEFAULT_HOUR;
+  renderDayPanel();
+  document.getElementById("calAddTitle").focus();
+}
+
+function closeDayPanel() {
+  calSelectedDay = null;
+  document.getElementById("calPanel").hidden = true;
+  document
+    .querySelectorAll(".cal-day.selected")
+    .forEach((el) => el.classList.remove("selected"));
+}
+
+function renderDayPanel() {
+  const panel = document.getElementById("calPanel");
+  if (!panel) return;
+  if (!calSelectedDay) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+
+  const [year, month, day] = calSelectedDay.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  const weekday = date.toLocaleDateString("ru-RU", { weekday: "long" });
+  document.getElementById("calPanelTitle").textContent =
+    day + " " + CAL_MONTHS_GEN[month - 1] + ", " + weekday;
+
+  renderDayJournal();
+  renderDayHours();
+  updateAddAtLabel();
+}
+
+function renderDayJournal() {
+  const box = document.getElementById("calPanelJournal");
+  const entries = lastJournal.filter(
+    (entry) => dayKey(new Date(entry.created_at)) === calSelectedDay
+  );
+  if (!entries.length) {
+    box.innerHTML =
+      '<div class="cal-journal-empty">Записей в дневнике за этот день нет.</div>';
+    return;
+  }
+  box.innerHTML = entries
+    .map((entry) => '<div class="cal-journal-entry">' + escapeHtml(entry.content) + "</div>")
+    .join("");
+}
+
+function renderDayHours() {
+  const box = document.getElementById("calHours");
+  const dayTasks = lastTasks.filter(
+    (task) => task.due_date && dayKey(new Date(task.due_date)) === calSelectedDay
+  );
+
+  const rows = [];
+  for (let hour = CAL_FIRST_HOUR; hour <= CAL_LAST_HOUR; hour++) {
+    const atHour = dayTasks.filter(
+      (task) => new Date(task.due_date).getHours() === hour
+    );
+    const chips = atHour
+      .map(
+        (task) =>
+          '<span class="cal-task' +
+          (task.priority === "high" ? " high" : "") +
+          '" draggable="true" data-task-id="' +
+          task.id +
+          '">' +
+          escapeHtml(task.title) +
+          "</span>"
+      )
+      .join("");
+    rows.push(
+      '<div class="cal-hour' +
+        (hour === calSelectedHour ? " selected" : "") +
+        '" data-hour="' +
+        hour +
+        '"><span class="cal-hour-label">' +
+        String(hour).padStart(2, "0") +
+        ':00</span><span class="cal-hour-items">' +
+        chips +
+        "</span></div>"
+    );
+  }
+  box.innerHTML = rows.join("");
+}
+
+function updateAddAtLabel() {
+  const type = document.getElementById("calAddType").value;
+  // Время имеет смысл только для задачи: у привычки, книги и записи в
+  // дневник его просто некуда положить.
+  document.getElementById("calAddAt").textContent =
+    type === "task" ? "в " + String(calSelectedHour).padStart(2, "0") + ":00" : "";
+}
+
+document.getElementById("calHours").addEventListener("click", (e) => {
+  const row = e.target.closest(".cal-hour");
+  if (!row || e.target.closest(".cal-task")) return;
+  calSelectedHour = Number(row.dataset.hour);
+  renderDayHours();
+  updateAddAtLabel();
+  document.getElementById("calAddTitle").focus();
+});
+
+document.getElementById("calAddType").addEventListener("change", updateAddAtLabel);
+document.getElementById("calPanelClose").addEventListener("click", closeDayPanel);
+document.getElementById("calAddSave").addEventListener("click", submitDayAdd);
+document.getElementById("calAddTitle").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") submitDayAdd();
+});
+
+async function submitDayAdd() {
+  const input = document.getElementById("calAddTitle");
+  const title = input.value.trim();
+  if (!title || !calSelectedDay) return;
+
+  const type = document.getElementById("calAddType").value;
+  const id = requireUserId();
+  const [year, month, day] = calSelectedDay.split("-").map(Number);
+
+  const json = (body) => ({
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (type === "task") {
+    const due = new Date(year, month - 1, day, calSelectedHour, 0, 0);
+    await api(
+      "/tasks",
+      json({
+        telegram_user_id: Number(id),
+        title: title,
+        due_date: due.toISOString(),
+        priority: "normal",
+      })
+    );
+    await loadTasks();
+  } else if (type === "habit") {
+    await api("/habits", json({ telegram_user_id: Number(id), title: title }));
+    await loadHabits();
+  } else if (type === "movie" || type === "book") {
+    await api(
+      "/watchlist",
+      json({ telegram_user_id: Number(id), title: title, media_type: type })
+    );
+    await loadWatchlist();
+  } else if (type === "journal") {
+    await api(
+      "/memory",
+      json({
+        telegram_user_id: Number(id),
+        type: "journal",
+        content: title,
+        source: "ui",
+      })
+    );
+    await loadJournal();
+  }
+
+  input.value = "";
+  renderCalendar();
+  renderDayPanel();
+  showToast("Добавлено");
+}
+
+/** Дневник за все дни — по нему панель показывает запись выбранного дня.
+    Отдельного «дневник за дату» в API нет, а записей единицы: фильтруем
+    на месте, как и задачи для календаря. */
+async function loadJournal() {
+  const id = getUserId();
+  if (!id) {
+    lastJournal = [];
+    return;
+  }
+  lastJournal = await api(
+    "/memory?telegram_user_id=" + encodeURIComponent(id) + "&type=journal"
+  );
+}
+
 // --- Создание задачи прямо в клетке ---------------------------------
 // Поле появляется в самой ячейке, а не в модальном окне: «кинуть задачу
 // на четверг» должно стоить один клик и одну строку текста.
 
 document.getElementById("calGrid").addEventListener("click", (e) => {
-  if (e.target.closest(".cal-task") || e.target.closest(".cal-input")) return;
+  if (e.target.closest(".cal-task")) return;
   const cell = e.target.closest(".cal-day");
   if (!cell) return;
-  openDayInput(cell);
+  document
+    .querySelectorAll(".cal-day.selected")
+    .forEach((el) => el.classList.remove("selected"));
+  cell.classList.add("selected");
+  openDayPanel(cell.dataset.day);
 });
 
 function openDayInput(cell) {
@@ -1807,7 +2186,7 @@ async function createTaskOnDay(dayKeyValue, title) {
 
 let calDragTaskId = null;
 
-document.getElementById("calGrid").addEventListener("dragstart", (e) => {
+document.querySelector(".calendar-card").addEventListener("dragstart", (e) => {
   const chip = e.target.closest(".cal-task");
   if (!chip) return;
   calDragTaskId = Number(chip.dataset.taskId);
@@ -1817,7 +2196,7 @@ document.getElementById("calGrid").addEventListener("dragstart", (e) => {
   e.dataTransfer.setData("text/plain", String(calDragTaskId));
 });
 
-document.getElementById("calGrid").addEventListener("dragend", (e) => {
+document.querySelector(".calendar-card").addEventListener("dragend", (e) => {
   const chip = e.target.closest(".cal-task");
   if (chip) chip.classList.remove("dragging");
   document
@@ -1825,7 +2204,7 @@ document.getElementById("calGrid").addEventListener("dragend", (e) => {
     .forEach((el) => el.classList.remove("drop-target"));
 });
 
-document.getElementById("calGrid").addEventListener("dragover", (e) => {
+document.querySelector(".calendar-card").addEventListener("dragover", (e) => {
   const cell = e.target.closest(".cal-day");
   if (!cell || calDragTaskId === null) return;
   e.preventDefault(); // без этого браузер не разрешит drop
@@ -1833,12 +2212,12 @@ document.getElementById("calGrid").addEventListener("dragover", (e) => {
   cell.classList.add("drop-target");
 });
 
-document.getElementById("calGrid").addEventListener("dragleave", (e) => {
+document.querySelector(".calendar-card").addEventListener("dragleave", (e) => {
   const cell = e.target.closest(".cal-day");
   if (cell) cell.classList.remove("drop-target");
 });
 
-document.getElementById("calGrid").addEventListener("drop", async (e) => {
+document.querySelector(".calendar-card").addEventListener("drop", async (e) => {
   e.preventDefault();
   const cell = e.target.closest(".cal-day");
   if (!cell || calDragTaskId === null) return;
@@ -1924,6 +2303,30 @@ function renderShelfList(elementId, items, showComplete) {
   `;
   }).join("");
 }
+
+
+document.getElementById("shelfForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = requireUserId();
+  const input = document.getElementById("shelfTitle");
+  const title = input.value.trim();
+  if (!title) return;
+
+  // Обложку и описание подтянет сам сервер (см. app/api/watchlist.py):
+  // фильмы через TMDb, книги через Google Books — ровно как из бота.
+  await api("/watchlist", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      telegram_user_id: Number(id),
+      title: title,
+      media_type: document.getElementById("shelfType").value,
+    }),
+  });
+  input.value = "";
+  await loadWatchlist();
+  showToast("Добавлено на полку");
+});
 
 async function loadWatchlist() {
   const id = getUserId();
@@ -2019,14 +2422,17 @@ async function loadAll() {
     loadWatchlist(),
     loadWeeklyStats(),
     loadRewards(),
+    loadJournal(),
   ]);
   // Достижения зависят от данных всех карточек разом — считаем после
   // того, как все они точно загрузились, а не по одной.
   renderAchievements();
+  renderDayPanel();
 }
 
 applySkin(getActiveSkin());
 renderStaticIcons();
+setupCollapsibleCards();
 renderCalendar();
 applyTheme(getActiveTheme());
 refreshUserIdStatus();
