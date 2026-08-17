@@ -445,7 +445,39 @@
     border-color: var(--accent);
     background: var(--accent-soft);
   }
-  .achievements li .lock { opacity: 0.5; }
+  /* Один размер и одна толщина линии на все иконки: они рисуются в
+     сетке 24 и наследуют цвет строки, поэтому в закрытом достижении
+     сами становятся приглушёнными, а в открытом — акцентными. */
+  .icon {
+    width: 1.15em;
+    height: 1.15em;
+    flex: none;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .achievements li.unlocked .icon { color: var(--accent); }
+  .icon-locked { opacity: 0.55; }
+  /* Заголовки разделов: иконка акцентная и с воздухом — эмодзи, которые
+     тут стояли раньше, были цветными и сами держали дистанцию, у
+     line-art её нужно задать. */
+  [data-icon] {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  [data-icon] .icon {
+    color: var(--accent);
+    width: 1.3em;
+    height: 1.3em;
+    stroke-width: 1.7;
+  }
+  .icon-rank { color: var(--accent); vertical-align: -0.22em; }
+  .rewards-card h2 .icon, .rewards-label .icon { color: var(--accent); }
+  .rewards-label { display: inline-flex; align-items: center; gap: 4px; }
+  .rewards-card h2 { display: flex; align-items: center; gap: 8px; }
   @media (prefers-reduced-motion: reduce) {
     .achievements li { animation: none; }
   }
@@ -603,7 +635,7 @@
 <div class="grid">
 
   <section class="card rewards-card">
-    <h2>🪙 Ежедневный визит</h2>
+    <h2 id="rewardsTitle">Ежедневный визит</h2>
     <div class="rewards-row">
       <div class="rewards-stat">
         <span class="rewards-number" id="coinsCount">0</span>
@@ -611,7 +643,7 @@
       </div>
       <div class="rewards-stat">
         <span class="rewards-number" id="streakCount">0</span>
-        <span class="rewards-label">🔥 серия</span>
+        <span class="rewards-label" id="streakLabel">серия</span>
       </div>
       <button id="claimButton" class="claim-button">Забрать</button>
     </div>
@@ -653,30 +685,30 @@
   </section>
 
   <section class="card">
-    <h2>📊 Итоги недели</h2>
+    <h2 data-icon="chart">Итоги недели</h2>
     <p class="stat-line"><span class="stat-number" id="weeklyTasksCount">—</span> задач выполнено за последние 7 дней</p>
   </section>
 
   <section class="card">
-    <h2>📚🎬 Полка</h2>
+    <h2 data-icon="shelf">Полка</h2>
     <div class="shelf-group">
-      <h3>🎬 Посмотреть</h3>
+      <h3 data-icon="film">Посмотреть</h3>
       <ul class="item-list" id="shelfMovieToWatch"></ul>
     </div>
     <div class="shelf-group">
-      <h3>✅ Просмотрено</h3>
+      <h3 data-icon="check">Просмотрено</h3>
       <ul class="item-list" id="shelfMovieDone"></ul>
     </div>
     <div class="shelf-group">
-      <h3>📖 Прочитать</h3>
+      <h3 data-icon="book">Прочитать</h3>
       <ul class="item-list" id="shelfBookToWatch"></ul>
     </div>
     <div class="shelf-group">
-      <h3>✅ Прочитано</h3>
+      <h3 data-icon="check">Прочитано</h3>
       <ul class="item-list" id="shelfBookDone"></ul>
     </div>
     <div class="shelf-group" id="shelfOtherGroup" style="display:none">
-      <h3>🎯 Другое</h3>
+      <h3 data-icon="target">Другое</h3>
       <ul class="item-list" id="shelfOtherToWatch"></ul>
     </div>
   </section>
@@ -834,25 +866,65 @@ let lastGoals = [];
 let lastWatchlist = [];
 let lastWeeklyCount = 0;
 
+// Иконки — свои, в языке знака LifeOS: те же круглые формы, скруглённые
+// концы и одна толщина линии. Эмодзи здесь не годились: у каждой
+// платформы они свои (на Windows, Android и в macOS «🔥» выглядит
+// по-разному), они разноцветные и не подхватывают акцент темы, а замок
+// «🔒» на фоне цветных значков читался как поломка, а не как «ещё не
+// открыто». SVG наследует currentColor, поэтому закрытые достижения
+// сами становятся приглушёнными, а открытые — акцентными.
+const ICON = {
+  // Мини-версия самого знака: кольцо с точкой.
+  ring: '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/>',
+  // Серия: язык пламени одной линией.
+  flame: '<path d="M12 21c3.3 0 5.5-2.2 5.5-5 0-3.6-3.4-4.8-2.6-9C11.5 8 8 9.6 8 14c0 1.5.7 2.6 1.6 3.2"/>',
+  // Длинная серия: то же пламя с ядром внутри.
+  flameCore: '<path d="M12 21c3.3 0 5.5-2.2 5.5-5 0-3.6-3.4-4.8-2.6-9C11.5 8 8 9.6 8 14c0 1.5.7 2.6 1.6 3.2"/><path d="M12 21c1.4 0 2.3-1 2.3-2.2 0-1.6-1.6-2.2-1.2-4-1.6 1-2.6 1.9-2.6 3.6 0 1.2.6 2.1 1.5 2.6"/>',
+  // Монеты: две окружности со сдвигом — стопка.
+  coins: '<circle cx="10" cy="10" r="6"/><path d="M8.2 16.6A6 6 0 0 0 19 14a6 6 0 0 0-2.3-4.7"/>',
+  check: '<circle cx="12" cy="12" r="8.5"/><path d="M8.2 12.3l2.6 2.6 5-5.4"/>',
+  // Привычка: круговая стрелка — цикл, который повторяется.
+  repeat: '<path d="M19 12a7 7 0 1 1-2.4-5.3"/><path d="M19.2 4.2v3.6h-3.6"/>',
+  book: '<path d="M5 5.5h5.2c1 0 1.8.8 1.8 1.8V19a2 2 0 0 0-2-1.6H5z"/><path d="M19 5.5h-5.2c-1 0-1.8.8-1.8 1.8V19a2 2 0 0 1 2-1.6H19z"/>',
+  // Цель: мишень — те же концентрические круги, что и у знака.
+  target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/>',
+  chart: '<path d="M4.5 19.5h15"/><rect x="6.5" y="11" width="3.4" height="6"/><rect x="12.4" y="6.5" width="3.4" height="10.5"/>',
+  film: '<rect x="3.5" y="5.5" width="17" height="13" rx="2.5"/><path d="M8.5 5.5v13M15.5 5.5v13M3.5 12h17"/>',
+  shelf: '<path d="M4.5 6.5h6a1.5 1.5 0 0 1 1.5 1.5v10H6a1.5 1.5 0 0 1-1.5-1.5z"/><path d="M13.6 7.2l4.4 1.2a1.5 1.5 0 0 1 1 1.9l-2.6 9.2-4.4-1.2"/>',
+  lock: '<rect x="5.5" y="10.5" width="13" height="9" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>',
+  rocket: '<path d="M12 3.5c3 2 4.5 5 4.5 8.5L12 16l-4.5-4C7.5 8.5 9 5.5 12 3.5z"/><path d="M9.6 16.2c-1 1.4-1.2 2.9-1 4.3 1.4.2 2.9 0 4.3-1"/><circle cx="12" cy="10" r="1.6"/>',
+  star: '<path d="M12 4l2.4 5 5.6.7-4.1 3.8 1.1 5.5-5-2.8-5 2.8 1.1-5.5L4 9.7l5.6-.7z"/>',
+  crown: '<path d="M4.5 8.5l3 4 4.5-6 4.5 6 3-4v9.5a1.5 1.5 0 0 1-1.5 1.5H6a1.5 1.5 0 0 1-1.5-1.5z"/>',
+  trophy: '<path d="M8 4.5h8v4a4 4 0 0 1-8 0z"/><path d="M8 6H5.5v1.5A2.5 2.5 0 0 0 8 10"/><path d="M16 6h2.5v1.5A2.5 2.5 0 0 1 16 10"/><path d="M12 12.5V16"/><path d="M8.5 19.5h7"/>',
+};
+
+/** Иконка 1em-размера, наследующая цвет строки (см. .icon в стилях). */
+function icon(name, extraClass = "") {
+  return (
+    `<svg class="icon ${extraClass}" viewBox="0 0 24 24" aria-hidden="true">` +
+    `${ICON[name] || ""}</svg>`
+  );
+}
+
 const ACHIEVEMENTS = [
-  { icon: "🌱", label: "Первый визит", check: () => lastRewards.totalCoins > 0 },
-  { icon: "🔥", label: "Неделя визитов подряд", check: () => lastRewards.streak >= 7 },
-  { icon: "🔥🔥", label: "Месяц визитов подряд", check: () => lastRewards.streak >= 30 },
-  { icon: "💰", label: "100 монет", check: () => lastRewards.totalCoins >= 100 },
-  { icon: "✅", label: "10 задач за неделю", check: () => lastWeeklyCount >= 10 },
-  { icon: "🔁", label: "Серия привычки 7 дней", check: () => lastHabits.some((h) => h.streak >= 7) },
-  { icon: "📚", label: "5 просмотрено/прочитано", check: () => lastWatchlist.filter((i) => i.status === "done").length >= 5 },
-  { icon: "🎯", label: "Цель почти достигнута", check: () => lastGoals.some((g) => g.progress >= 80) },
+  { icon: "ring", label: "Первый визит", check: () => lastRewards.totalCoins > 0 },
+  { icon: "flame", label: "Неделя визитов подряд", check: () => lastRewards.streak >= 7 },
+  { icon: "flameCore", label: "Месяц визитов подряд", check: () => lastRewards.streak >= 30 },
+  { icon: "coins", label: "100 монет", check: () => lastRewards.totalCoins >= 100 },
+  { icon: "check", label: "10 задач за неделю", check: () => lastWeeklyCount >= 10 },
+  { icon: "repeat", label: "Серия привычки 7 дней", check: () => lastHabits.some((h) => h.streak >= 7) },
+  { icon: "book", label: "5 просмотрено/прочитано", check: () => lastWatchlist.filter((i) => i.status === "done").length >= 5 },
+  { icon: "target", label: "Цель почти достигнута", check: () => lastGoals.some((g) => g.progress >= 80) },
 ];
 
 // Звания — чисто косметическая надпись поверх уже известного totalCoins,
 // без своего состояния (в отличие от самих монет, которым нужна БД).
 const RANKS = [
-  { min: 0, icon: "🌱", title: "Новичок" },
-  { min: 50, icon: "🚀", title: "Практик" },
-  { min: 150, icon: "⭐", title: "Мастер" },
-  { min: 400, icon: "👑", title: "Легенда" },
-  { min: 800, icon: "🏆", title: "Гуру LifeOS" },
+  { min: 0, icon: "ring", title: "Новичок" },
+  { min: 50, icon: "rocket", title: "Практик" },
+  { min: 150, icon: "star", title: "Мастер" },
+  { min: 400, icon: "crown", title: "Легенда" },
+  { min: 800, icon: "trophy", title: "Гуру LifeOS" },
 ];
 
 function currentRank(totalCoins) {
@@ -910,16 +982,36 @@ document.getElementById("themePicker").addEventListener("click", (e) => {
   renderThemePicker();
 });
 
+/** Иконки статичных заголовков (data-icon="имя") — один проход после
+    загрузки: в разметке остаётся имя, а не SVG-простыня. */
+function renderStaticIcons() {
+  document.querySelectorAll("[data-icon]").forEach((el) => {
+    if (el.querySelector(".icon")) return;
+    el.insertAdjacentHTML("afterbegin", icon(el.dataset.icon));
+  });
+}
+
 function renderAchievements() {
   const list = document.getElementById("achievementsList");
   list.innerHTML = ACHIEVEMENTS.map((a) => {
     const unlocked = a.check();
-    const icon = unlocked ? a.icon : '<span class="lock">🔒</span>';
-    return `<li class="${unlocked ? "unlocked" : ""}">${icon} ${escapeHtml(a.label)}</li>`;
+    // Закрытое достижение показывает замок, а не собственную иконку:
+    // иначе непонятно, получено оно или нет — цвета мало.
+    const mark = unlocked ? icon(a.icon) : icon("lock", "icon-locked");
+    return `<li class="${unlocked ? "unlocked" : ""}">${mark}${escapeHtml(a.label)}</li>`;
   }).join("");
 }
 
 function renderRewards() {
+  // Иконки шапки и серии рисуем один раз при первом рендере: они
+  // статичные, но живут в том же наборе, что и остальные (см. ICON).
+  const title = document.getElementById("rewardsTitle");
+  if (!title.querySelector(".icon")) {
+    title.insertAdjacentHTML("afterbegin", icon("coins"));
+    document
+      .getElementById("streakLabel")
+      .insertAdjacentHTML("afterbegin", icon("flame"));
+  }
   animateNumber(document.getElementById("coinsCount"), lastRewards.totalCoins);
   document.getElementById("streakCount").textContent = lastRewards.streak;
   const btn = document.getElementById("claimButton");
@@ -928,7 +1020,7 @@ function renderRewards() {
 
   const rank = currentRank(lastRewards.totalCoins);
   document.getElementById("rankLine").innerHTML =
-    `${rank.icon} <b>${escapeHtml(rank.title)}</b>`;
+    `${icon(rank.icon, "icon-rank")} <b>${escapeHtml(rank.title)}</b>`;
 
   renderThemePicker();
 }
@@ -1314,6 +1406,7 @@ async function loadAll() {
   renderAchievements();
 }
 
+renderStaticIcons();
 applyTheme(getActiveTheme());
 refreshUserIdStatus();
 refreshApiTokenStatus();
