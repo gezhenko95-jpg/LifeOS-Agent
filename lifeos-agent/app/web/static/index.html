@@ -26,6 +26,16 @@
     --later: #9ca3af;
     --ok: #16a34a;
     --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 12px rgba(16, 24, 40, 0.04);
+
+    /* Токены скина: их переопределяет [data-skin] целиком (см. ниже).
+       В обычном оформлении — то же, что было до появления скинов. */
+    --font-body: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-display: var(--font-body);
+    --radius-card: 14px;
+    --radius-control: 8px;
+    --border-width: 1px;
+    --heading-transform: none;
+    --heading-spacing: normal;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -55,7 +65,7 @@
     max-width: 1100px;
     background: transparent;
     color: var(--text);
-    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: var(--font-body);
     line-height: 1.5;
     padding: 28px 20px 56px;
     /* overflow-x: clip, не hidden — так .bg-blobs (position: fixed) не
@@ -164,8 +174,8 @@
      начиналась с данных, а не с полей ввода. */
   details.settings {
     background: var(--card-bg);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    border: var(--border-width) solid var(--border);
+    border-radius: var(--radius-card);
     padding: 10px 14px;
     margin-bottom: 22px;
     box-shadow: var(--shadow);
@@ -187,6 +197,7 @@
     flex-wrap: wrap;
   }
   .id-bar span { color: var(--muted); font-size: 0.85rem; }
+  .id-bar .hint { font-size: 0.78rem; opacity: 0.75; }
   .status-dot {
     width: 9px;
     height: 9px;
@@ -202,8 +213,8 @@
   input, select {
     background: var(--card-bg);
     color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 6px;
+    border: var(--border-width) solid var(--border);
+    border-radius: var(--radius-control);
     padding: 6px 10px;
     font-size: 0.9rem;
   }
@@ -211,7 +222,7 @@
     background: var(--accent);
     color: var(--accent-text);
     border: none;
-    border-radius: 8px;
+    border-radius: var(--radius-control);
     padding: 7px 13px;
     font-size: 0.9rem;
     font-weight: 500;
@@ -241,8 +252,8 @@
   }
   .card {
     background: var(--card-bg);
-    border: 1px solid var(--border);
-    border-radius: 14px;
+    border: var(--border-width) solid var(--border);
+    border-radius: var(--radius-card);
     padding: 18px 18px 14px;
     box-shadow: var(--shadow);
     transition: transform 0.18s ease, box-shadow 0.18s ease;
@@ -267,6 +278,11 @@
   @media (prefers-reduced-motion: reduce) {
     .card { animation: none; }
     .card:hover { transform: none; }
+  }
+  .card h2, h1, .card h3 {
+    font-family: var(--font-display);
+    text-transform: var(--heading-transform);
+    letter-spacing: var(--heading-spacing);
   }
   .card h2 {
     margin: 0 0 14px;
@@ -616,6 +632,109 @@
     text-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
   }
 
+
+  /* ==================== СКИН: ПИКСЕЛЬ-БРУТАЛИЗМ ====================
+     Отдельная ось от акцентных тем: акцент меняет ЦВЕТ, скин меняет
+     ХАРАКТЕР — шрифт, форму рамок, тени, регистр заголовков.
+
+     Скин намеренно задаёт свою палитру целиком и игнорирует
+     prefers-color-scheme: это цельный образ (кремовая бумага + жёсткие
+     чёрные рамки + кислотный лайм), а не «светлый вариант чего-то».
+     Полутёмной версии у него нет — она развалила бы весь смысл.
+
+     Шрифт лежит у нас (app/web/static/fonts), а не грузится с
+     fonts.gstatic.com: внешние CDN из России уже подводили (см.
+     app/api/poster.py). Пиксельным шрифтом набраны только заголовки и
+     числа — набирать им абзацы значит сделать текст нечитаемым. */
+  @font-face {
+    font-family: "Pixelify Sans";
+    src: url("fonts/pixelify-cyrillic-400.woff2") format("woff2");
+    font-weight: 400;
+    font-display: swap;
+    unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+  }
+  @font-face {
+    font-family: "Pixelify Sans";
+    src: url("fonts/pixelify-latin-400.woff2") format("woff2");
+    font-weight: 400;
+    font-display: swap;
+    unicode-range: U+0000-00FF, U+2000-206F, U+20AC, U+2122, U+2212;
+  }
+  @font-face {
+    font-family: "Pixelify Sans";
+    src: url("fonts/pixelify-cyrillic-700.woff2") format("woff2");
+    font-weight: 700;
+    font-display: swap;
+    unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+  }
+  @font-face {
+    font-family: "Pixelify Sans";
+    src: url("fonts/pixelify-latin-700.woff2") format("woff2");
+    font-weight: 700;
+    font-display: swap;
+    unicode-range: U+0000-00FF, U+2000-206F, U+20AC, U+2122, U+2212;
+  }
+
+  :root[data-skin="pixel"] {
+    --bg: #eae7dc;
+    --card-bg: #f5f3ec;
+    --text: #111111;
+    --muted: #5c5a52;
+    --border: #111111;
+    --accent: #7c4dff;
+    --accent-soft: #e6dcff;
+    --accent-text: #ffffff;
+    --danger: #e5484d;
+    --high: #e5484d;
+    --overdue: #e5484d;
+    --today: #ff8a00;
+    --tomorrow: #c8a600;
+    --later: #8a887f;
+    --ok: #3f9142;
+    /* Тень не размытая, а смещённый чёрный блок — главная примета стиля. */
+    --shadow: 4px 4px 0 #111111;
+    --font-display: "Pixelify Sans", "Courier New", monospace;
+    --font-body: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --radius-card: 0px;
+    --radius-control: 0px;
+    --border-width: 2px;
+    --heading-transform: uppercase;
+    --heading-spacing: 0.04em;
+  }
+  /* Тёмный вариант скина отключён намеренно: см. комментарий выше. */
+  :root[data-skin="pixel"] .bg-blobs { display: none; }
+
+  :root[data-skin="pixel"] h1 { font-size: 1.5rem; }
+  :root[data-skin="pixel"] .card h2 { font-size: 1rem; }
+  :root[data-skin="pixel"] .card:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 #111; }
+  :root[data-skin="pixel"] button {
+    border: 2px solid #111;
+    box-shadow: 3px 3px 0 #111;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    font-weight: 700;
+  }
+  :root[data-skin="pixel"] button:active { transform: translate(3px, 3px); box-shadow: none; }
+  :root[data-skin="pixel"] button.secondary,
+  :root[data-skin="pixel"] button.danger { background: var(--card-bg); color: #111; }
+  :root[data-skin="pixel"] .rewards-number,
+  :root[data-skin="pixel"] .weekly-number { font-family: var(--font-display); }
+  /* Пустые состояния — пунктирная рамка, как в макете. */
+  :root[data-skin="pixel"] .empty {
+    border: 2px dashed var(--border);
+    padding: 22px 12px;
+  }
+  /* Чипы достижений: квадратные, с жёсткой рамкой. */
+  :root[data-skin="pixel"] .achievements li { border-radius: 0; border-width: 2px; }
+  :root[data-skin="pixel"] .icon-chip { border-radius: 0; }
+  :root[data-skin="pixel"] .theme-swatch { border-radius: 0; }
+  :root[data-skin="pixel"] .shelf-poster { border-radius: 0; border: 2px solid var(--border); }
+  :root[data-skin="pixel"] .progress-bar,
+  :root[data-skin="pixel"] .progress-bar > span { border-radius: 0; }
+  :root[data-skin="pixel"] .toast { border-radius: 0; border-width: 2px; box-shadow: 4px 4px 0 #111; }
+  /* Знак в шапке: пиксельная сетка вместо мягкого кольца. */
+  :root[data-skin="pixel"] .brand-mark { image-rendering: pixelated; }
+
   /* Цветовые темы: переопределяют --accent/--accent-soft поверх базовых
      :root-блоков (см. выше) — сама "стандартная" тема отдельного блока
      не требует, она и есть значения по умолчанию. */
@@ -682,6 +801,15 @@
     <input id="apiTokenInput" type="password" placeholder="из api_token в .env" />
     <button id="saveApiToken" class="secondary">Сохранить</button>
     <span id="apiTokenStatus"></span>
+  </div>
+
+  <div class="id-bar">
+    <span>Оформление:</span>
+    <select id="skinSelect">
+      <option value="default">Обычное</option>
+      <option value="pixel">Пиксель</option>
+    </select>
+    <span class="hint">Меняет шрифт и форму — цвет остаётся за темами ниже</span>
   </div>
 </details>
 
@@ -1032,6 +1160,31 @@ function renderThemePicker() {
       ${unlocked ? "" : 'data-locked="1" aria-disabled="true"'}>${req}</button>`;
   }).join("");
 }
+
+// --- Скин: характер оформления (шрифт, форма, тени) ------------------
+// Отдельная ось от акцентных тем: акцент меняет цвет, скин — всё
+// остальное. Хранится в localStorage, как и акцент: это косметика
+// конкретного устройства, а не данные пользователя.
+const SKIN_KEY = "lifeos_skin";
+
+function getActiveSkin() {
+  return localStorage.getItem(SKIN_KEY) || "default";
+}
+
+function applySkin(skinId) {
+  if (skinId === "default") {
+    document.documentElement.removeAttribute("data-skin");
+  } else {
+    document.documentElement.setAttribute("data-skin", skinId);
+  }
+  const select = document.getElementById("skinSelect");
+  if (select) select.value = skinId;
+}
+
+document.getElementById("skinSelect").addEventListener("change", (e) => {
+  localStorage.setItem(SKIN_KEY, e.target.value);
+  applySkin(e.target.value);
+});
 
 /** Короткое всплывающее сообщение внизу экрана. Своё, а не alert():
     alert блокирует страницу и обрывает предпросмотр темы. */
@@ -1541,6 +1694,7 @@ async function loadAll() {
   renderAchievements();
 }
 
+applySkin(getActiveSkin());
 renderStaticIcons();
 applyTheme(getActiveTheme());
 refreshUserIdStatus();
