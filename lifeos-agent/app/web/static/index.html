@@ -496,6 +496,32 @@
     .toast { animation: toast-life 2.2s steps(1, end) forwards; }
   }
 
+  /* Карточка полки с обложкой. Постер маленький: полка — это список
+     «что отложено», а не витрина; крупные афиши вытеснили бы с экрана
+     всё остальное. */
+  .shelf-card { align-items: flex-start; gap: 10px; }
+  .shelf-poster {
+    width: 46px;
+    height: 69px;
+    object-fit: cover;
+    border-radius: 6px;
+    flex: none;
+    background: var(--accent-soft);
+  }
+  .shelf-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+  .shelf-year { color: var(--muted); font-weight: 400; }
+  .shelf-overview {
+    color: var(--muted);
+    font-size: 0.8rem;
+    line-height: 1.35;
+    /* Три строки: достаточно, чтобы понять, о чём фильм, и не превратить
+       список в стену текста. */
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
   /* --- Звание (по накопленным монетам) --- */
   .rank-line {
     margin-top: 12px;
@@ -1378,13 +1404,30 @@ function renderShelfList(elementId, items, showComplete) {
     list.innerHTML = '<li class="empty">Пусто.</li>';
     return;
   }
-  list.innerHTML = items.map((item) => `
-    <li>
-      <span class="item-title">${escapeHtml(item.title)}</span>
+  // Есть обложка — карточка с постером и описанием; нет (книга, промах
+  // поиска, выключенный TMDb) — прежняя строка. Полка не должна
+  // разъезжаться на две разные вёрстки, поэтому отличие минимальное:
+  // тот же <li>, просто с картинкой слева.
+  list.innerHTML = items.map((item) => {
+    const year = item.release_year ? ` <span class="shelf-year">${item.release_year}</span>` : "";
+    const poster = item.poster_url
+      ? `<img class="shelf-poster" src="${escapeHtml(item.poster_url)}" alt="" loading="lazy" />`
+      : "";
+    const overview = item.overview
+      ? `<span class="shelf-overview">${escapeHtml(item.overview)}</span>`
+      : "";
+    return `
+    <li class="${item.poster_url ? "shelf-card" : ""}">
+      ${poster}
+      <span class="shelf-text">
+        <span class="item-title">${escapeHtml(item.title)}${year}</span>
+        ${overview}
+      </span>
       ${showComplete ? `<button class="secondary" data-action="complete-watchlist" data-id="${item.id}">✓</button>` : ""}
       <button class="danger" data-action="delete-watchlist" data-id="${item.id}">✕</button>
     </li>
-  `).join("");
+  `;
+  }).join("");
 }
 
 async function loadWatchlist() {

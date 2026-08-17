@@ -31,8 +31,9 @@ from app.proactive.service import PendingPromptService
 from app.tasks.formatting import format_due_human, task_created_prefix
 from app.tasks.models import Task
 from app.tasks.service import TaskService
-from app.watchlist.models import MEDIA_TYPE_EMOJI
+from app.watchlist.models import MEDIA_TYPE_EMOJI, WatchlistItem
 from app.watchlist.service import WatchlistService
+from app.watchlist.tmdb import get_tmdb_client
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,9 @@ class EngineResult:
 
     text: str
     created_task: Task | None = None
+    # Только что добавленная запись полки — чтобы Telegram-слой мог
+    # прислать обложку (движок Telegram-агностичен и картинок не шлёт).
+    watchlist_item: "WatchlistItem | None" = None
 
 
 _HELP_TEXT = (
@@ -498,10 +502,15 @@ class ConversationEngine:
             return EngineResult(text, task)
 
         item = await self._watchlist.create_item(
-            telegram_user_id, parsed.title, parsed.media_type or "other"
+            telegram_user_id,
+            parsed.title,
+            parsed.media_type or "other",
+            tmdb_client=get_tmdb_client(),
         )
         emoji = MEDIA_TYPE_EMOJI.get(item.media_type, "🎯")
-        return EngineResult(f"{emoji} Добавил в список: «{item.title}»")
+        return EngineResult(
+            f"{emoji} Добавил в список: «{item.title}»", watchlist_item=item
+        )
 
     async def _list_watchlist(self, telegram_user_id: int) -> str:
         """Текстовый фолбэк (без кнопок) — обычно перехватывается раньше

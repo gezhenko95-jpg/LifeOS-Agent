@@ -27,6 +27,11 @@ class WatchlistRead(BaseModel):
     media_type: str
     status: str
     source: str
+    # Карточка из TMDb (см. app/watchlist/tmdb.py) — всё опционально:
+    # книги, отсутствие ключа и промахи поиска оставляют поля пустыми.
+    poster_url: Optional[str] = None
+    overview: Optional[str] = None
+    release_year: Optional[int] = None
     drive_file_url: Optional[str]
     created_at: datetime
     completed_at: Optional[datetime]

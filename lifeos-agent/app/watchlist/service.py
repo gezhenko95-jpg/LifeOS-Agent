@@ -15,6 +15,7 @@ from app.ai.client import AIClient, AIServiceError
 from app.core.ownership import owned_or_none
 from app.watchlist.models import WatchlistItem
 from app.watchlist.repository import WatchlistRepository
+from app.watchlist.tmdb import TMDbClient
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,12 @@ class WatchlistService:
         media_type: str = "other",
         source: str = "manual",
         drive_file_url: Optional[str] = None,
+        tmdb_client: TMDbClient | None = None,
     ) -> WatchlistItem:
+        """`tmdb_client` — обогащение карточки обложкой и описанием (см.
+        app/watchlist/tmdb.py). Необязательное и полностью тихое: нет
+        клиента, нет сети, ничего не нашлось — запись сохраняется
+        текстом, ровно как раньше."""
         title = title.strip()
         if not title:
             raise ValueError("Название не может быть пустым")
@@ -58,7 +64,30 @@ class WatchlistService:
             source=source,
             drive_file_url=drive_file_url,
         )
+
+        # Книги TMDb не знает — для них поиск не имеет смысла (свой
+        # источник для книг будет отдельно, см. MULTIUSER.md).
+        if tmdb_client is not None and media_type != "book":
+            await self._enrich_from_tmdb(item, tmdb_client)
+
         return await self._repository.add(item)
+
+    async def _enrich_from_tmdb(
+        self, item: WatchlistItem, tmdb_client: TMDbClient
+    ) -> None:
+        info = await tmdb_client.search(item.title, item.media_type)
+        if info is None:
+            return
+
+        # Каноническое название с постера лучше пользовательской фразы:
+        # «Одиссея Нолана» на полке выглядит как опечатка, «Одиссея» —
+        # как карточка фильма. Исходная формулировка не теряется: по ней
+        # и нашли, а год рядом снимает двусмысленность.
+        item.title = info.title
+        item.poster_url = info.poster_url
+        item.overview = info.overview
+        item.release_year = info.release_year
+        item.tmdb_id = info.tmdb_id
 
     async def list_active_items(self, telegram_user_id: int) -> list[WatchlistItem]:
         return await self._repository.list_by_user(telegram_user_id, status=TO_WATCH)

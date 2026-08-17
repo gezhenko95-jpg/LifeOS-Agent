@@ -136,6 +136,11 @@ class Settings(BaseSettings):
     memory_embedding_batch_size: int = 20
     memory_embedding_interval_seconds: int = 300
 
+    # TMDb — обложки и описания для полки (см. app/watchlist/tmdb.py).
+    # Пусто = обогащение выключено, записи сохраняются текстом, как
+    # раньше. Ключ бесплатный, берётся в личном кабинете themoviedb.org.
+    tmdb_api_key: str = ""
+
     # Google Drive (Фаза 2 Media Inbox, см. specs/010-media-inbox.md).
     # token.json — разовая локальная авторизация (scripts/drive_auth.py),
     # монтируется в контейнер только для чтения. Файла нет = фича

@@ -6,7 +6,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import BigInteger, DateTime, String, func
+from sqlalchemy import BigInteger, DateTime, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -59,6 +59,26 @@ class WatchlistItem(Base):
         nullable=False,
         default="manual",
         comment="Источник: manual, photo (Фаза 2 — Media Inbox)",
+    )
+
+    poster_url: Mapped[Optional[str]] = mapped_column(
+        String(500),
+        nullable=True,
+        comment="Обложка из TMDb (NULL — не нашлось или обогащение выключено)",
+    )
+
+    overview: Mapped[Optional[str]] = mapped_column(
+        String(500), nullable=True, comment="Краткое описание из TMDb"
+    )
+
+    release_year: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, comment="Год выхода"
+    )
+
+    tmdb_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Идентификатор в TMDb — чтобы позже обновить карточку, не ища заново",
     )
 
     drive_file_url: Mapped[Optional[str]] = mapped_column(

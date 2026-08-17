@@ -379,7 +379,9 @@ async def test_watchlist_pending_accepts_bare_title(no_db, monkeypatch):
     """Кнопка уже сказала, куда добавляем, — префикс «фильм»/«книга» не
     обязателен."""
     service = AsyncMock()
-    service.create_item.return_value = SimpleNamespace(title="Дюна", media_type="other")
+    # Реальная запись всегда имеет поля карточки (миграция 016) — фейк
+    # должен быть той же формы, иначе тест разойдётся с продом.
+    service.create_item.return_value = _watchlist_item(1)
     monkeypatch.setattr(handlers, "WatchlistService", lambda repository: service)
     monkeypatch.setattr(handlers, "WatchlistRepository", MagicMock())
 
@@ -391,12 +393,14 @@ async def test_watchlist_pending_accepts_bare_title(no_db, monkeypatch):
     handled = await handlers._consume_pending_input(update, context, "Дюна")
 
     assert handled is True
-    service.create_item.assert_awaited_once_with(OWNER, "Дюна", "other")
+    service.create_item.assert_awaited_once_with(
+        OWNER, "Дюна", "other", tmdb_client=None
+    )
 
 
 async def test_watchlist_pending_keeps_media_type_when_written(no_db, monkeypatch):
     service = AsyncMock()
-    service.create_item.return_value = SimpleNamespace(title="Дюна", media_type="book")
+    service.create_item.return_value = _watchlist_item(1)
     monkeypatch.setattr(handlers, "WatchlistService", lambda repository: service)
     monkeypatch.setattr(handlers, "WatchlistRepository", MagicMock())
 
@@ -407,7 +411,9 @@ async def test_watchlist_pending_keeps_media_type_when_written(no_db, monkeypatc
 
     await handlers._consume_pending_input(update, context, "книга Дюна")
 
-    service.create_item.assert_awaited_once_with(OWNER, "Дюна", "book")
+    service.create_item.assert_awaited_once_with(
+        OWNER, "Дюна", "book", tmdb_client=None
+    )
 
 
 async def test_digest_channel_pending_reports_unknown_channel(no_db, monkeypatch):

@@ -14,6 +14,7 @@ import logging
 
 from telegram import InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction, ParseMode
+from telegram.error import TelegramError
 from telegram.ext import ContextTypes
 
 from app.ai.client import AIServiceError, get_ai_client
@@ -78,6 +79,7 @@ from app.telegram.pending_input import (
 from app.watchlist.models import MEDIA_TYPE_EMOJI
 from app.watchlist.repository import WatchlistRepository
 from app.watchlist.service import WatchlistService
+from app.watchlist.tmdb import get_tmdb_client
 
 logger = logging.getLogger(__name__)
 
@@ -419,13 +421,41 @@ async def _add_watchlist_item_from_text(
     async with AsyncSessionLocal() as session:
         service = WatchlistService(WatchlistRepository(session))
         try:
-            item = await service.create_item(telegram_user_id, title, media_type)
+            item = await service.create_item(
+                telegram_user_id, title, media_type, tmdb_client=get_tmdb_client()
+            )
         except ValueError as exc:
             await update.message.reply_text(str(exc))
             return
 
+    await _reply_with_media_card(update, item, "Добавил на полку")
+
+
+async def _reply_with_media_card(update: Update, item, prefix: str) -> None:
+    """Ответ о добавленной записи полки. Есть обложка — шлём картинкой с
+    подписью: карточка фильма читается с одного взгляда, а голое название
+    ничем не отличается от обычной задачи. Нет обложки (книга, ничего не
+    нашлось, выключенный TMDb) — прежний текстовый ответ."""
+    if update.message is None:
+        return
+
     emoji = MEDIA_TYPE_EMOJI.get(item.media_type, "🎯")
-    await update.message.reply_text(f"{emoji} Добавил на полку: «{item.title}»")
+    year = f" ({item.release_year})" if item.release_year else ""
+    caption = f"{emoji} {prefix}: «{item.title}»{year}"
+    if item.overview:
+        caption += "\n\n" + item.overview
+
+    if not item.poster_url:
+        await update.message.reply_text(caption)
+        return
+
+    try:
+        await update.message.reply_photo(item.poster_url, caption=caption)
+    except TelegramError as exc:
+        # Постер — украшение: если Telegram не смог его забрать по ссылке,
+        # сообщение всё равно должно дойти.
+        logger.warning("Обложка не отправилась: %s", exc)
+        await update.message.reply_text(caption)
 
 
 async def _search_journal(update: Update, telegram_user_id: int, query: str) -> None:
@@ -938,6 +968,10 @@ async def _reply_via_engine(
     # одном сообщении, поэтому только в этой ветке. Пользователь разницы
     # не видит (меню заменяется таким же), зато новые кнопки появляются
     # сами, без /start и /menu.
+    if result.watchlist_item is not None and result.watchlist_item.poster_url:
+        await _reply_with_media_card(update, result.watchlist_item, "Добавил в список")
+        return
+
     await update.message.reply_text(
         result.text, reply_markup=markup or build_main_menu()
     )
