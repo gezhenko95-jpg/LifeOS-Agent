@@ -4,6 +4,11 @@
 Telegram-бота/БД: ветвление handle_voice_message и роутинг
 _route_parsed_text; полный Telegram-plumbing get_file/download_as_bytearray
 в проекте нигде не тестируется даже для фото, не нарушаем этот баланс).
+
+ВАЖНО: сама фича сейчас ВЫКЛЮЧЕНА (`Settings.voice_input_enabled=False`) —
+хендлер не регистрируется, бот на голосовые молчит. Тесты ниже проверяют
+сам хендлер и остаются в силе: код рабочий и возвращается одной
+настройкой. Регистрацию проверяет test_voice_toggle.py.
 """
 
 from types import SimpleNamespace

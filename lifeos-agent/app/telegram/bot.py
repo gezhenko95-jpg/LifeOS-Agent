@@ -111,7 +111,15 @@ def build_application() -> Application:
         MessageHandler(filters.TEXT & ~filters.COMMAND & owner, handle_text_message)
     )
     application.add_handler(MessageHandler(filters.PHOTO & owner, handle_photo_message))
-    application.add_handler(MessageHandler(filters.VOICE & owner, handle_voice_message))
+    # Голосовые: хендлер регистрируется, только если фича включена (см.
+    # Settings.voice_input_enabled — выключена, пока не решён вопрос с
+    # оплатой транскрипции). Незарегистрированный хендлер = бот на
+    # голосовое просто молчит; отдельного «фича выключена» не отвечаем,
+    # чтобы не анонсировать то, чего сейчас нет.
+    if settings.voice_input_enabled:
+        application.add_handler(
+            MessageHandler(filters.VOICE & owner, handle_voice_message)
+        )
     # У CallbackQueryHandler нет параметра filters — проверка владельца
     # живёт внутри самого хендлера (app/telegram/callbacks.py).
     application.add_handler(CallbackQueryHandler(handle_callback_query))
