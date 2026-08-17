@@ -9,7 +9,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api import goals, habits, health, memory, rewards, tasks, watchlist
+from app.api import goals, habits, health, memory, poster, rewards, tasks, watchlist
 from app.api.deps import require_api_token
 from app.core.config import get_settings
 
@@ -49,6 +49,9 @@ app.add_middleware(
 _protected = [Depends(require_api_token)]
 
 app.include_router(health.router, tags=["health"])
+# Прокси обложек — без токена намеренно: <img> не умеет слать заголовки,
+# а пользовательских данных в запросе нет (см. app/api/poster.py).
+app.include_router(poster.router)
 app.include_router(tasks.router, tags=["tasks"], dependencies=_protected)
 app.include_router(memory.router, tags=["memory"], dependencies=_protected)
 app.include_router(habits.router, tags=["habits"], dependencies=_protected)

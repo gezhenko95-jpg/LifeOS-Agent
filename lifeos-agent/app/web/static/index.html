@@ -1398,6 +1398,16 @@ document.getElementById("goalList").addEventListener("click", async (e) => {
 
 // ---- Watchlist (Полка) ----
 
+/** Обложку берём через свой домен, а не напрямую с image.tmdb.org: до
+    CDN должен дотянуться браузер пользователя, а из России он не
+    открывается — на полке получалась битая картинка. Сервер (Нидерланды)
+    его видит, поэтому картинку забирает он (см. app/api/poster.py).
+    Ссылка не с TMDb (или уже проксированная) остаётся как есть. */
+function posterSrc(url) {
+  const match = /image\.tmdb\.org\/t\/p\/([^/]+)\/(.+)$/.exec(url || "");
+  return match ? `/poster/${match[1]}/${match[2]}` : url;
+}
+
 function renderShelfList(elementId, items, showComplete) {
   const list = document.getElementById(elementId);
   if (!items.length) {
@@ -1411,7 +1421,8 @@ function renderShelfList(elementId, items, showComplete) {
   list.innerHTML = items.map((item) => {
     const year = item.release_year ? ` <span class="shelf-year">${item.release_year}</span>` : "";
     const poster = item.poster_url
-      ? `<img class="shelf-poster" src="${escapeHtml(item.poster_url)}" alt="" loading="lazy" />`
+      ? `<img class="shelf-poster" src="${escapeHtml(posterSrc(item.poster_url))}" alt=""
+             loading="lazy" onerror="this.remove()" />`
       : "";
     const overview = item.overview
       ? `<span class="shelf-overview">${escapeHtml(item.overview)}</span>`
