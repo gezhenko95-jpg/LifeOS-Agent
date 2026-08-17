@@ -82,6 +82,33 @@ class DigestService:
     async def list_channels(self, digest_id: int) -> list[DigestChannel]:
         return await self._repository.list_channels(digest_id)
 
+    async def get_digest(
+        self, telegram_user_id: int, digest_id: int
+    ) -> Optional[Digest]:
+        """Дайджест по id — для inline-кнопок меню (в callback_data влезает
+        id, но не имя: имя может быть кириллическим и до 50 символов, а
+        лимит Telegram — 64 БАЙТА на всю строку). Чужой id неотличим от
+        несуществующего (owned_or_none, тот же принцип, что везде)."""
+        return owned_or_none(
+            await self._repository.get_by_id(digest_id), telegram_user_id
+        )
+
+    async def remove_channel_by_id(
+        self, telegram_user_id: int, channel_id: int
+    ) -> Optional[Digest]:
+        """Убрать канал, выбранный кнопкой. Возвращает родительский
+        дайджест (вызывающему коду нужно перерисовать его экран) или None,
+        если канала нет или он чужой — владелец проверяется через
+        родительский Digest, у самого канала поля telegram_user_id нет."""
+        channel = await self._repository.get_channel_by_id(channel_id)
+        if channel is None:
+            return None
+        digest = await self.get_digest(telegram_user_id, channel.digest_id)
+        if digest is None:
+            return None
+        await self._repository.remove_channel(channel)
+        return digest
+
     async def add_channel(
         self, telegram_user_id: int, digest_name: str, channel_username: str
     ) -> DigestChannel:

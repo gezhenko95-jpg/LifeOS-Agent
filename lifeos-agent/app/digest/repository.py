@@ -54,6 +54,12 @@ class DigestRepository(BaseRepository[Digest]):
         result = await self._session.execute(query)
         return list(result.scalars().all())
 
+    async def get_channel_by_id(self, channel_id: int) -> Optional[DigestChannel]:
+        """Канал по собственному id — для inline-кнопок меню, где в
+        callback_data влезает только id (см. app/telegram/keyboards.py).
+        Владелец проверяется на уровне сервиса, через родительский Digest."""
+        return await self._session.get(DigestChannel, channel_id)
+
     async def get_channel(
         self, digest_id: int, channel_username: str
     ) -> Optional[DigestChannel]:

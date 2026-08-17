@@ -5,6 +5,7 @@ from app.habits.models import Habit
 from app.tasks.models import Task
 from app.telegram.keyboards import (
     MENU_ADD_TASK,
+    MENU_DIGEST,
     MENU_GOALS,
     MENU_HABITS,
     MENU_HELP,
@@ -216,8 +217,9 @@ def test_main_menu_has_expected_buttons_in_rows():
         [MENU_TASKS],
         [MENU_HABITS, MENU_GOALS],
         [MENU_ADD_TASK, MENU_JOURNAL],
-        [MENU_INSIGHTS, MENU_WATCHLIST],
-        [MENU_SITE, MENU_HELP],
+        [MENU_WATCHLIST, MENU_DIGEST],
+        [MENU_INSIGHTS, MENU_SITE],
+        [MENU_HELP],
     ]
 
 
@@ -250,8 +252,8 @@ def test_watchlist_message_shows_media_emoji():
 def test_watchlist_message_caps_at_max_items():
     _, markup = build_watchlist_message([_item(i, f"Ф{i}") for i in range(1, 15)])
 
-    # 10 записей × 2 действия + кнопка «Порекомендуй»
-    assert len(_callback_data(markup)) == 21
+    # 10 записей × 2 действия + «Порекомендуй» и «Добавить»
+    assert len(_callback_data(markup)) == 22
 
 
 def test_open_site_keyboard_has_url_button():
