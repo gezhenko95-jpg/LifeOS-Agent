@@ -4,7 +4,6 @@ from app.goals.models import Goal
 from app.habits.models import Habit
 from app.tasks.models import Task
 from app.telegram.keyboards import (
-    MENU_ADD_TASK,
     MENU_DIGEST,
     MENU_GOALS,
     MENU_HABITS,
@@ -71,15 +70,19 @@ def test_tasks_message_shows_title_in_text_not_only_in_buttons():
     text, markup = build_tasks_message([_task(1)])
 
     assert "Купить молоко" in text
-    assert _callback_data(markup) == ["t|c|1", "t|d|1"]
-    assert [b.text for row in markup.inline_keyboard for b in row] == ["✅ 1", "🗑 1"]
+    assert _callback_data(markup) == ["t|c|1", "t|d|1", "t|m"]
+    assert [b.text for row in markup.inline_keyboard for b in row] == [
+        "✅ 1",
+        "🗑 1",
+        "◀️ Назад",
+    ]
 
 
 def test_tasks_message_numbers_match_between_text_and_buttons():
     text, markup = build_tasks_message([_task(7), _task(8, title="Позвонить")])
 
     assert "<b>1</b>" in text and "<b>2</b>" in text
-    assert _callback_data(markup) == ["t|c|7", "t|c|8", "t|d|7", "t|d|8"]
+    assert _callback_data(markup) == ["t|c|7", "t|c|8", "t|d|7", "t|d|8", "t|m"]
 
 
 def test_tasks_message_high_priority_marker():
@@ -105,7 +108,7 @@ def test_tasks_message_caps_at_max_items_but_says_so():
     что их нет."""
     text, markup = build_tasks_message([_task(i) for i in range(1, 15)])
 
-    assert len(_callback_data(markup)) == 20  # 10 задач × 2 действия
+    assert len(_callback_data(markup)) == 21  # 10 задач × 2 действия + «Назад»
     assert "ещё 4" in text
 
 
@@ -172,7 +175,7 @@ def test_habits_message_with_streak_shows_bar():
     assert "Читать" in text
     assert "🔥 12" in text
     assert "▓" in text
-    assert _callback_data(markup) == ["h|d|1", "h|x|1"]
+    assert _callback_data(markup) == ["h|d|1", "h|x|1", "h|m"]
 
 
 def test_habits_message_without_streak_invites_to_start():
@@ -197,7 +200,14 @@ def test_goals_message_shows_progress_bar_and_actions():
 
     assert "Выучить английский" in text
     assert "▓" in text and "60%" in text
-    assert _callback_data(markup) == ["g|noop", "g|n|1", "g|u|1", "g|c|1", "g|x|1"]
+    assert _callback_data(markup) == [
+        "g|noop",
+        "g|p|1",
+        "g|u|1",
+        "g|c|1",
+        "g|x|1",
+        "g|m",
+    ]
 
 
 def test_goals_message_shows_average_progress():
@@ -216,10 +226,9 @@ def test_main_menu_has_expected_buttons_in_rows():
     assert labels == [
         [MENU_TASKS],
         [MENU_HABITS, MENU_GOALS],
-        [MENU_ADD_TASK, MENU_JOURNAL],
-        [MENU_WATCHLIST, MENU_DIGEST],
-        [MENU_INSIGHTS, MENU_SITE],
-        [MENU_HELP],
+        [MENU_JOURNAL, MENU_WATCHLIST],
+        [MENU_DIGEST, MENU_INSIGHTS],
+        [MENU_SITE, MENU_HELP],
     ]
 
 
@@ -252,8 +261,8 @@ def test_watchlist_message_shows_media_emoji():
 def test_watchlist_message_caps_at_max_items():
     _, markup = build_watchlist_message([_item(i, f"Ф{i}") for i in range(1, 15)])
 
-    # 10 записей × 2 действия + «Порекомендуй» и «Добавить»
-    assert len(_callback_data(markup)) == 22
+    # 10 записей × 2 действия + «Порекомендуй», «Добавить» и «Назад»
+    assert len(_callback_data(markup)) == 23
 
 
 def test_open_site_keyboard_has_url_button():

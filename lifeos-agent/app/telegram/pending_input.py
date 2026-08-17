@@ -24,7 +24,12 @@ AI-разборе ответа (см. app/conversation/engine.py). Здесь д
 from dataclasses import dataclass
 from typing import Any, Optional
 
-# Чего ждём от следующего сообщения.
+# Чего ждём от следующего сообщения. Первые пять — это «➕ Добавить» в
+# соответствующем разделе (одна и та же кнопка во всех доменах, см.
+# app/telegram/keyboards.py), остальные — домен-специфичные приглашения.
+TASK_ADD = "task_add"
+HABIT_ADD = "habit_add"
+GOAL_ADD = "goal_add"
 WATCHLIST_ADD = "watchlist_add"
 JOURNAL_SEARCH = "journal_search"
 DIGEST_NEW = "digest_new"

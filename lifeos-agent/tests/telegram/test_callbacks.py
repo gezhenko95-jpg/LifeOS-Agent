@@ -48,7 +48,7 @@ async def _add_task(session, **kwargs) -> Task:
 async def test_quick_action_p_sets_high_priority(session):
     task = await _add_task(session)
 
-    text, markup = await _handle_task_action(session, "p", str(task.id), 1)
+    text, markup = await _handle_task_action(session, "p", str(task.id), 1, _context())
 
     assert "❗" in text
     callbacks = [b.callback_data for row in markup.inline_keyboard for b in row]
@@ -59,7 +59,7 @@ async def test_quick_action_p_sets_high_priority(session):
 async def test_quick_action_w_sets_tomorrow_due_date(session):
     task = await _add_task(session)
 
-    text, markup = await _handle_task_action(session, "w", str(task.id), 1)
+    text, markup = await _handle_task_action(session, "w", str(task.id), 1, _context())
 
     assert "на " in text
     callbacks = [b.callback_data for row in markup.inline_keyboard for b in row]
@@ -68,7 +68,7 @@ async def test_quick_action_w_sets_tomorrow_due_date(session):
 
 
 async def test_quick_action_on_missing_task_is_graceful(session):
-    text, markup = await _handle_task_action(session, "p", "999999", 1)
+    text, markup = await _handle_task_action(session, "p", "999999", 1, _context())
 
     assert "не активна" in text
     assert len(markup.inline_keyboard) == 0

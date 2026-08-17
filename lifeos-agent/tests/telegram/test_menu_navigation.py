@@ -15,21 +15,69 @@ import pytest
 
 from app.digest.models import Digest, DigestChannel
 from app.digest.scraper import ChannelScrapeError
+from app.goals.models import Goal
+from app.habits.models import Habit
 from app.memory.models import MemoryEntry
+from app.tasks.models import Task
 from app.telegram import callbacks, handlers, pending_input
 from app.telegram.keyboards import (
     MENU_DIGEST,
+    MENU_GOALS,
+    MENU_HABITS,
     MENU_JOURNAL,
+    MENU_TASKS,
     MENU_WATCHLIST,
     build_digest_detail_message,
     build_digest_menu_message,
+    build_goals_menu,
+    build_goals_message,
+    build_habits_menu,
+    build_habits_message,
     build_journal_entries_message,
     build_journal_entry_message,
     build_journal_menu,
+    build_tasks_menu,
+    build_tasks_message,
     build_watchlist_menu,
+    build_watchlist_message,
 )
+from app.watchlist.models import WatchlistItem
 
 OWNER = 414825951
+
+
+def _task(task_id: int) -> Task:
+    return Task(
+        id=task_id,
+        telegram_user_id=OWNER,
+        title="Купить молоко",
+        status="active",
+        priority="normal",
+    )
+
+
+def _habit(habit_id: int) -> Habit:
+    return Habit(id=habit_id, telegram_user_id=OWNER, title="Чтение", archived=False)
+
+
+def _goal(goal_id: int) -> Goal:
+    return Goal(
+        id=goal_id,
+        telegram_user_id=OWNER,
+        title="Выучить испанский",
+        progress=40,
+        status="active",
+    )
+
+
+def _watchlist_item(item_id: int) -> WatchlistItem:
+    return WatchlistItem(
+        id=item_id,
+        telegram_user_id=OWNER,
+        title="Дюна",
+        media_type="movie",
+        status="to_watch",
+    )
 
 
 def _entry(entry_id: int, content: str = "Хороший день") -> MemoryEntry:
@@ -55,10 +103,44 @@ def test_watchlist_menu_offers_open_and_add():
     assert _callback_data(markup) == ["w|l", "w|n"]
 
 
+@pytest.mark.parametrize(
+    "builder, domain",
+    [
+        (build_tasks_menu, "t"),
+        (build_habits_menu, "h"),
+        (build_goals_menu, "g"),
+        (build_journal_menu, "j"),
+        (build_watchlist_menu, "w"),
+    ],
+)
+def test_every_section_screen_starts_with_list_and_add(builder, domain):
+    """Главное правило раздела: первый ряд — всегда «открыть список» и
+    «добавить», в том же порядке, с тем же смыслом кода действия."""
+    _, markup = builder()
+
+    assert _callback_data(markup)[:2] == [f"{domain}|l", f"{domain}|n"]
+
+
+@pytest.mark.parametrize(
+    "screen, domain",
+    [
+        (lambda: build_tasks_message([_task(1)]), "t"),
+        (lambda: build_habits_message([_habit(1)], {1: 3}), "h"),
+        (lambda: build_goals_message([_goal(1)]), "g"),
+        (lambda: build_watchlist_message([_watchlist_item(1)]), "w"),
+        (lambda: build_journal_entries_message([_entry(1)]), "j"),
+    ],
+)
+def test_every_list_can_go_back_to_its_section(screen, domain):
+    _, markup = screen()
+
+    assert _callback_data(markup)[-1] == f"{domain}|m"
+
+
 def test_journal_menu_offers_read_search_and_write():
     _, markup = build_journal_menu()
 
-    assert _callback_data(markup) == ["j|l", "j|f", "j|n"]
+    assert _callback_data(markup) == ["j|l", "j|n", "j|f"]
 
 
 def test_journal_entries_show_date_and_preview():
@@ -367,6 +449,59 @@ async def test_pending_is_one_shot_even_after_failure(no_db, monkeypatch):
     assert handled_again is False
 
 
+async def test_habit_pending_takes_whole_text_as_title(no_db, monkeypatch):
+    """Слово «привычка» в начале фразы (как требует текстовый путь) после
+    кнопки не нужно — кнопка уже сказала, что это привычка."""
+    service = AsyncMock()
+    service.create_habit.return_value = SimpleNamespace(title="зарядка")
+    monkeypatch.setattr(handlers, "HabitService", lambda repository: service)
+    monkeypatch.setattr(handlers, "HabitRepository", MagicMock())
+
+    update, context = _update(), _context()
+    pending_input.set_pending(
+        context.user_data, pending_input.PendingInput(pending_input.HABIT_ADD)
+    )
+
+    await handlers._consume_pending_input(update, context, "зарядка")
+
+    service.create_habit.assert_awaited_once_with(OWNER, "зарядка")
+
+
+async def test_goal_pending_creates_goal_without_asking_for_date(no_db, monkeypatch):
+    service = AsyncMock()
+    service.create_goal.return_value = SimpleNamespace(title="пробежать 10 км")
+    monkeypatch.setattr(handlers, "GoalService", lambda repository: service)
+    monkeypatch.setattr(handlers, "GoalRepository", MagicMock())
+
+    update, context = _update(), _context()
+    pending_input.set_pending(
+        context.user_data, pending_input.PendingInput(pending_input.GOAL_ADD)
+    )
+
+    await handlers._consume_pending_input(update, context, "пробежать 10 км")
+
+    service.create_goal.assert_awaited_once_with(OWNER, "пробежать 10 км")
+
+
+async def test_task_pending_still_goes_through_engine(no_db, monkeypatch):
+    """У задачи в тексте может быть срок («завтра в 19:00») — разбирать
+    его заново в обход движка значило бы завести второй парсер дат."""
+    route = AsyncMock()
+    monkeypatch.setattr(handlers, "_reply_via_engine", route)
+
+    update, context = _update(), _context()
+    pending_input.set_pending(
+        context.user_data, pending_input.PendingInput(pending_input.TASK_ADD)
+    )
+
+    handled = await handlers._consume_pending_input(
+        update, context, "завтра в 19:00 позвонить маме"
+    )
+
+    assert handled is True
+    route.assert_awaited_once_with(update, context, "завтра в 19:00 позвонить маме")
+
+
 async def test_digest_new_pending_parses_name_and_frequency(no_db, monkeypatch):
     service = AsyncMock()
     service.create_digest.return_value = Digest(
@@ -427,12 +562,17 @@ async def test_no_pending_means_normal_routing(no_db):
 @pytest.mark.parametrize(
     "button, sender",
     [
+        (MENU_TASKS, "_send_section"),
+        (MENU_HABITS, "_send_section"),
+        (MENU_GOALS, "_send_section"),
         (MENU_WATCHLIST, "_send_section"),
         (MENU_JOURNAL, "_send_section"),
         (MENU_DIGEST, "_send_digest_menu"),
     ],
 )
 async def test_menu_buttons_open_section_screens(monkeypatch, button, sender):
+    """Ни одна кнопка домена не делает действие сразу — все шесть
+    открывают экран раздела."""
     called = AsyncMock()
     monkeypatch.setattr(handlers, sender, called)
     update, context = _update(), _context()

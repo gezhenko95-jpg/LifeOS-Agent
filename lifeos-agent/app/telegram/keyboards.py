@@ -19,30 +19,40 @@ inline-клавиатуры для списков задач/привычек/ц
 пришло от пользователя, обязательно проходит через _esc() — иначе
 задача с названием «<b>» сломает разметку всего сообщения.
 
-Разделы с несколькими действиями (полка, дневник, дайджесты) открываются
-не сразу списком, а ЭКРАНОМ РАЗДЕЛА: кнопка постоянного меню присылает
-сообщение с inline-кнопками («открыть» / «добавить» / «найти»), и только
-они делают само действие. Раньше кнопка меню умела ровно одно (🎬
-Посмотреть = показать список), а всё остальное надо было печатать
-командой или фразой — про которую ещё надо помнить, что она существует.
-Экраны связаны кнопкой «◀️ Назад», чтобы из любого места можно было
-вернуться на уровень выше, не трогая постоянное меню.
+ОДНО ПРАВИЛО НА ВСЕ РАЗДЕЛЫ. Кнопка постоянного меню, за которой стоит
+домен (задачи, привычки, цели, дневник, полка, дайджесты), всегда
+открывает ЭКРАН РАЗДЕЛА — сообщение с одинаковым каркасом (см.
+_section_screen): заголовок, строка-подсказка, ряд действий «открыть
+список» + «добавить». Само действие делают уже inline-кнопки. Раньше
+правило приходилось помнить для каждой кнопки отдельно: «📋 Задачи»
+открывали список сразу, «➕ Задача» была отдельной кнопкой меню, «🎬
+Посмотреть» — тоже сразу список, а добавление на полку жило только во
+фразе «фильм Дюна». Кнопки-утилиты без своего домена («📊 Инсайты»,
+«🌐 Сайт», «❓ Помощь») остаются прямым действием — экран из одного
+пункта был бы лишним щелчком.
+
+Из любого списка «◀️ Назад» возвращает на экран своего раздела.
 
 Чистые функции — только презентация, никакого доступа к БД/сети.
-callback_data — компактный формат "{домен}|{действие}|{id}":
+callback_data — компактный формат "{домен}|{действие}|{id}".
+
+Домены: t — задачи, h — привычки, g — цели, j — дневник, w — полка,
+d — дайджесты. Действия одинаковы во всех доменах:
+  {домен}|m — экран раздела
+  {домен}|l — открыть список
+  {домен}|n — добавить (бот ждёт следующее сообщение, см. pending_input.py)
+
+Домен-специфичное:
   t|c|{id} / t|d|{id} — задача: выполнить / удалить
   t|p|{id} / t|w|{id} — задача: сделать важной / поставить дату на завтра
     (быстрые кнопки под подтверждением создания, см. handlers.py)
   h|d|{id} / h|x|{id} — привычка: отметить сегодня / удалить
-  g|u|{id} / g|n|{id} / g|c|{id} / g|x|{id} — цель: +10% / -10% / завершить / удалить
+  g|u|{id} / g|p|{id} / g|c|{id} / g|x|{id} — цель: +10% / -10% /
+    завершить / удалить
   g|noop — строка-заголовок цели, не действие
-  w|d|{id} / w|x|{id} — watchlist: отметить готовым / удалить
-  w|r|0 — «Порекомендуй» (id не нужен, действует на весь список)
-  w|m / w|l / w|n — полка: экран раздела / открыть список / добавить
-  j|m / j|l / j|f / j|n — дневник: экран раздела / записи / поиск по теме /
-    новая запись
-  j|o|{id} — открыть запись дневника целиком
-  d|m / d|n — дайджесты: экран раздела / создать новый
+  w|d|{id} / w|x|{id} — полка: отметить готовым / удалить
+  w|r|0 — «Порекомендуй» (действует на весь список)
+  j|f — поиск по теме, j|o|{id} — открыть запись целиком
   d|s|{id} / d|r|{id} / d|a|{id} — дайджест: открыть / прислать новое /
     добавить канал
   d|x|{channel_id} — убрать канал (id КАНАЛА, не дайджеста)
@@ -85,7 +95,6 @@ _DIVIDER = "━━━━━━━━━━━━━━━"
 MENU_TASKS = "📋 Задачи"
 MENU_HABITS = "🔁 Привычки"
 MENU_GOALS = "🎯 Цели"
-MENU_ADD_TASK = "➕ Задача"
 MENU_JOURNAL = "📝 Дневник"
 MENU_INSIGHTS = "📊 Инсайты"
 MENU_WATCHLIST = "🎬 Посмотреть"
@@ -102,6 +111,36 @@ _JOURNAL_PREVIEW_CHARS = 60
 
 _BACK_TO_JOURNAL = InlineKeyboardButton("◀️ Назад", callback_data="j|m")
 _BACK_TO_DIGESTS = InlineKeyboardButton("◀️ Назад", callback_data="d|m")
+
+
+def _back_to_section(domain: str) -> list[InlineKeyboardButton]:
+    """Ряд «◀️ Назад» на экран своего раздела. Один и тот же приём во всех
+    доменах: из списка всегда можно вернуться туда, откуда пришёл, не
+    трогая постоянное меню."""
+    return [InlineKeyboardButton("◀️ Назад", callback_data=f"{domain}|m")]
+
+
+def _section_screen(
+    title: str, hint: str, rows: list[list[InlineKeyboardButton]]
+) -> tuple[str, InlineKeyboardMarkup]:
+    """Единый каркас экрана раздела: заголовок, одна строка-подсказка,
+    ряды кнопок-действий.
+
+    Все шесть разделов (задачи, привычки, цели, дневник, полка,
+    дайджесты) строятся через него — раньше каждая кнопка меню вела себя
+    по-своему (часть открывала список сразу, часть — экран), и правило
+    «что будет, если нажать» приходилось помнить для каждой отдельно.
+    """
+    return f"{title}\n\n{hint}", InlineKeyboardMarkup(rows)
+
+
+def _open_and_add(domain: str, open_label: str, add_label: str = "➕ Добавить"):
+    """Скелет действий раздела: «открыть список» + «добавить». Порядок и
+    подписи одинаковы везде — различается только эмодзи домена."""
+    return [
+        InlineKeyboardButton(open_label, callback_data=f"{domain}|l"),
+        InlineKeyboardButton(add_label, callback_data=f"{domain}|n"),
+    ]
 
 
 def _esc(text: str) -> str:
@@ -145,10 +184,9 @@ def build_main_menu() -> ReplyKeyboardMarkup:
     keyboard = [
         [KeyboardButton(MENU_TASKS)],
         [KeyboardButton(MENU_HABITS), KeyboardButton(MENU_GOALS)],
-        [KeyboardButton(MENU_ADD_TASK), KeyboardButton(MENU_JOURNAL)],
-        [KeyboardButton(MENU_WATCHLIST), KeyboardButton(MENU_DIGEST)],
-        [KeyboardButton(MENU_INSIGHTS), KeyboardButton(MENU_SITE)],
-        [KeyboardButton(MENU_HELP)],
+        [KeyboardButton(MENU_JOURNAL), KeyboardButton(MENU_WATCHLIST)],
+        [KeyboardButton(MENU_DIGEST), KeyboardButton(MENU_INSIGHTS)],
+        [KeyboardButton(MENU_SITE), KeyboardButton(MENU_HELP)],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -179,6 +217,7 @@ def build_tasks_message(tasks: list[Task]) -> tuple[str, InlineKeyboardMarkup]:
 
     rows = _numbered_action_rows(shown, "t|c", "✅")
     rows += _numbered_action_rows(shown, "t|d", "🗑")
+    rows.append(_back_to_section("t"))
     return "\n".join(lines), InlineKeyboardMarkup(rows)
 
 
@@ -263,6 +302,7 @@ def build_habits_message(
 
     rows = _numbered_action_rows(shown, "h|d", "✅")
     rows += _numbered_action_rows(shown, "h|x", "🗑")
+    rows.append(_back_to_section("h"))
     return "\n".join(lines), InlineKeyboardMarkup(rows)
 
 
@@ -304,6 +344,7 @@ def build_watchlist_message(
             InlineKeyboardButton("➕ Добавить", callback_data="w|n"),
         ]
     )
+    rows.append(_back_to_section("w"))
     return "\n".join(lines), InlineKeyboardMarkup(rows)
 
 
@@ -329,7 +370,9 @@ def build_goals_message(goals: list[Goal]) -> tuple[str, InlineKeyboardMarkup]:
         rows.append(
             [
                 InlineKeyboardButton(f"{index}", callback_data="g|noop"),
-                InlineKeyboardButton("➖10%", callback_data=f"g|n|{goal.id}"),
+                # «g|n» во всех доменах означает «добавить», поэтому
+                # «-10%» переехал на «g|p» (progress down).
+                InlineKeyboardButton("➖10%", callback_data=f"g|p|{goal.id}"),
                 InlineKeyboardButton("➕10%", callback_data=f"g|u|{goal.id}"),
                 InlineKeyboardButton("✅", callback_data=f"g|c|{goal.id}"),
                 InlineKeyboardButton("🗑", callback_data=f"g|x|{goal.id}"),
@@ -342,35 +385,56 @@ def build_goals_message(goals: list[Goal]) -> tuple[str, InlineKeyboardMarkup]:
         f"{len(goals)} {_plural(len(goals), 'цель', 'цели', 'целей')} "
         f"· средний прогресс {average}%"
     )
+    rows.append(_back_to_section("g"))
     return "\n".join(lines), InlineKeyboardMarkup(rows)
 
 
 # --- Экраны разделов (второй уровень меню) --------------------------------
 
 
+def build_tasks_menu() -> tuple[str, InlineKeyboardMarkup]:
+    return _section_screen(
+        "📋 <b>Задачи</b>",
+        "Посмотреть, что висит, или добавить новую?",
+        [_open_and_add("t", "📋 Список")],
+    )
+
+
+def build_habits_menu() -> tuple[str, InlineKeyboardMarkup]:
+    return _section_screen(
+        "🔁 <b>Привычки</b>",
+        "Отметить сегодняшние или завести новую?",
+        [_open_and_add("h", "🔁 Список")],
+    )
+
+
+def build_goals_menu() -> tuple[str, InlineKeyboardMarkup]:
+    return _section_screen(
+        "🎯 <b>Цели</b>",
+        "Посмотреть прогресс или поставить новую цель?",
+        [_open_and_add("g", "🎯 Список")],
+    )
+
+
 def build_watchlist_menu() -> tuple[str, InlineKeyboardMarkup]:
-    """🎬 Посмотреть → что именно: открыть полку или добавить на неё."""
-    text = "🎬 <b>Полка</b>\n\nЧто нужно — посмотреть, что уже отложено, или добавить новое?"
-    rows = [
-        [
-            InlineKeyboardButton("📚 Открыть полку", callback_data="w|l"),
-            InlineKeyboardButton("➕ Добавить", callback_data="w|n"),
-        ]
-    ]
-    return text, InlineKeyboardMarkup(rows)
+    return _section_screen(
+        "🎬 <b>Полка</b>",
+        "Что отложено на посмотреть-почитать — или добавить новое?",
+        [_open_and_add("w", "📚 Список")],
+    )
 
 
 def build_journal_menu() -> tuple[str, InlineKeyboardMarkup]:
-    """📝 Дневник → читать старое или писать новое."""
-    text = "📝 <b>Дневник</b>\n\nПочитать записи или записать что-то новое?"
-    rows = [
+    """У дневника к общему скелету добавлен «🔍 По теме»: записей
+    со временем становится много, и листать их подряд бесполезно."""
+    return _section_screen(
+        "📝 <b>Дневник</b>",
+        "Почитать записи или записать что-то новое?",
         [
-            InlineKeyboardButton("📖 Записи", callback_data="j|l"),
-            InlineKeyboardButton("🔍 По теме", callback_data="j|f"),
+            _open_and_add("j", "📖 Записи", "✍️ Новая запись"),
+            [InlineKeyboardButton("🔍 По теме", callback_data="j|f")],
         ],
-        [InlineKeyboardButton("✍️ Новая запись", callback_data="j|n")],
-    ]
-    return text, InlineKeyboardMarkup(rows)
+    )
 
 
 def build_journal_entries_message(
