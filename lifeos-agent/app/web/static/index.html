@@ -538,6 +538,78 @@
     overflow: hidden;
   }
 
+
+  /* --- Календарь ---------------------------------------------------
+     Занимает всю ширину сетки: месяц в одной колонке из трёх — это
+     клетки по 40px, в которые не влезает ни одна задача. */
+  .calendar-card { grid-column: 1 / -1; }
+  .cal-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .cal-title {
+    font-weight: 600;
+    flex: 1;
+    text-transform: capitalize;
+    font-family: var(--font-display);
+  }
+  .cal-weekdays, .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+  }
+  .cal-weekdays {
+    margin-bottom: 6px;
+    font-size: 0.72rem;
+    color: var(--muted);
+    text-align: center;
+  }
+  .cal-day {
+    min-height: 84px;
+    border: var(--border-width) solid var(--border);
+    border-radius: var(--radius-control);
+    padding: 4px 5px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .cal-day:hover { border-color: var(--accent); }
+  .cal-day.other-month { opacity: 0.4; }
+  .cal-day.today { border-color: var(--accent); background: var(--accent-soft); }
+  /* Подсветка при перетаскивании: без неё непонятно, куда именно упадёт
+     задача — клетки маленькие и стоят вплотную. */
+  .cal-day.drop-target { background: var(--accent-soft); border-color: var(--accent); }
+  .cal-daynum { font-size: 0.75rem; color: var(--muted); }
+  .cal-day.today .cal-daynum { color: var(--accent); font-weight: 700; }
+  .cal-task {
+    font-size: 0.72rem;
+    line-height: 1.25;
+    padding: 2px 5px;
+    border-radius: var(--radius-control);
+    background: var(--accent-soft);
+    color: var(--text);
+    cursor: grab;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cal-task.high { background: var(--danger); color: #fff; }
+  .cal-task.overdue { outline: 1px solid var(--overdue); }
+  .cal-task.dragging { opacity: 0.45; }
+  .cal-more { font-size: 0.68rem; color: var(--muted); }
+  .cal-input {
+    width: 100%;
+    font-size: 0.72rem;
+    padding: 2px 4px;
+  }
+  .cal-hint { color: var(--muted); font-size: 0.76rem; margin: 10px 0 0; }
+  @media (max-width: 640px) {
+    /* На телефоне клетки становятся слишком узкими для текста — тогда
+       вместо названий показываем точки-индикаторы. */
+    .cal-day { min-height: 56px; }
+    .cal-task { font-size: 0; padding: 3px; height: 6px; }
+    .cal-hint { display: none; }
+  }
+
   /* --- Звание (по накопленным монетам) --- */
   .rank-line {
     margin-top: 12px;
@@ -815,6 +887,22 @@
 
 <div class="grid">
 
+
+  <section class="card calendar-card">
+    <h2 data-icon="chart">Календарь</h2>
+    <div class="cal-head">
+      <button class="secondary" id="calPrev" title="Предыдущий месяц">‹</button>
+      <span class="cal-title" id="calTitle"></span>
+      <button class="secondary" id="calNext" title="Следующий месяц">›</button>
+      <button class="secondary" id="calToday">Сегодня</button>
+    </div>
+    <div class="cal-weekdays" aria-hidden="true">
+      <span>ПН</span><span>ВТ</span><span>СР</span><span>ЧТ</span><span>ПТ</span><span>СБ</span><span>ВС</span>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+    <p class="cal-hint">Клик по дню — новая задача. Задачу можно перетащить на другой день.</p>
+  </section>
+
   <section class="card rewards-card">
     <h2 id="rewardsTitle">Ежедневный визит</h2>
     <div class="rewards-row">
@@ -1043,6 +1131,7 @@ function formatDueHuman(iso) {
 // это RewardsService (см. app/rewards/).
 let lastRewards = { claimedToday: false, streak: 0, totalCoins: 0, coinsToday: 0, luckyToday: false };
 let lastHabits = [];
+let lastTasks = [];
 let lastGoals = [];
 let lastWatchlist = [];
 let lastWeeklyCount = 0;
@@ -1370,8 +1459,10 @@ document.getElementById("claimButton").addEventListener("click", async () => {
 async function loadTasks() {
   const id = getUserId();
   const list = document.getElementById("taskList");
-  if (!id) { list.innerHTML = ""; return; }
+  if (!id) { list.innerHTML = ""; lastTasks = []; renderCalendar(); return; }
   const tasks = await api(`/tasks?telegram_user_id=${encodeURIComponent(id)}`);
+  lastTasks = tasks;
+  renderCalendar();
   if (!tasks.length) {
     list.innerHTML = '<li class="empty">Активных задач нет — и это нормально.</li>';
     return;
@@ -1432,7 +1523,7 @@ document.getElementById("taskList").addEventListener("click", async (e) => {
 async function loadHabits() {
   const id = getUserId();
   const list = document.getElementById("habitList");
-  if (!id) { list.innerHTML = ""; return; }
+  if (!id) { list.innerHTML = ""; lastTasks = []; renderCalendar(); return; }
   const habits = await api(`/habits?telegram_user_id=${encodeURIComponent(id)}`);
   lastHabits = habits; // до early return — иначе достижение "серия 7 дней" не обнулится, когда привычек не осталось
   if (!habits.length) {
@@ -1494,7 +1585,7 @@ document.getElementById("habitList").addEventListener("click", async (e) => {
 async function loadGoals() {
   const id = getUserId();
   const list = document.getElementById("goalList");
-  if (!id) { list.innerHTML = ""; return; }
+  if (!id) { list.innerHTML = ""; lastTasks = []; renderCalendar(); return; }
   const goals = await api(`/goals?telegram_user_id=${encodeURIComponent(id)}`);
   lastGoals = goals;
   if (!goals.length) {
@@ -1548,6 +1639,243 @@ document.getElementById("goalList").addEventListener("click", async (e) => {
     await loadGoals();
   }
 });
+
+// ---- Календарь ----
+//
+// Данные не запрашиваются отдельно: календарь рисуется по тем же
+// активным задачам, что уже загрузила карточка «Задачи» (lastTasks).
+// Отдельный эндпоинт «задачи за месяц» появится, когда их станут сотни;
+// пока это лишний поход в БД ради того, что уже в памяти.
+//
+// Время задачи при переносе сохраняется: перетащили «позвонить в 19:00»
+// со вторника на среду — останется 19:00, а не сбросится на утро.
+
+const CAL_DEFAULT_HOUR = 9; // как у бота для дат без явного времени
+const CAL_MAX_VISIBLE = 3; // больше не влезает в клетку по высоте
+
+let calMonth = startOfMonth(new Date());
+
+function startOfMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+/** Ключ дня в местном времени. toISOString() здесь не годится: он
+    переводит в UTC, и после 21:00 МСК задача уезжала бы во вчера. */
+function dayKey(date) {
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${m}-${d}`;
+}
+
+/** Понедельник недели, в которую попадает 1-е число: сетка всегда
+    начинается с понедельника (в русском календаре неделя с него). */
+function gridStart(monthStart) {
+  const start = new Date(monthStart);
+  const weekday = (start.getDay() + 6) % 7; // вс=0 → 6
+  start.setDate(start.getDate() - weekday);
+  return start;
+}
+
+function renderCalendar() {
+  const grid = document.getElementById("calGrid");
+  const title = document.getElementById("calTitle");
+  if (!grid) return;
+
+  title.textContent = calMonth.toLocaleDateString("ru-RU", {
+    month: "long",
+    year: "numeric",
+  });
+
+  const byDay = new Map();
+  for (const task of lastTasks) {
+    if (!task.due_date) continue;
+    const key = dayKey(new Date(task.due_date));
+    if (!byDay.has(key)) byDay.set(key, []);
+    byDay.get(key).push(task);
+  }
+
+  const todayKey = dayKey(new Date());
+  const cursor = gridStart(calMonth);
+  const cells = [];
+
+  // Шесть недель всегда: иначе высота карточки скачет при переключении
+  // месяцев, и кнопки «вперёд/назад» уезжают из-под курсора.
+  for (let i = 0; i < 42; i++) {
+    const key = dayKey(cursor);
+    const dayTasks = byDay.get(key) || [];
+    const classes = ["cal-day"];
+    if (cursor.getMonth() !== calMonth.getMonth()) classes.push("other-month");
+    if (key === todayKey) classes.push("today");
+
+    const shown = dayTasks.slice(0, CAL_MAX_VISIBLE);
+    const hidden = dayTasks.length - shown.length;
+    const chips = shown
+      .map((task) => {
+        const overdue = dueStatus(task.due_date) === "overdue" ? " overdue" : "";
+        const high = task.priority === "high" ? " high" : "";
+        return `<span class="cal-task${high}${overdue}" draggable="true"
+                      data-task-id="${task.id}" title="${escapeHtml(task.title)}"
+                      >${escapeHtml(task.title)}</span>`;
+      })
+      .join("");
+
+    cells.push(`
+      <div class="${classes.join(" ")}" data-day="${key}">
+        <span class="cal-daynum">${cursor.getDate()}</span>
+        ${chips}
+        ${hidden > 0 ? `<span class="cal-more">+${hidden}</span>` : ""}
+      </div>`);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  grid.innerHTML = cells.join("");
+}
+
+document.getElementById("calPrev").addEventListener("click", () => {
+  calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1);
+  renderCalendar();
+});
+document.getElementById("calNext").addEventListener("click", () => {
+  calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1);
+  renderCalendar();
+});
+document.getElementById("calToday").addEventListener("click", () => {
+  calMonth = startOfMonth(new Date());
+  renderCalendar();
+});
+
+// --- Создание задачи прямо в клетке ---------------------------------
+// Поле появляется в самой ячейке, а не в модальном окне: «кинуть задачу
+// на четверг» должно стоить один клик и одну строку текста.
+
+document.getElementById("calGrid").addEventListener("click", (e) => {
+  if (e.target.closest(".cal-task") || e.target.closest(".cal-input")) return;
+  const cell = e.target.closest(".cal-day");
+  if (!cell) return;
+  openDayInput(cell);
+});
+
+function openDayInput(cell) {
+  if (cell.querySelector(".cal-input")) return;
+  const input = document.createElement("input");
+  input.className = "cal-input";
+  input.placeholder = "Что сделать?";
+  cell.appendChild(input);
+  input.focus();
+
+  const close = () => input.remove();
+  input.addEventListener("blur", close);
+  input.addEventListener("keydown", async (e) => {
+    if (e.key === "Escape") {
+      close();
+      return;
+    }
+    if (e.key !== "Enter") return;
+    const title = input.value.trim();
+    if (!title) {
+      close();
+      return;
+    }
+    input.disabled = true;
+    try {
+      await createTaskOnDay(cell.dataset.day, title);
+    } finally {
+      close();
+    }
+  });
+}
+
+async function createTaskOnDay(dayKeyValue, title) {
+  const id = requireUserId();
+  const [year, month, day] = dayKeyValue.split("-").map(Number);
+  const due = new Date(year, month - 1, day, CAL_DEFAULT_HOUR, 0, 0);
+  await api("/tasks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      telegram_user_id: Number(id),
+      title,
+      due_date: due.toISOString(),
+      priority: "normal",
+    }),
+  });
+  await loadTasks();
+  renderCalendar();
+}
+
+// --- Перенос задачи на другой день ----------------------------------
+
+let calDragTaskId = null;
+
+document.getElementById("calGrid").addEventListener("dragstart", (e) => {
+  const chip = e.target.closest(".cal-task");
+  if (!chip) return;
+  calDragTaskId = Number(chip.dataset.taskId);
+  chip.classList.add("dragging");
+  e.dataTransfer.effectAllowed = "move";
+  // Firefox не начинает перетаскивание без setData.
+  e.dataTransfer.setData("text/plain", String(calDragTaskId));
+});
+
+document.getElementById("calGrid").addEventListener("dragend", (e) => {
+  const chip = e.target.closest(".cal-task");
+  if (chip) chip.classList.remove("dragging");
+  document
+    .querySelectorAll(".cal-day.drop-target")
+    .forEach((el) => el.classList.remove("drop-target"));
+});
+
+document.getElementById("calGrid").addEventListener("dragover", (e) => {
+  const cell = e.target.closest(".cal-day");
+  if (!cell || calDragTaskId === null) return;
+  e.preventDefault(); // без этого браузер не разрешит drop
+  e.dataTransfer.dropEffect = "move";
+  cell.classList.add("drop-target");
+});
+
+document.getElementById("calGrid").addEventListener("dragleave", (e) => {
+  const cell = e.target.closest(".cal-day");
+  if (cell) cell.classList.remove("drop-target");
+});
+
+document.getElementById("calGrid").addEventListener("drop", async (e) => {
+  e.preventDefault();
+  const cell = e.target.closest(".cal-day");
+  if (!cell || calDragTaskId === null) return;
+  cell.classList.remove("drop-target");
+
+  const taskId = calDragTaskId;
+  calDragTaskId = null;
+  await moveTaskToDay(taskId, cell.dataset.day);
+});
+
+async function moveTaskToDay(taskId, dayKeyValue) {
+  const id = requireUserId();
+  const task = lastTasks.find((t) => t.id === taskId);
+  if (!task) return;
+
+  const [year, month, day] = dayKeyValue.split("-").map(Number);
+  const previous = task.due_date ? new Date(task.due_date) : null;
+  // Время дня сохраняем: перенос со вторника на среду не должен
+  // превращать «позвонить в 19:00» в «позвонить в 9:00».
+  const due = new Date(
+    year,
+    month - 1,
+    day,
+    previous ? previous.getHours() : CAL_DEFAULT_HOUR,
+    previous ? previous.getMinutes() : 0,
+    0
+  );
+  if (previous && dayKey(previous) === dayKeyValue) return; // не двигали
+
+  await api(`/tasks/${taskId}?telegram_user_id=${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ due_date: due.toISOString() }),
+  });
+  await loadTasks();
+  renderCalendar();
+}
 
 // ---- Watchlist (Полка) ----
 
@@ -1699,6 +2027,7 @@ async function loadAll() {
 
 applySkin(getActiveSkin());
 renderStaticIcons();
+renderCalendar();
 applyTheme(getActiveTheme());
 refreshUserIdStatus();
 refreshApiTokenStatus();
