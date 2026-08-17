@@ -85,6 +85,33 @@ def test_bad_requests_never_go_upstream(client, path):
     http.get.assert_not_awaited()
 
 
+def test_book_cover_is_built_from_volume_id(client):
+    """Присланную целиком ссылку мы не принимаем — адрес строим сами по
+    id тома, иначе эндпоинт превратился бы в открытый прокси."""
+    http = _upstream()
+    with patch("app.api.poster.httpx.AsyncClient", return_value=http):
+        response = client.get("/poster/book/zyTCAlFPjgYC")
+
+    assert response.status_code == 200
+    assert http.get.await_args.args[0] == (
+        "https://books.google.com/books/content"
+        "?id=zyTCAlFPjgYC&printsec=frontcover&img=1&zoom=2"
+    )
+
+
+@pytest.mark.parametrize(
+    "volume_id",
+    ["ab", "id_with_%20space", "../../etc/passwd", "a" * 60],
+)
+def test_bad_volume_id_never_goes_upstream(client, volume_id):
+    http = _upstream()
+    with patch("app.api.poster.httpx.AsyncClient", return_value=http):
+        response = client.get(f"/poster/book/{volume_id}")
+
+    assert response.status_code == 404
+    http.get.assert_not_awaited()
+
+
 def test_unreachable_cdn_gives_404(client):
     """Для <img> разница между 404 и 502 несущественна, а в логах видно,
     что именно не получилось."""

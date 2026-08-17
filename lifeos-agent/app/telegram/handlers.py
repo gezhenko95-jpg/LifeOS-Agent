@@ -76,6 +76,7 @@ from app.telegram.pending_input import (
     clear_pending,
     pop_pending,
 )
+from app.watchlist.books import get_books_client
 from app.watchlist.models import MEDIA_TYPE_EMOJI
 from app.watchlist.repository import WatchlistRepository
 from app.watchlist.service import WatchlistService
@@ -422,7 +423,11 @@ async def _add_watchlist_item_from_text(
         service = WatchlistService(WatchlistRepository(session))
         try:
             item = await service.create_item(
-                telegram_user_id, title, media_type, tmdb_client=get_tmdb_client()
+                telegram_user_id,
+                title,
+                media_type,
+                tmdb_client=get_tmdb_client(),
+                books_client=get_books_client(),
             )
         except ValueError as exc:
             await update.message.reply_text(str(exc))

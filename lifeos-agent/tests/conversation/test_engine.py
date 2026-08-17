@@ -953,7 +953,7 @@ async def test_add_watchlist_item(
     reply = (await engine.handle_message(1, "посмотреть фильм Дюна")).text
 
     watchlist_service.create_item.assert_awaited_once_with(
-        1, "Дюна", "movie", tmdb_client=None
+        1, "Дюна", "movie", tmdb_client=None, books_client=None
     )
     assert reply == "🎬 Добавил в список: «Дюна»"
 

@@ -13,6 +13,7 @@ import logging
 from app.ai.client import AIClient
 from app.drive.client import DriveClient, DriveServiceError
 from app.media_inbox.classify import classify_image
+from app.watchlist.books import get_books_client
 from app.watchlist.service import WatchlistService
 from app.watchlist.tmdb import get_tmdb_client
 
@@ -81,6 +82,7 @@ class MediaInboxService:
                 source="photo",
                 drive_file_url=file_url,
                 tmdb_client=get_tmdb_client(),
+                books_client=get_books_client(),
             )
             note = f"\nДобавил в список: «{item.title}»."
 

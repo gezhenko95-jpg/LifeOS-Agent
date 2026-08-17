@@ -394,7 +394,7 @@ async def test_watchlist_pending_accepts_bare_title(no_db, monkeypatch):
 
     assert handled is True
     service.create_item.assert_awaited_once_with(
-        OWNER, "Дюна", "other", tmdb_client=None
+        OWNER, "Дюна", "other", tmdb_client=None, books_client=None
     )
 
 
@@ -412,7 +412,7 @@ async def test_watchlist_pending_keeps_media_type_when_written(no_db, monkeypatc
     await handlers._consume_pending_input(update, context, "книга Дюна")
 
     service.create_item.assert_awaited_once_with(
-        OWNER, "Дюна", "book", tmdb_client=None
+        OWNER, "Дюна", "book", tmdb_client=None, books_client=None
     )
 
 

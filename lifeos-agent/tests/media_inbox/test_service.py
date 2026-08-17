@@ -64,6 +64,7 @@ async def test_movie_with_title_creates_watchlist_item(monkeypatch):
         source="photo",
         drive_file_url="https://drive.google.com/file1",
         tmdb_client=None,
+        books_client=None,
     )
     assert "Кино и книги" in reply
     assert "Дюна" in reply

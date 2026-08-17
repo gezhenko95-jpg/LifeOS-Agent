@@ -13,6 +13,7 @@ from typing import Optional
 
 from app.ai.client import AIClient, AIServiceError
 from app.core.ownership import owned_or_none
+from app.watchlist.books import GoogleBooksClient
 from app.watchlist.models import WatchlistItem
 from app.watchlist.repository import WatchlistRepository
 from app.watchlist.tmdb import TMDbClient
@@ -45,6 +46,7 @@ class WatchlistService:
         source: str = "manual",
         drive_file_url: Optional[str] = None,
         tmdb_client: TMDbClient | None = None,
+        books_client: GoogleBooksClient | None = None,
     ) -> WatchlistItem:
         """`tmdb_client` — обогащение карточки обложкой и описанием (см.
         app/watchlist/tmdb.py). Необязательное и полностью тихое: нет
@@ -65,9 +67,12 @@ class WatchlistService:
             drive_file_url=drive_file_url,
         )
 
-        # Книги TMDb не знает — для них поиск не имеет смысла (свой
-        # источник для книг будет отдельно, см. MULTIUSER.md).
-        if tmdb_client is not None and media_type != "book":
+        # У каждого типа свой источник карточки: TMDb знает кино, но не
+        # книги, Google Books — наоборот.
+        if media_type == "book":
+            if books_client is not None:
+                await self._enrich_from_books(item, books_client)
+        elif tmdb_client is not None:
             await self._enrich_from_tmdb(item, tmdb_client)
 
         return await self._repository.add(item)
@@ -88,6 +93,22 @@ class WatchlistService:
         item.overview = info.overview
         item.release_year = info.release_year
         item.tmdb_id = info.tmdb_id
+
+    async def _enrich_from_books(
+        self, item: WatchlistItem, books_client: GoogleBooksClient
+    ) -> None:
+        info = await books_client.search(item.title)
+        if info is None:
+            return
+
+        item.title = info.title
+        item.poster_url = info.thumbnail_url
+        item.release_year = info.published_year
+        # Автор для книги — самое полезное после названия, а отдельной
+        # колонки под него нет: ставим первой строкой описания, где он
+        # и читается естественно.
+        parts = [p for p in (info.authors, info.description) if p]
+        item.overview = " — ".join(parts) if parts else None
 
     async def list_active_items(self, telegram_user_id: int) -> list[WatchlistItem]:
         return await self._repository.list_by_user(telegram_user_id, status=TO_WATCH)

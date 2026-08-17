@@ -31,6 +31,7 @@ from app.proactive.service import PendingPromptService
 from app.tasks.formatting import format_due_human, task_created_prefix
 from app.tasks.models import Task
 from app.tasks.service import TaskService
+from app.watchlist.books import get_books_client
 from app.watchlist.models import MEDIA_TYPE_EMOJI, WatchlistItem
 from app.watchlist.service import WatchlistService
 from app.watchlist.tmdb import get_tmdb_client
@@ -506,6 +507,7 @@ class ConversationEngine:
             parsed.title,
             parsed.media_type or "other",
             tmdb_client=get_tmdb_client(),
+            books_client=get_books_client(),
         )
         emoji = MEDIA_TYPE_EMOJI.get(item.media_type, "🎯")
         return EngineResult(

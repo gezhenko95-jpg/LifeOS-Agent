@@ -141,6 +141,11 @@ class Settings(BaseSettings):
     # раньше. Ключ бесплатный, берётся в личном кабинете themoviedb.org.
     tmdb_api_key: str = ""
 
+    # Google Books — обложки и описания для КНИГ (см. app/watchlist/books.py).
+    # Ключ обязателен: анонимный доступ к API закрыт (429, дневная квота
+    # ноль). Создаётся бесплатно в том же Cloud-проекте, что и Drive.
+    google_books_api_key: str = ""
+
     # Google Drive (Фаза 2 Media Inbox, см. specs/010-media-inbox.md).
     # token.json — разовая локальная авторизация (scripts/drive_auth.py),
     # монтируется в контейнер только для чтения. Файла нет = фича

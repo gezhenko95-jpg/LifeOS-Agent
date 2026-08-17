@@ -32,10 +32,28 @@ _TMDB_IMAGE_HOST = "https://image.tmdb.org/t/p"
 # куда угодно через ../.
 _ALLOWED_SIZES = {"w92", "w154", "w185", "w342", "w500", "original"}
 _FILENAME = re.compile(r"^[A-Za-z0-9]{8,64}\.(jpg|jpeg|png|webp)$")
+# id тома Google Books: «zyTCAlFPjgYC». Тот же приём, что и с TMDb —
+# наружу ходим по шаблону, а не по присланному адресу.
+_BOOKS_IMAGE_URL = (
+    "https://books.google.com/books/content"
+    "?id={volume_id}&printsec=frontcover&img=1&zoom=2"
+)
+_VOLUME_ID = re.compile(r"^[A-Za-z0-9_-]{5,40}$")
 _TIMEOUT = 15.0
 # Постеры не меняются: неделя в кеше браузера снимает повторные запросы
 # к нам почти полностью.
 _CACHE_CONTROL = "public, max-age=604800, immutable"
+
+
+@router.get("/poster/book/{volume_id}")
+async def get_book_cover(volume_id: str) -> Response:
+    """Обложка книги. Отдельный маршрут, потому что у Google Books адрес
+    строится из query-параметров, а не из пути, — присланную целиком
+    ссылку мы бы принимать не стали (открытый прокси)."""
+    if not _VOLUME_ID.match(volume_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+    return await _fetch(_BOOKS_IMAGE_URL.format(volume_id=volume_id))
 
 
 @router.get("/poster/{size}/{filename}")
@@ -43,9 +61,13 @@ async def get_poster(size: str, filename: str) -> Response:
     if size not in _ALLOWED_SIZES or not _FILENAME.match(filename):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
-    url = f"{_TMDB_IMAGE_HOST}/{size}/{filename}"
+    return await _fetch(f"{_TMDB_IMAGE_HOST}/{size}/{filename}")
+
+
+async def _fetch(url: str) -> Response:
+    """Общая часть обоих маршрутов: сходить, отдать, не уронить."""
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as http:
+        async with httpx.AsyncClient(timeout=_TIMEOUT, follow_redirects=True) as http:
             upstream = await http.get(url)
             upstream.raise_for_status()
     except httpx.HTTPError as exc:

@@ -1557,8 +1557,11 @@ document.getElementById("goalList").addEventListener("click", async (e) => {
     его видит, поэтому картинку забирает он (см. app/api/poster.py).
     Ссылка не с TMDb (или уже проксированная) остаётся как есть. */
 function posterSrc(url) {
-  const match = /image\.tmdb\.org\/t\/p\/([^/]+)\/(.+)$/.exec(url || "");
-  return match ? `/poster/${match[1]}/${match[2]}` : url;
+  const tmdb = /image\.tmdb\.org\/t\/p\/([^/]+)\/(.+)$/.exec(url || "");
+  if (tmdb) return `/poster/${tmdb[1]}/${tmdb[2]}`;
+  const book = /books\.google\.com\/books\/content\?id=([A-Za-z0-9_-]+)/.exec(url || "");
+  if (book) return `/poster/book/${book[1]}`;
+  return url;
 }
 
 function renderShelfList(elementId, items, showComplete) {
