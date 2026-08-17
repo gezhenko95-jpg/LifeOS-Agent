@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_session
 from app.habits.models import Habit
 from app.habits.repository import HabitRepository
-from app.habits.schemas import HabitCreate, HabitRead
+from app.habits.schemas import HabitCreate, HabitRead, HabitUpdate
 from app.habits.service import HabitService
 
 router = APIRouter(prefix="/habits", tags=["habits"])
@@ -32,7 +32,10 @@ async def create_habit(
 ) -> HabitRead:
     try:
         habit = await service.create_habit(
-            telegram_user_id=payload.telegram_user_id, title=payload.title
+            telegram_user_id=payload.telegram_user_id,
+            title=payload.title,
+            description=payload.description,
+            reminder_time=payload.reminder_time,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -53,6 +56,37 @@ async def list_habits(
         )
         for habit in habits
     ]
+
+
+@router.patch("/{habit_id}", response_model=HabitRead)
+async def update_habit(
+    habit_id: int,
+    telegram_user_id: int,
+    payload: HabitUpdate,
+    service: HabitService = Depends(get_habit_service),
+) -> HabitRead:
+    """Правка привычки с сайта. У привычек PATCH не было вовсе —
+    название, описание и время напоминания можно было задать только при
+    создании."""
+    try:
+        habit = await service.update_habit(
+            telegram_user_id=telegram_user_id,
+            habit_id=habit_id,
+            title=payload.title,
+            description=payload.description,
+            reminder_time=payload.reminder_time,
+            clear_description=payload.clear_description,
+            clear_reminder=payload.clear_reminder,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+    if habit is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Привычка не найдена"
+        )
+    return await _to_read_model(habit, service)
 
 
 @router.post("/{habit_id}/complete", response_model=HabitRead)

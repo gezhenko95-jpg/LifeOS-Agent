@@ -593,7 +593,35 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .cal-task {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+  }
+  .cal-task-title { overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+  /* Время задачи — справа, приглушённое: оно уточняет, а не перебивает
+     название. tabular-nums, чтобы столбик времён не «дышал». */
+  .cal-task-time {
+    flex: none;
+    opacity: 0.75;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.92em;
+  }
   .cal-task.high { background: var(--danger); color: #fff; }
+  /* Палитра меток: цвета берутся из переменных темы, поэтому метка
+     остаётся читаемой и в обычном оформлении, и в пиксельном. */
+  .cal-task.color-red { background: #fee2e2; color: #7f1d1d; }
+  .cal-task.color-orange { background: #ffedd5; color: #7c2d12; }
+  .cal-task.color-green { background: #dcfce7; color: #14532d; }
+  .cal-task.color-blue { background: #dbeafe; color: #1e3a8a; }
+  .cal-task.color-violet { background: #ede9fe; color: #4c1d95; }
+  @media (prefers-color-scheme: dark) {
+    .cal-task.color-red { background: #4c1d1d; color: #fecaca; }
+    .cal-task.color-orange { background: #4a2a10; color: #fed7aa; }
+    .cal-task.color-green { background: #14351f; color: #bbf7d0; }
+    .cal-task.color-blue { background: #1a2c52; color: #bfdbfe; }
+    .cal-task.color-violet { background: #2e2352; color: #ddd6fe; }
+  }
   .cal-task.overdue { outline: 1px solid var(--overdue); }
   .cal-task.dragging { opacity: 0.45; }
   .cal-more { font-size: 0.68rem; color: var(--muted); }
@@ -677,6 +705,50 @@
   .card.collapsed .shelf-group:nth-child(n + 3) { display: none; }
   /* Календарь в свёрнутом виде — только текущая неделя. */
   .calendar-card.collapsed .cal-hint { display: none; }
+
+  /* Редактор записи: один диалог на задачи, привычки и цели. */
+  .editor-dialog {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+    padding: 20px;
+  }
+  .editor-box {
+    background: var(--card-bg);
+    border: var(--border-width) solid var(--border);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow);
+    padding: 18px;
+    width: min(420px, 100%);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .editor-box b { font-family: var(--font-display); }
+  .editor-box textarea {
+    background: var(--card-bg);
+    color: var(--text);
+    border: var(--border-width) solid var(--border);
+    border-radius: var(--radius-control);
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 0.9rem;
+    resize: vertical;
+  }
+  .editor-row { display: flex; align-items: center; gap: 10px; }
+  .editor-row label { color: var(--muted); font-size: 0.85rem; min-width: 110px; }
+  .editor-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  /* Описание в списке — второй строкой, приглушённое. */
+  .item-note {
+    display: block;
+    color: var(--muted);
+    font-size: 0.78rem;
+    line-height: 1.3;
+  }
 
   /* --- Звание (по накопленным монетам) --- */
   .rank-line {
@@ -952,6 +1024,33 @@
     <span class="hint">Меняет шрифт и форму — цвет остаётся за темами ниже</span>
   </div>
 </details>
+
+<div class="editor-dialog" id="editorDialog" hidden>
+  <div class="editor-box">
+    <b id="editorHeading">Запись</b>
+    <input id="editorTitle" placeholder="Название" />
+    <textarea id="editorDescription" rows="3" placeholder="Описание — детали, которые не влезли в название"></textarea>
+    <div class="editor-row" id="editorColorRow">
+      <label for="editorColor">Метка</label>
+      <select id="editorColor">
+        <option value="">без метки</option>
+        <option value="red">красная</option>
+        <option value="orange">оранжевая</option>
+        <option value="green">зелёная</option>
+        <option value="blue">синяя</option>
+        <option value="violet">фиолетовая</option>
+      </select>
+    </div>
+    <div class="editor-row" id="editorReminderRow">
+      <label for="editorReminder">Напоминание</label>
+      <input id="editorReminder" type="time" />
+    </div>
+    <div class="editor-actions">
+      <button type="button" id="editorSave">Сохранить</button>
+      <button type="button" class="secondary" id="editorCancel">Отмена</button>
+    </div>
+  </div>
+</div>
 
 <div class="grid">
 
@@ -1559,7 +1658,7 @@ document.getElementById("claimButton").addEventListener("click", async () => {
 async function loadTasks() {
   const id = getUserId();
   const list = document.getElementById("taskList");
-  if (!id) { list.innerHTML = ""; lastTasks = []; renderCalendar(); return; }
+  if (!id) { list.innerHTML = ""; lastHabits = []; return; }
   const tasks = await api(`/tasks?telegram_user_id=${encodeURIComponent(id)}`);
   lastTasks = tasks;
   renderCalendar();
@@ -1574,8 +1673,10 @@ async function loadTasks() {
       <span class="status-dot ${status}" title="${status}"></span>
       <span class="item-title ${task.priority === "high" ? "high" : ""}">
         ${task.priority === "high" ? "❗ " : ""}${escapeHtml(task.title)}
+        ${task.description ? `<span class="item-note">${escapeHtml(task.description)}</span>` : ""}
       </span>
       <span class="meta ${status === "overdue" ? "overdue" : ""}">${formatDueHuman(task.due_date)}</span>
+      <button class="secondary" data-action="edit" data-kind="task" data-id="${task.id}" title="Изменить">✎</button>
       <button class="secondary" data-action="complete-task" data-id="${task.id}">✓</button>
       <button class="danger" data-action="delete-task" data-id="${task.id}">✕</button>
     </li>`;
@@ -1623,7 +1724,7 @@ document.getElementById("taskList").addEventListener("click", async (e) => {
 async function loadHabits() {
   const id = getUserId();
   const list = document.getElementById("habitList");
-  if (!id) { list.innerHTML = ""; lastTasks = []; renderCalendar(); return; }
+  if (!id) { list.innerHTML = ""; lastGoals = []; return; }
   const habits = await api(`/habits?telegram_user_id=${encodeURIComponent(id)}`);
   lastHabits = habits; // до early return — иначе достижение "серия 7 дней" не обнулится, когда привычек не осталось
   if (!habits.length) {
@@ -1636,9 +1737,12 @@ async function loadHabits() {
     const strength = Math.min(100, Math.round((habit.streak / 30) * 100));
     return `
     <li>
-      <span class="item-title">${escapeHtml(habit.title)}</span>
+      <span class="item-title">${escapeHtml(habit.title)}
+        ${habit.description ? `<span class="item-note">${escapeHtml(habit.description)}</span>` : ""}
+      </span>
       <span class="progress-bar"><span style="width:${strength}%"></span></span>
       <span class="meta">${habit.streak > 0 ? "🔥 " + habit.streak : "нет серии"}</span>
+      <button class="secondary" data-action="edit" data-kind="habit" data-id="${habit.id}" title="Изменить">✎</button>
       <button class="secondary" data-action="complete-habit" data-id="${habit.id}">Готово</button>
       <button class="danger" data-action="delete-habit" data-id="${habit.id}">✕</button>
     </li>
@@ -1699,6 +1803,7 @@ async function loadGoals() {
       <span class="meta">${goal.progress}%</span>
       <input type="number" min="0" max="100" step="5" value="${goal.progress}"
              style="width:56px" data-action="progress-input" data-id="${goal.id}" />
+      <button class="secondary" data-action="edit" data-kind="goal" data-id="${goal.id}" title="Изменить">✎</button>
       <button class="secondary" data-action="save-progress" data-id="${goal.id}">✓</button>
       <button class="danger" data-action="delete-goal" data-id="${goal.id}">✕</button>
     </li>
@@ -1797,6 +1902,126 @@ function setupCollapsibleCards() {
   });
 }
 
+// --- Редактор записи --------------------------------------------------
+//
+// Один диалог на задачи, привычки и цели: у всех трёх правится название
+// и описание, а различия — время напоминания у привычки и цвет метки у
+// задачи — просто скрываются. Три отдельных диалога разъехались бы по
+// поведению уже на второй правке.
+//
+// Открывается кнопкой «✎» в строке списка и в панели дня.
+
+const EDITOR_COLORS = [
+  ["", "без метки"],
+  ["red", "красный"],
+  ["orange", "оранжевый"],
+  ["green", "зелёный"],
+  ["blue", "синий"],
+  ["violet", "фиолетовый"],
+];
+
+let editorTarget = null; // { kind: "task" | "habit" | "goal", id }
+
+function openEditor(kind, id) {
+  const source =
+    kind === "task" ? lastTasks : kind === "habit" ? lastHabits : lastGoals;
+  const item = source.find((entry) => entry.id === id);
+  if (!item) return;
+
+  editorTarget = { kind: kind, id: id };
+  document.getElementById("editorTitle").value = item.title || "";
+  document.getElementById("editorDescription").value = item.description || "";
+
+  const colorRow = document.getElementById("editorColorRow");
+  colorRow.hidden = kind !== "task";
+  if (kind === "task") document.getElementById("editorColor").value = item.color || "";
+
+  const reminderRow = document.getElementById("editorReminderRow");
+  reminderRow.hidden = kind !== "habit";
+  if (kind === "habit") {
+    // reminder_time приходит как «08:00:00» — в input[type=time] нужны
+    // только часы и минуты.
+    document.getElementById("editorReminder").value = (item.reminder_time || "").slice(0, 5);
+  }
+
+  document.getElementById("editorHeading").textContent =
+    kind === "task" ? "Задача" : kind === "habit" ? "Привычка" : "Цель";
+  document.getElementById("editorDialog").hidden = false;
+  document.getElementById("editorTitle").focus();
+}
+
+function closeEditor() {
+  editorTarget = null;
+  document.getElementById("editorDialog").hidden = true;
+}
+
+async function saveEditor() {
+  if (!editorTarget) return;
+  const id = requireUserId();
+  const title = document.getElementById("editorTitle").value.trim();
+  if (!title) return;
+
+  const body = {
+    title: title,
+    description: document.getElementById("editorDescription").value.trim(),
+  };
+
+  if (editorTarget.kind === "task") {
+    body.color = document.getElementById("editorColor").value;
+  }
+  if (editorTarget.kind === "habit") {
+    const time = document.getElementById("editorReminder").value;
+    if (time) {
+      body.reminder_time = time + ":00";
+    } else {
+      // Пустое поле — именно снятие напоминания, а не «не трогай»
+      // (см. HabitService.update_habit: None означает «оставь как есть»).
+      body.clear_reminder = true;
+    }
+    if (!body.description) body.clear_description = true;
+  }
+
+  const path =
+    editorTarget.kind === "task"
+      ? "/tasks/"
+      : editorTarget.kind === "habit"
+        ? "/habits/"
+        : "/goals/";
+  await api(path + editorTarget.id + "?telegram_user_id=" + encodeURIComponent(id), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  // Тип запоминаем ДО закрытия: closeEditor обнуляет editorTarget, и
+  // проверка после него всегда уходила бы в ветку задач.
+  const savedKind = editorTarget.kind;
+  closeEditor();
+  if (savedKind === "habit") await loadHabits();
+  else if (savedKind === "goal") await loadGoals();
+  else {
+    await loadTasks();
+    renderDayPanel();
+  }
+  showToast("Сохранено");
+}
+
+document.getElementById("editorSave").addEventListener("click", saveEditor);
+document.getElementById("editorCancel").addEventListener("click", closeEditor);
+document.getElementById("editorTitle").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") saveEditor();
+  if (e.key === "Escape") closeEditor();
+});
+
+// Кнопки «✎» живут внутри списков, которые перерисовываются целиком —
+// поэтому слушаем всплытие на документе, а не вешаем обработчик на
+// каждую кнопку заново.
+document.addEventListener("click", (e) => {
+  const button = e.target.closest("[data-action='edit']");
+  if (!button) return;
+  openEditor(button.dataset.kind, Number(button.dataset.id));
+});
+
 // ---- Календарь ----
 //
 // Данные не запрашиваются отдельно: календарь рисуется по тем же
@@ -1844,6 +2069,34 @@ function gridStart(date) {
   return start;
 }
 
+/** Чип задачи в клетке или в строке часа: цветная метка слева,
+    название, время справа. Время показываем всегда — «на когда стоит
+    задача» это первое, что спрашивают у календаря, а раньше его нужно
+    было угадывать по строке часа. */
+function calTaskChip(task) {
+  const time = task.due_date
+    ? new Date(task.due_date).toLocaleTimeString("ru-RU", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
+  const classes = [
+    "cal-task",
+    task.priority === "high" ? "high" : "",
+    dueStatus(task.due_date) === "overdue" ? "overdue" : "",
+    task.color ? "color-" + task.color : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return (
+    '<span class="' + classes + '" draggable="true" data-task-id="' + task.id +
+    '" title="' + escapeHtml(task.title) + '">' +
+    '<span class="cal-task-title">' + escapeHtml(task.title) + "</span>" +
+    (time ? '<span class="cal-task-time">' + time + "</span>" : "") +
+    "</span>"
+  );
+}
+
 function renderCalendar() {
   const grid = document.getElementById("calGrid");
   const title = document.getElementById("calTitle");
@@ -1889,15 +2142,7 @@ function renderCalendar() {
 
     const shown = dayTasks.slice(0, CAL_MAX_VISIBLE);
     const hidden = dayTasks.length - shown.length;
-    const chips = shown
-      .map((task) => {
-        const overdue = dueStatus(task.due_date) === "overdue" ? " overdue" : "";
-        const high = task.priority === "high" ? " high" : "";
-        return `<span class="cal-task${high}${overdue}" draggable="true"
-                      data-task-id="${task.id}" title="${escapeHtml(task.title)}"
-                      >${escapeHtml(task.title)}</span>`;
-      })
-      .join("");
+    const chips = shown.map((task) => calTaskChip(task)).join("");
 
     cells.push(`
       <div class="${classes.join(" ")}" data-day="${key}">
@@ -1999,18 +2244,7 @@ function renderDayHours() {
     const atHour = dayTasks.filter(
       (task) => new Date(task.due_date).getHours() === hour
     );
-    const chips = atHour
-      .map(
-        (task) =>
-          '<span class="cal-task' +
-          (task.priority === "high" ? " high" : "") +
-          '" draggable="true" data-task-id="' +
-          task.id +
-          '">' +
-          escapeHtml(task.title) +
-          "</span>"
-      )
-      .join("");
+    const chips = atHour.map((task) => calTaskChip(task)).join("");
     rows.push(
       '<div class="cal-hour' +
         (hour === calSelectedHour ? " selected" : "") +

@@ -34,6 +34,8 @@ async def create_task(
             due_date=payload.due_date,
             priority=payload.priority,
             recurrence=payload.recurrence,
+            description=payload.description,
+            color=payload.color,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -76,6 +78,8 @@ async def update_task(
             status=payload.status,
             priority=payload.priority,
             recurrence=payload.recurrence,
+            description=payload.description,
+            color=payload.color,
         )
     except ValueError as exc:
         raise HTTPException(

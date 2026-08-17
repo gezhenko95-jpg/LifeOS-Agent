@@ -18,6 +18,8 @@ class TaskCreate(BaseModel):
     due_date: Optional[datetime] = None
     priority: str = "normal"
     recurrence: Optional[str] = None
+    description: Optional[str] = Field(default=None, max_length=500)
+    color: Optional[str] = Field(default=None, max_length=20)
 
 
 class TaskUpdate(BaseModel):
@@ -28,6 +30,8 @@ class TaskUpdate(BaseModel):
     status: Optional[str] = None
     priority: Optional[str] = None
     recurrence: Optional[str] = None
+    description: Optional[str] = Field(default=None, max_length=500)
+    color: Optional[str] = Field(default=None, max_length=20)
 
 
 class TaskStats(BaseModel):
@@ -44,6 +48,8 @@ class TaskRead(BaseModel):
     id: int
     telegram_user_id: int
     title: str
+    description: Optional[str] = None
+    color: Optional[str] = None
     due_date: Optional[datetime]
     status: str
     priority: str

@@ -59,6 +59,7 @@ async def update_goal(
             target_date=payload.target_date,
             status=payload.status,
             progress=payload.progress,
+            description=payload.description,
         )
     except ValueError as exc:
         raise HTTPException(

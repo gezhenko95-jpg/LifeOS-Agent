@@ -45,6 +45,18 @@ class Task(Base):
         comment="Срок выполнения задачи (NULL - без срока)",
     )
 
+    description: Mapped[Optional[str]] = mapped_column(
+        String(500),
+        nullable=True,
+        comment="Что именно нужно сделать — детали, которые не влезли в название",
+    )
+
+    color: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True,
+        comment="Имя цвета метки для календаря (NULL — обычная задача)",
+    )
+
     status: Mapped[str] = mapped_column(
         String(50),
         nullable=False,

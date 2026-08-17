@@ -58,6 +58,7 @@ class GoalService:
         target_date: Optional[date] = None,
         status: Optional[str] = None,
         progress: Optional[int] = None,
+        description: Optional[str] = None,
     ) -> Optional[Goal]:
         if status is not None and status not in _VALID_STATUSES:
             raise ValueError(f"Неизвестный статус: {status}")
@@ -71,6 +72,11 @@ class GoalService:
             return None
         if title is not None:
             goal.title = title
+        if description is not None:
+            # Пустая строка — способ стереть описание: отдельного флага,
+            # как у привычек, здесь не нужно, потому что описание цели
+            # больше ничем не управляет.
+            goal.description = description.strip() or None
         if target_date is not None:
             goal.target_date = target_date
         if status is not None:

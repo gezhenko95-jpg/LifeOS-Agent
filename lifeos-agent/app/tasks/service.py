@@ -14,6 +14,11 @@ from app.tasks.models import Task
 from app.tasks.repository import TaskRepository
 
 ACTIVE = "active"
+# Палитра меток календаря. Имена, а не HEX: цвета берутся из
+# переменных темы, поэтому «red» переживает смену оформления, а
+# конкретный код цвета — нет. Пустая строка снимает метку.
+TASK_COLORS = {"red", "orange", "green", "blue", "violet"}
+
 COMPLETED = "completed"
 
 _PRIORITY_ORDER = {"high": 0, "normal": 1, "low": 2}
@@ -50,12 +55,16 @@ class TaskService:
         due_date: Optional[datetime] = None,
         priority: str = "normal",
         recurrence: Optional[str] = None,
+        description: Optional[str] = None,
+        color: Optional[str] = None,
     ) -> Task:
         title = title.strip()
         if not title:
             raise ValueError("Название задачи не может быть пустым")
         if priority not in _PRIORITY_ORDER:
             raise ValueError(f"Неизвестный приоритет: {priority}")
+        if color and color.strip().lower() not in TASK_COLORS:
+            raise ValueError(f"Неизвестный цвет: {color}")
         if recurrence is not None and recurrence not in _RECURRENCE_INTERVALS:
             raise ValueError(f"Неизвестная периодичность: {recurrence}")
 
@@ -73,6 +82,8 @@ class TaskService:
             status=ACTIVE,
             priority=priority,
             recurrence=recurrence,
+            description=(description or "").strip() or None,
+            color=(color or "").strip().lower() or None,
         )
         return await self._repository.add(task)
 
@@ -90,6 +101,8 @@ class TaskService:
         status: Optional[str] = None,
         priority: Optional[str] = None,
         recurrence: Optional[str] = None,
+        description: Optional[str] = None,
+        color: Optional[str] = None,
     ) -> Optional[Task]:
         if priority is not None and priority not in _PRIORITY_ORDER:
             raise ValueError(f"Неизвестный приоритет: {priority}")
@@ -115,6 +128,16 @@ class TaskService:
             task.priority = priority
         if recurrence is not None:
             task.recurrence = recurrence
+        if description is not None:
+            # Пустая строка стирает описание — отдельный флаг не нужен,
+            # описание ничем больше не управляет (в отличие от времени
+            # напоминания у привычки, см. HabitService.update_habit).
+            task.description = description.strip() or None
+        if color is not None:
+            color = color.strip().lower()
+            if color and color not in TASK_COLORS:
+                raise ValueError(f"Неизвестный цвет: {color}")
+            task.color = color or None
 
         saved = await self._repository.save(task)
         if was_active and status == COMPLETED:

@@ -38,6 +38,10 @@ class Goal(Base):
         Date, nullable=True, comment="Целевая дата (NULL — без срока)"
     )
 
+    description: Mapped[Optional[str]] = mapped_column(
+        String(500), nullable=True, comment="Зачем эта цель и что считается успехом"
+    )
+
     progress: Mapped[int] = mapped_column(
         Integer,
         nullable=False,

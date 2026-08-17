@@ -23,6 +23,7 @@ class GoalUpdate(BaseModel):
     target_date: Optional[date] = None
     status: Optional[str] = None
     progress: Optional[int] = Field(default=None, ge=0, le=100)
+    description: Optional[str] = Field(default=None, max_length=500)
 
 
 class GoalRead(BaseModel):
@@ -33,6 +34,7 @@ class GoalRead(BaseModel):
     id: int
     telegram_user_id: int
     title: str
+    description: Optional[str] = None
     target_date: Optional[date]
     progress: int
     status: str
