@@ -71,6 +71,37 @@ async def test_russian_editions_are_preferred():
     assert client._http.get.await_args.kwargs["params"]["langRestrict"] == "ru"
 
 
+async def test_country_is_always_sent():
+    """Без параметра country Google Books отвечает 503 backendFailed —
+    поймано на живом ключе, поэтому это не косметика."""
+    client = _client({"items": [_VOLUME]})
+
+    await client.search("Идиот")
+
+    assert client._http.get.await_args.kwargs["params"]["country"] == "RU"
+
+
+async def test_most_complete_volume_wins():
+    """Верхний результат Google нередко пустой: на «Идиот Достоевский»
+    первым идёт том без автора и аннотации, а нужный — вторым."""
+    empty = {"id": "empty1", "volumeInfo": {"title": "Федор Достоевский. Идиот"}}
+
+    info = await _client({"items": [empty, _VOLUME]}).search("Идиот Достоевский")
+
+    assert info.volume_id == "zyTCAlFPjgYC"
+    assert info.description
+
+
+async def test_relevance_order_kept_between_equally_full_volumes():
+    """Одинаково полные тома не переставляем — у Google выше стоит более
+    релевантный."""
+    second = {**_VOLUME, "id": "second"}
+
+    info = await _client({"items": [_VOLUME, second]}).search("Идиот")
+
+    assert info.volume_id == "zyTCAlFPjgYC"
+
+
 async def test_subtitle_is_added_to_title():
     volume = {
         "id": "abcde",

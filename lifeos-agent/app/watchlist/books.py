@@ -29,9 +29,13 @@ _TIMEOUT = 10.0
 # Столько же, сколько у фильмов: карточка полки не должна превращаться в
 # страницу текста (см. app/watchlist/tmdb.py).
 _MAX_OVERVIEW_CHARS = 400
-# Больше пяти результатов не нужно: берём первый пригодный, остальные
-# только увеличивают ответ.
+# Берём не первый попавшийся, а самый полный том из этой выборки —
+# у Google Books верхний результат нередко пустой (см. _completeness).
 _MAX_RESULTS = 5
+# Без параметра country API отвечает 503 backendFailed — проверено на
+# живом ключе с сервера. Значение влияет на доступность изданий; ставим
+# страну пользователя, а не сервера.
+_COUNTRY = "RU"
 
 
 @dataclass(frozen=True)
@@ -67,6 +71,7 @@ class GoogleBooksClient:
                     "langRestrict": "ru",
                     "maxResults": _MAX_RESULTS,
                     "printType": "books",
+                    "country": _COUNTRY,
                 },
                 timeout=_TIMEOUT,
             )
@@ -76,11 +81,14 @@ class GoogleBooksClient:
             logger.warning("Google Books недоступен для «%s»: %s", query, exc)
             return None
 
-        for raw in items:
-            info = _parse_volume(raw)
-            if info is not None:
-                return info
-        return None
+        candidates = [info for info in map(_parse_volume, items) if info is not None]
+        if not candidates:
+            return None
+        # Порядок выдачи Google не равен полезности карточки: на «Идиот
+        # Достоевский» первым идёт том без автора и аннотации, а нужный —
+        # вторым. Сортировка устойчивая, поэтому среди одинаково полных
+        # томов остаётся исходный порядок релевантности.
+        return max(candidates, key=_completeness)
 
 
 def _parse_volume(raw: dict) -> Optional[BookInfo]:
@@ -121,6 +129,15 @@ def _parse_volume(raw: dict) -> Optional[BookInfo]:
         description=description,
         thumbnail_url=thumbnail,
         published_year=year,
+    )
+
+
+def _completeness(info: BookInfo) -> int:
+    """Насколько карточка «полная»: описание важнее автора, автор важнее
+    обложки — без описания карточка книги почти не отличается от строки
+    текста, ради которой всё и затевалось."""
+    return (
+        4 * bool(info.description) + 2 * bool(info.authors) + bool(info.thumbnail_url)
     )
 
 
