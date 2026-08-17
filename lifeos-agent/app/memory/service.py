@@ -82,6 +82,16 @@ class MemoryService:
     ) -> list[MemoryEntry]:
         return await self._repository.list_by_user(telegram_user_id, type=type)
 
+    async def get_entry(
+        self, telegram_user_id: int, entry_id: int
+    ) -> Optional[MemoryEntry]:
+        """Одна запись по id — для кнопки «открыть запись целиком» в
+        дневнике (см. app/telegram/callbacks.py). Чужая запись неотличима
+        от несуществующей, как и везде (owned_or_none)."""
+        return owned_or_none(
+            await self._repository.get_by_id(entry_id), telegram_user_id
+        )
+
     async def list_journal_entries_since(
         self, telegram_user_id: int, since: datetime
     ) -> list[MemoryEntry]:

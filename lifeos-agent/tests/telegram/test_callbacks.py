@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock
+
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -22,6 +24,15 @@ async def session():
         yield session
 
     await engine.dispose()
+
+
+def _context() -> MagicMock:
+    """Кнопкам раздела нужен context — в нём живёт ожидание ввода
+    (см. app/telegram/pending_input.py). Действиям над сущностями он не
+    нужен, но сигнатура одна на все."""
+    context = MagicMock()
+    context.user_data = {}
+    return context
 
 
 async def _add_task(session, **kwargs) -> Task:
@@ -75,7 +86,9 @@ async def _add_watchlist_item(session, **kwargs) -> WatchlistItem:
 async def test_watchlist_action_d_marks_done_and_removes_from_list(session):
     item = await _add_watchlist_item(session)
 
-    text, markup = await _handle_watchlist_action(session, "d", str(item.id), 1)
+    text, markup = await _handle_watchlist_action(
+        session, "d", str(item.id), 1, _context()
+    )
 
     callbacks = [b.callback_data for row in markup.inline_keyboard for b in row]
     assert f"w|d|{item.id}" not in callbacks
@@ -84,7 +97,9 @@ async def test_watchlist_action_d_marks_done_and_removes_from_list(session):
 async def test_watchlist_action_x_deletes_and_removes_from_list(session):
     item = await _add_watchlist_item(session)
 
-    text, markup = await _handle_watchlist_action(session, "x", str(item.id), 1)
+    text, markup = await _handle_watchlist_action(
+        session, "x", str(item.id), 1, _context()
+    )
 
     callbacks = [b.callback_data for row in markup.inline_keyboard for b in row]
     assert f"w|x|{item.id}" not in callbacks
@@ -93,14 +108,14 @@ async def test_watchlist_action_x_deletes_and_removes_from_list(session):
 async def test_watchlist_action_r_recommends_without_ai(session):
     await _add_watchlist_item(session)
 
-    text, markup = await _handle_watchlist_action(session, "r", "0", 1)
+    text, markup = await _handle_watchlist_action(session, "r", "0", 1, _context())
 
     assert "Как насчёт" in text
     assert len(markup.inline_keyboard) == 0
 
 
 async def test_watchlist_action_r_on_empty_list(session):
-    text, markup = await _handle_watchlist_action(session, "r", "0", 1)
+    text, markup = await _handle_watchlist_action(session, "r", "0", 1, _context())
 
     assert "нечего" in text
 

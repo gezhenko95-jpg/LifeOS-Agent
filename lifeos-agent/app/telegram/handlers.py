@@ -12,7 +12,7 @@ inline-кнопками (app/telegram/keyboards.py) — ConversationEngine не
 import asyncio
 import logging
 
-from telegram import Update
+from telegram import InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction, ParseMode
 from telegram.ext import ContextTypes
 
@@ -31,6 +31,7 @@ from app.habits.service import HabitService
 from app.insights.formatting import build_insights_text
 from app.insights.service import InsightsService
 from app.media_inbox.service import MediaInboxService
+from app.memory.models import MemoryType
 from app.memory.repository import MemoryRepository
 from app.memory.service import MemoryService
 from app.proactive.repository import PendingPromptRepository
@@ -38,6 +39,7 @@ from app.tasks.repository import TaskRepository
 from app.tasks.service import TaskService
 from app.telegram.keyboards import (
     MENU_ADD_TASK,
+    MENU_DIGEST,
     MENU_GOALS,
     MENU_HABITS,
     MENU_HELP,
@@ -46,21 +48,36 @@ from app.telegram.keyboards import (
     MENU_SITE,
     MENU_TASKS,
     MENU_WATCHLIST,
+    build_digest_detail_message,
+    build_digest_menu_message,
     build_goals_message,
     build_habits_message,
+    build_journal_entries_message,
+    build_journal_menu,
     build_main_menu,
     build_open_site_keyboard,
     build_task_quick_actions_keyboard,
     build_tasks_message,
+    build_watchlist_menu,
     build_watchlist_message,
+    schedule_label,
 )
+from app.telegram.pending_input import (
+    DIGEST_CHANNEL,
+    DIGEST_NEW,
+    JOURNAL_SEARCH,
+    WATCHLIST_ADD,
+    clear_pending,
+    pop_pending,
+)
+from app.watchlist.models import MEDIA_TYPE_EMOJI
 from app.watchlist.repository import WatchlistRepository
 from app.watchlist.service import WatchlistService
 
 logger = logging.getLogger(__name__)
 
 _ADD_TASK_HINT = "Окей, пиши, что за задача — с датой или без, я пойму."
-_JOURNAL_PROMPT = "Что запишем в дневник? Пиши как есть — сохраню без изменений."
+JOURNAL_PROMPT = "Что запишем в дневник? Пиши как есть — сохраню без изменений."
 
 _START_TEXT = (
     "Привет! Я LifeOS — помогаю не забывать задачи.\n"
@@ -83,6 +100,7 @@ _MENU_ACTIONS = {
     MENU_JOURNAL: "journal",
     MENU_INSIGHTS: "insights",
     MENU_WATCHLIST: "watchlist",
+    MENU_DIGEST: "digest",
     MENU_SITE: "site",
     MENU_HELP: "help",
 }
@@ -219,6 +237,12 @@ async def handle_text_message(
     text = update.message.text
 
     menu_action = _MENU_ACTIONS.get(text)
+    if menu_action is not None:
+        # Ушли в другой раздел — ожидание ввода от кнопки («➕ Добавить»,
+        # «➕ Канал», …) больше не актуально. Без этого оно осталось бы
+        # висеть ловушкой и проглотило бы следующее сообщение вообще из
+        # другой темы (см. app/telegram/pending_input.py).
+        clear_pending(context.user_data)
     if menu_action == "tasks":
         await _send_tasks_keyboard(update)
         return
@@ -241,13 +265,16 @@ async def handle_text_message(
         await update.message.reply_text(_ADD_TASK_HINT, reply_markup=build_main_menu())
         return
     if menu_action == "journal":
-        await _open_journal_prompt(update)
+        await _send_section(update, build_journal_menu())
         return
     if menu_action == "insights":
         await _send_insights(update)
         return
     if menu_action == "watchlist":
-        await _send_watchlist_keyboard(update)
+        await _send_section(update, build_watchlist_menu())
+        return
+    if menu_action == "digest":
+        await _send_digest_menu(update)
         return
     if menu_action == "site":
         await _send_site_link(update)
@@ -264,7 +291,17 @@ async def _route_parsed_text(
     решает, не LIST_TASKS/LIST_HABITS/LIST_WATCHLIST ли это (нужна
     Telegram-специфичная inline-клавиатура, движок сам её не построит),
     иначе отдаёт в движок. Было продублировано дословно между
-    handle_text_message и handle_voice_message — вынесено в одно место."""
+    handle_text_message и handle_voice_message — вынесено в одно место.
+
+    Первым делом — ожидание ввода от кнопки раздела (см.
+    app/telegram/pending_input.py): если пользователь только что нажал
+    «➕ Добавить»/«➕ Канал»/«🔍 По теме», это сообщение целиком и есть
+    ответ, разбирать его как обычную фразу не нужно. Проверка живёт
+    ЗДЕСЬ, а не в handle_text_message, чтобы голосом можно было ответить
+    ровно так же, как текстом."""
+    if await _consume_pending_input(update, context, text):
+        return
+
     parsed = parse_intent(text)
     if parsed.intent is Intent.LIST_TASKS:
         await _send_tasks_keyboard(update)
@@ -277,6 +314,174 @@ async def _route_parsed_text(
         return
 
     await _reply_via_engine(update, context, text, parsed=parsed)
+
+
+async def _consume_pending_input(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, text: str
+) -> bool:
+    """True — сообщение было ответом на кнопку и уже обработано.
+
+    Ожидание одноразовое: `pop_pending` снимает его сразу, даже если
+    обработка ниже закончится ошибкой — иначе неудачная попытка («канал
+    не найден») оставила бы ловушку висеть, и следующая обычная фраза
+    снова ушла бы в добавление канала."""
+    if update.message is None or update.effective_user is None:
+        return False
+
+    pending = pop_pending(context.user_data)
+    if pending is None:
+        return False
+
+    telegram_user_id = update.effective_user.id
+
+    if pending.kind == WATCHLIST_ADD:
+        await _add_watchlist_item_from_text(update, telegram_user_id, text)
+        return True
+    if pending.kind == JOURNAL_SEARCH:
+        await _search_journal(update, telegram_user_id, text)
+        return True
+    if pending.kind == DIGEST_NEW:
+        await _create_digest_from_text(update, telegram_user_id, text)
+        return True
+    if pending.kind == DIGEST_CHANNEL and pending.digest_id is not None:
+        await _add_digest_channel_from_text(
+            update, context, telegram_user_id, pending.digest_id, text
+        )
+        return True
+    return False
+
+
+async def _add_watchlist_item_from_text(
+    update: Update, telegram_user_id: int, text: str
+) -> None:
+    """«➕ Добавить» на полку. Префикс «фильм»/«книга» необязателен —
+    кнопка уже сказала, куда мы добавляем, поэтому голое «Дюна» тоже
+    работает (тип тогда «другое»). Если префикс всё же написан — он
+    разберётся штатным парсером, и тип сохранится правильный."""
+    if update.message is None:
+        return
+
+    parsed = parse_intent(text)
+    if parsed.intent is Intent.ADD_WATCHLIST_ITEM and parsed.title:
+        title = parsed.title
+        media_type = parsed.media_type or "other"
+    else:
+        title = text.strip()
+        media_type = "other"
+
+    async with AsyncSessionLocal() as session:
+        service = WatchlistService(WatchlistRepository(session))
+        try:
+            item = await service.create_item(telegram_user_id, title, media_type)
+        except ValueError as exc:
+            await update.message.reply_text(str(exc))
+            return
+
+    emoji = MEDIA_TYPE_EMOJI.get(item.media_type, "🎯")
+    await update.message.reply_text(f"{emoji} Добавил на полку: «{item.title}»")
+
+
+async def _search_journal(update: Update, telegram_user_id: int, query: str) -> None:
+    """«🔍 По теме» — буквальный поиск по дневнику (тот же ILIKE в БД, что
+    у «напомни про …»), результат — тот же список записей с кнопками, что
+    и «📖 Записи»."""
+    if update.message is None:
+        return
+
+    async with AsyncSessionLocal() as session:
+        service = MemoryService(MemoryRepository(session))
+        entries = await service.search(telegram_user_id, query, type=MemoryType.JOURNAL)
+
+    text, markup = build_journal_entries_message(
+        entries, header=f"🔍 Дневник по «{query}»"
+    )
+    await update.message.reply_text(
+        text, reply_markup=markup, parse_mode=ParseMode.HTML
+    )
+
+
+async def _create_digest_from_text(
+    update: Update, telegram_user_id: int, text: str
+) -> None:
+    """«➕ Новый дайджест» — то же, что /digest_new, но введённое одной
+    строкой: «ESG» или «ESG daily»."""
+    if update.message is None:
+        return
+
+    parts = text.split()
+    if not 1 <= len(parts) <= 2:
+        await update.message.reply_text(
+            "Нужно имя одним словом и (по желанию) частота: «ESG» или «ESG daily»."
+        )
+        return
+
+    name = parts[0]
+    frequency = parts[1].lower() if len(parts) == 2 else None
+
+    async with AsyncSessionLocal() as session:
+        service = build_digest_service(session)
+        try:
+            digest = await service.create_digest(telegram_user_id, name, frequency)
+        except ValueError as exc:
+            await update.message.reply_text(str(exc))
+            return
+        digests = await service.list_digests(telegram_user_id)
+
+    await update.message.reply_text(
+        f"✅ Дайджест «{digest.name}» создан ({schedule_label(digest.auto_frequency)}). "
+        "Теперь добавьте в него каналы."
+    )
+    menu_text, markup = build_digest_menu_message(digests)
+    await update.message.reply_text(
+        menu_text, reply_markup=markup, parse_mode=ParseMode.HTML
+    )
+
+
+async def _add_digest_channel_from_text(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    telegram_user_id: int,
+    digest_id: int,
+    text: str,
+) -> None:
+    """«➕ Канал» — проверка канала идёт по сети (см. DigestService.
+    add_channel), поэтому «печатает…», как и везде, где ответ не мгновенный."""
+    if update.message is None:
+        return
+
+    await context.bot.send_chat_action(
+        chat_id=telegram_user_id, action=ChatAction.TYPING
+    )
+
+    async with AsyncSessionLocal() as session:
+        service = build_digest_service(session)
+        digest = await service.get_digest(telegram_user_id, digest_id)
+        if digest is None:
+            await update.message.reply_text("Этого дайджеста больше нет.")
+            return
+        try:
+            added = await service.add_channel(
+                telegram_user_id, digest.name, text.strip()
+            )
+        except ValueError as exc:
+            await update.message.reply_text(str(exc))
+            return
+        except ChannelScrapeError as exc:
+            logger.warning("Канал не добавлен в дайджест: %s", exc)
+            await update.message.reply_text(
+                f"Не нашёл канал «{text.strip()}» — он существует и публичный?"
+            )
+            return
+        channels = await service.list_channels(digest.id)
+
+    await update.message.reply_text(
+        f"✅ @{added.channel_username} добавлен в «{digest.name}». "
+        "Дальше присылаю только новые посты."
+    )
+    detail_text, markup = build_digest_detail_message(digest, channels)
+    await update.message.reply_text(
+        detail_text, reply_markup=markup, parse_mode=ParseMode.HTML
+    )
 
 
 async def handle_voice_message(
@@ -386,6 +591,36 @@ async def _send_goals_keyboard(update: Update) -> None:
     )
 
 
+async def _send_section(
+    update: Update, screen: tuple[str, "InlineKeyboardMarkup"]
+) -> None:
+    """Экран раздела (полка/дневник) — чистая презентация, за данными
+    ходить не нужно, поэтому один общий отправитель на все такие экраны."""
+    if update.message is None:
+        return
+    text, markup = screen
+    await update.message.reply_text(
+        text, reply_markup=markup, parse_mode=ParseMode.HTML
+    )
+
+
+async def _send_digest_menu(update: Update) -> None:
+    """Экран «📰 Дайджест» — в отличие от полки и дневника, сам список
+    дайджестов и есть содержимое экрана, поэтому нужен поход в БД."""
+    if update.message is None or update.effective_user is None:
+        return
+
+    async with AsyncSessionLocal() as session:
+        digests = await build_digest_service(session).list_digests(
+            update.effective_user.id
+        )
+
+    text, markup = build_digest_menu_message(digests)
+    await update.message.reply_text(
+        text, reply_markup=markup, parse_mode=ParseMode.HTML
+    )
+
+
 async def _send_watchlist_keyboard(update: Update) -> None:
     if update.message is None or update.effective_user is None:
         return
@@ -414,8 +649,6 @@ _DIGEST_REMOVE_USAGE = "Как это работает: /digest_remove <имя> 
 _DIGEST_NOW_USAGE = "Как это работает: /digest <имя>"
 _DIGEST_EMPTY = "Пока ни одного дайджеста. Создайте: /digest_new ESG"
 
-_FREQUENCY_LABELS = {"daily": "каждый день", "weekly": "по воскресеньям"}
-
 
 async def digest_new_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -440,7 +673,7 @@ async def digest_new_command(
             await update.message.reply_text(f"{exc}\n{_DIGEST_NEW_USAGE}")
             return
 
-    schedule = _FREQUENCY_LABELS.get(digest.auto_frequency or "", "только по запросу")
+    schedule = schedule_label(digest.auto_frequency)
     await update.message.reply_text(
         f"✅ Дайджест «{digest.name}» создан ({schedule}).\n"
         f"Добавьте каналы: /digest_add {digest.name} <канал>"
@@ -525,9 +758,7 @@ async def digest_list_command(
 
     lines: list[str] = []
     for digest in digests:
-        schedule = _FREQUENCY_LABELS.get(
-            digest.auto_frequency or "", "только по запросу"
-        )
+        schedule = schedule_label(digest.auto_frequency)
         lines.append(f"📰 {digest.name} — {schedule}")
         items = channels.get(digest.id, [])
         if items:
@@ -618,10 +849,10 @@ async def _open_journal_prompt(update: Update) -> None:
 
     async with AsyncSessionLocal() as session:
         await PendingPromptRepository(session).upsert(
-            telegram_user_id, "journal", _JOURNAL_PROMPT
+            telegram_user_id, "journal", JOURNAL_PROMPT
         )
 
-    await update.message.reply_text(_JOURNAL_PROMPT)
+    await update.message.reply_text(JOURNAL_PROMPT)
 
 
 async def _reply_via_engine(

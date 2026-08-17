@@ -19,6 +19,15 @@ inline-клавиатуры для списков задач/привычек/ц
 пришло от пользователя, обязательно проходит через _esc() — иначе
 задача с названием «<b>» сломает разметку всего сообщения.
 
+Разделы с несколькими действиями (полка, дневник, дайджесты) открываются
+не сразу списком, а ЭКРАНОМ РАЗДЕЛА: кнопка постоянного меню присылает
+сообщение с inline-кнопками («открыть» / «добавить» / «найти»), и только
+они делают само действие. Раньше кнопка меню умела ровно одно (🎬
+Посмотреть = показать список), а всё остальное надо было печатать
+командой или фразой — про которую ещё надо помнить, что она существует.
+Экраны связаны кнопкой «◀️ Назад», чтобы из любого места можно было
+вернуться на уровень выше, не трогая постоянное меню.
+
 Чистые функции — только презентация, никакого доступа к БД/сети.
 callback_data — компактный формат "{домен}|{действие}|{id}":
   t|c|{id} / t|d|{id} — задача: выполнить / удалить
@@ -29,6 +38,19 @@ callback_data — компактный формат "{домен}|{действ�
   g|noop — строка-заголовок цели, не действие
   w|d|{id} / w|x|{id} — watchlist: отметить готовым / удалить
   w|r|0 — «Порекомендуй» (id не нужен, действует на весь список)
+  w|m / w|l / w|n — полка: экран раздела / открыть список / добавить
+  j|m / j|l / j|f / j|n — дневник: экран раздела / записи / поиск по теме /
+    новая запись
+  j|o|{id} — открыть запись дневника целиком
+  d|m / d|n — дайджесты: экран раздела / создать новый
+  d|s|{id} / d|r|{id} / d|a|{id} — дайджест: открыть / прислать новое /
+    добавить канал
+  d|x|{channel_id} — убрать канал (id КАНАЛА, не дайджеста)
+
+Действия без id ("w|m", "j|l", …) — намеренно двухчастные: в
+callback_data Telegram даёт 64 БАЙТА, и имя дайджеста туда класть нельзя
+(кириллица + до 50 символов), поэтому везде, где нужна сущность, ездит
+её числовой id (см. app/telegram/callbacks.py::parse_callback).
 """
 
 from html import escape
@@ -40,8 +62,10 @@ from telegram import (
     ReplyKeyboardMarkup,
 )
 
+from app.digest.models import Digest, DigestChannel
 from app.goals.models import Goal
 from app.habits.models import Habit
+from app.memory.models import MemoryEntry
 from app.tasks.formatting import (
     count_overdue,
     format_due_human,
@@ -65,8 +89,19 @@ MENU_ADD_TASK = "➕ Задача"
 MENU_JOURNAL = "📝 Дневник"
 MENU_INSIGHTS = "📊 Инсайты"
 MENU_WATCHLIST = "🎬 Посмотреть"
+MENU_DIGEST = "📰 Дайджест"
 MENU_SITE = "🌐 Сайт"
 MENU_HELP = "❓ Помощь"
+
+# Столько записей дневника показываем на экране «📖 Записи» — дальше
+# сообщение и ряды кнопок перестают читаться (тот же порядок, что
+# _MAX_ITEMS у списков).
+_MAX_JOURNAL_ENTRIES = 8
+# Длина превью записи в списке: полный текст открывается кнопкой.
+_JOURNAL_PREVIEW_CHARS = 60
+
+_BACK_TO_JOURNAL = InlineKeyboardButton("◀️ Назад", callback_data="j|m")
+_BACK_TO_DIGESTS = InlineKeyboardButton("◀️ Назад", callback_data="d|m")
 
 
 def _esc(text: str) -> str:
@@ -111,8 +146,9 @@ def build_main_menu() -> ReplyKeyboardMarkup:
         [KeyboardButton(MENU_TASKS)],
         [KeyboardButton(MENU_HABITS), KeyboardButton(MENU_GOALS)],
         [KeyboardButton(MENU_ADD_TASK), KeyboardButton(MENU_JOURNAL)],
-        [KeyboardButton(MENU_INSIGHTS), KeyboardButton(MENU_WATCHLIST)],
-        [KeyboardButton(MENU_SITE), KeyboardButton(MENU_HELP)],
+        [KeyboardButton(MENU_WATCHLIST), KeyboardButton(MENU_DIGEST)],
+        [KeyboardButton(MENU_INSIGHTS), KeyboardButton(MENU_SITE)],
+        [KeyboardButton(MENU_HELP)],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -262,7 +298,12 @@ def build_watchlist_message(
 
     rows = _numbered_action_rows(shown, "w|d", "✅")
     rows += _numbered_action_rows(shown, "w|x", "🗑")
-    rows.append([InlineKeyboardButton("🎲 Порекомендуй", callback_data="w|r|0")])
+    rows.append(
+        [
+            InlineKeyboardButton("🎲 Порекомендуй", callback_data="w|r|0"),
+            InlineKeyboardButton("➕ Добавить", callback_data="w|n"),
+        ]
+    )
     return "\n".join(lines), InlineKeyboardMarkup(rows)
 
 
@@ -302,3 +343,156 @@ def build_goals_message(goals: list[Goal]) -> tuple[str, InlineKeyboardMarkup]:
         f"· средний прогресс {average}%"
     )
     return "\n".join(lines), InlineKeyboardMarkup(rows)
+
+
+# --- Экраны разделов (второй уровень меню) --------------------------------
+
+
+def build_watchlist_menu() -> tuple[str, InlineKeyboardMarkup]:
+    """🎬 Посмотреть → что именно: открыть полку или добавить на неё."""
+    text = "🎬 <b>Полка</b>\n\nЧто нужно — посмотреть, что уже отложено, или добавить новое?"
+    rows = [
+        [
+            InlineKeyboardButton("📚 Открыть полку", callback_data="w|l"),
+            InlineKeyboardButton("➕ Добавить", callback_data="w|n"),
+        ]
+    ]
+    return text, InlineKeyboardMarkup(rows)
+
+
+def build_journal_menu() -> tuple[str, InlineKeyboardMarkup]:
+    """📝 Дневник → читать старое или писать новое."""
+    text = "📝 <b>Дневник</b>\n\nПочитать записи или записать что-то новое?"
+    rows = [
+        [
+            InlineKeyboardButton("📖 Записи", callback_data="j|l"),
+            InlineKeyboardButton("🔍 По теме", callback_data="j|f"),
+        ],
+        [InlineKeyboardButton("✍️ Новая запись", callback_data="j|n")],
+    ]
+    return text, InlineKeyboardMarkup(rows)
+
+
+def build_journal_entries_message(
+    entries: list[MemoryEntry], header: str = "📖 <b>Записи дневника</b>"
+) -> tuple[str, InlineKeyboardMarkup]:
+    """Список записей: дата + начало текста, кнопка с номером открывает
+    запись целиком (текст записи может быть длинным — в список он не
+    влезает, а обрезка без возможности раскрыть бесполезна)."""
+    if not entries:
+        return (
+            f"{header}\n\nЗаписей пока нет. "
+            "Нажмите «✍️ Новая запись» — и пишите как есть.",
+            InlineKeyboardMarkup([[_BACK_TO_JOURNAL]]),
+        )
+
+    shown = entries[:_MAX_JOURNAL_ENTRIES]
+    lines = [header, ""]
+    for index, entry in enumerate(shown, start=1):
+        lines.append(
+            f"<b>{index}</b>  <i>{entry.created_at:%d.%m}</i>  "
+            f"{_esc(_preview(entry.content))}"
+        )
+
+    lines.append("")
+    lines.append(_DIVIDER)
+    hidden = len(entries) - len(shown)
+    summary = f"{len(entries)} {_plural(len(entries), 'запись', 'записи', 'записей')}"
+    if hidden:
+        summary += f" · показаны последние {len(shown)}"
+    lines.append(summary)
+
+    rows = _numbered_action_rows(shown, "j|o", "📄")
+    rows.append([_BACK_TO_JOURNAL])
+    return "\n".join(lines), InlineKeyboardMarkup(rows)
+
+
+def build_journal_entry_message(entry: MemoryEntry) -> tuple[str, InlineKeyboardMarkup]:
+    """Одна запись целиком — дата словами в шапке, дальше текст как есть."""
+    text = f"📝 <b>{entry.created_at:%d.%m.%Y}</b>\n\n{_esc(entry.content)}"
+    rows = [
+        [
+            InlineKeyboardButton("◀️ К записям", callback_data="j|l"),
+            _BACK_TO_JOURNAL,
+        ]
+    ]
+    return text, InlineKeyboardMarkup(rows)
+
+
+def _preview(content: str) -> str:
+    single_line = " ".join(content.split())
+    if len(single_line) <= _JOURNAL_PREVIEW_CHARS:
+        return single_line
+    return single_line[:_JOURNAL_PREVIEW_CHARS].rstrip() + "…"
+
+
+def build_digest_menu_message(
+    digests: list[Digest],
+) -> tuple[str, InlineKeyboardMarkup]:
+    """📰 Дайджест → выбрать существующий или создать новый. Каждый
+    дайджест — своя кнопка (их единицы, не десятки), поэтому здесь можно
+    позволить себе имя прямо в подписи, а не номер."""
+    if not digests:
+        return (
+            "📰 <b>Дайджесты каналов</b>\n\nНи одного пока нет.\n"
+            "Дайджест — это тема (например, ESG) и несколько публичных "
+            "Telegram-каналов: я слежу за новыми постами и присылаю саммари.",
+            InlineKeyboardMarkup(
+                [[InlineKeyboardButton("➕ Создать дайджест", callback_data="d|n")]]
+            ),
+        )
+
+    lines = ["📰 <b>Дайджесты каналов</b>", ""]
+    rows: list[list[InlineKeyboardButton]] = []
+    for digest in digests:
+        schedule = schedule_label(digest.auto_frequency)
+        lines.append(f"📰 <b>{_esc(digest.name)}</b> — <i>{schedule}</i>")
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    f"📰 {digest.name}", callback_data=f"d|s|{digest.id}"
+                )
+            ]
+        )
+
+    rows.append([InlineKeyboardButton("➕ Новый дайджест", callback_data="d|n")])
+    return "\n".join(lines), InlineKeyboardMarkup(rows)
+
+
+def build_digest_detail_message(
+    digest: Digest, channels: list[DigestChannel]
+) -> tuple[str, InlineKeyboardMarkup]:
+    """Экран одного дайджеста: какие каналы внутри и что с ним можно
+    сделать. Удаление канала — кнопка с номером под своим каналом в
+    тексте, тем же приёмом, что у задач/привычек."""
+    lines = [f"📰 <b>{_esc(digest.name)}</b>", ""]
+    lines.append(f"Расписание: <i>{schedule_label(digest.auto_frequency)}</i>")
+    lines.append("")
+
+    if channels:
+        lines.append("Каналы:")
+        for index, channel in enumerate(channels, start=1):
+            lines.append(f"<b>{index}</b>  @{_esc(channel.channel_username)}")
+    else:
+        lines.append("Каналов пока нет — добавьте первый.")
+
+    rows: list[list[InlineKeyboardButton]] = [
+        [
+            InlineKeyboardButton("📬 Что нового", callback_data=f"d|r|{digest.id}"),
+            InlineKeyboardButton("➕ Канал", callback_data=f"d|a|{digest.id}"),
+        ]
+    ]
+    if channels:
+        rows += _numbered_action_rows(channels, "d|x", "🗑")
+    rows.append([_BACK_TO_DIGESTS])
+    return "\n".join(lines), InlineKeyboardMarkup(rows)
+
+
+def schedule_label(auto_frequency: str | None) -> str:
+    """Одна формулировка расписания на все экраны — тот же текст, что и в
+    ответах команд /digest_list и /digest_new (см. handlers.py)."""
+    if auto_frequency == "daily":
+        return "каждый день"
+    if auto_frequency == "weekly":
+        return "по воскресеньям"
+    return "только по запросу"

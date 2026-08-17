@@ -4,29 +4,50 @@
 
 import logging
 from datetime import date, datetime, time, timedelta
+from html import escape
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from telegram import InlineKeyboardMarkup, Update
-from telegram.constants import ParseMode
+from telegram import CallbackQuery, InlineKeyboardMarkup, Update
+from telegram.constants import ChatAction, ParseMode
 from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
 from app.ai.client import get_ai_client
 from app.core.config import get_settings
+from app.core.container import build_digest_service
 from app.db.session import AsyncSessionLocal
 from app.goals.repository import GoalRepository
 from app.goals.service import GoalService
 from app.habits.repository import HabitRepository
 from app.habits.service import HabitService
+from app.memory.models import MemoryType
+from app.memory.repository import MemoryRepository
+from app.memory.service import MemoryService
+from app.proactive.repository import PendingPromptRepository
 from app.tasks.models import Task
 from app.tasks.repository import TaskRepository
 from app.tasks.service import TaskService
+from app.telegram.handlers import JOURNAL_PROMPT
 from app.telegram.keyboards import (
+    build_digest_detail_message,
+    build_digest_menu_message,
     build_goals_message,
     build_habits_message,
+    build_journal_entries_message,
+    build_journal_entry_message,
+    build_journal_menu,
     build_task_confirmation_message,
     build_tasks_message,
+    build_watchlist_menu,
     build_watchlist_message,
+)
+from app.telegram.pending_input import (
+    DIGEST_CHANNEL,
+    DIGEST_NEW,
+    JOURNAL_SEARCH,
+    WATCHLIST_ADD,
+    PendingInput,
+    set_pending,
 )
 from app.watchlist.repository import WatchlistRepository
 from app.watchlist.service import WatchlistService
@@ -34,6 +55,40 @@ from app.watchlist.service import WatchlistService
 # 9:00 — тот же час по умолчанию, что и у date_parser.py для дат без
 # явного времени (не импортируем оттуда приватную константу).
 _DEFAULT_HOUR = 9
+
+# Кнопки без id: действуют на раздел целиком, а не на сущность (см.
+# app/telegram/keyboards.py, где перечислен весь формат callback_data).
+_IDLESS_ACTIONS = {
+    ("w", "r"),  # порекомендуй
+    ("w", "m"),  # экран полки
+    ("w", "l"),  # список полки
+    ("w", "n"),  # добавить на полку
+    ("j", "m"),  # экран дневника
+    ("j", "l"),  # записи
+    ("j", "f"),  # поиск по теме
+    ("j", "n"),  # новая запись
+    ("d", "m"),  # экран дайджестов
+    ("d", "n"),  # новый дайджест
+}
+
+# Что бот отвечает, когда ждёт ввод после кнопки. Одинаковый приём во
+# всех разделах: сообщение превращается в приглашение, следующее
+# сообщение пользователя ловит app/telegram/handlers.py.
+_ASK_WATCHLIST = (
+    "🎬 <b>Что добавить на полку?</b>\n\n"
+    "Напишите название — «Дюна», или с типом: «фильм Дюна», «книга Дюна»."
+)
+_ASK_JOURNAL_SEARCH = (
+    "🔍 <b>Что найти в дневнике?</b>\n\nНапишите слово или тему — например, «работа»."
+)
+_ASK_DIGEST_NEW = (
+    "📰 <b>Как назовём дайджест?</b>\n\n"
+    "Одно слово — «ESG». Можно сразу с частотой: «ESG daily» или «ESG weekly»."
+)
+_ASK_DIGEST_CHANNEL = (
+    "➕ <b>Какой канал добавить?</b>\n\n"
+    "Имя публичного канала — «durov», «@durov» или ссылка t.me/durov."
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,10 +141,10 @@ async def handle_callback_query(
     if domain == "g" and action == "noop":
         return
 
-    # "w|r|0" ("Порекомендуй") действует на весь список, id ему не нужен —
-    # всем остальным действиям нужен корректный числовой id.
-    is_idless_action = domain == "w" and action == "r"
-    if not is_idless_action and _parse_item_id(item_id) is None:
+    # Часть кнопок действует не на конкретную сущность, а на раздел
+    # целиком («Порекомендуй», «Записи», «◀️ Назад») — им id не нужен и не
+    # передаётся. Всем остальным нужен корректный числовой id.
+    if (domain, action) not in _IDLESS_ACTIONS and _parse_item_id(item_id) is None:
         return
 
     telegram_user_id = update.effective_user.id
@@ -109,7 +164,15 @@ async def handle_callback_query(
             )
         elif domain == "w":
             text, markup = await _handle_watchlist_action(
-                session, action, item_id, telegram_user_id
+                session, action, item_id, telegram_user_id, context
+            )
+        elif domain == "j":
+            text, markup = await _handle_journal_action(
+                session, action, item_id, telegram_user_id, context
+            )
+        elif domain == "d":
+            text, markup = await _handle_digest_action(
+                session, action, item_id, telegram_user_id, context, query
             )
         else:
             return
@@ -195,9 +258,18 @@ async def _handle_goal_action(
 
 
 async def _handle_watchlist_action(
-    session: AsyncSession, action: str, item_id: str, telegram_user_id: int
+    session: AsyncSession,
+    action: str,
+    item_id: str,
+    telegram_user_id: int,
+    context: ContextTypes.DEFAULT_TYPE,
 ) -> tuple[str, InlineKeyboardMarkup]:
     service = WatchlistService(WatchlistRepository(session))
+    if action == "m":
+        return build_watchlist_menu()
+    if action == "n":
+        set_pending(context.user_data, PendingInput(WATCHLIST_ADD))
+        return _ASK_WATCHLIST, InlineKeyboardMarkup([])
     if action == "d":
         await service.mark_done(telegram_user_id, int(item_id))
     elif action == "x":
@@ -211,3 +283,98 @@ async def _handle_watchlist_action(
 
     items = await service.list_active_items(telegram_user_id)
     return build_watchlist_message(items)
+
+
+async def _handle_journal_action(
+    session: AsyncSession,
+    action: str,
+    item_id: str,
+    telegram_user_id: int,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> tuple[str, InlineKeyboardMarkup]:
+    """Дневник как раздел: список записей → одна запись целиком, поиск по
+    теме и новая запись. Записи — это MemoryEntry типа journal (отдельной
+    таблицы у дневника нет, см. specs/001-memory.md)."""
+    if action == "m":
+        return build_journal_menu()
+    if action == "f":
+        set_pending(context.user_data, PendingInput(JOURNAL_SEARCH))
+        return _ASK_JOURNAL_SEARCH, InlineKeyboardMarkup([])
+    if action == "n":
+        # Тот же механизм, что у кнопки «📝 Дневник» до появления экранов
+        # раздела: открытый journal-pending, следующее сообщение движок
+        # сохранит как запись целиком (см. ConversationEngine.
+        # _try_capture_journal). Это НЕ pending_input: дневниковая запись
+        # переживает рестарт и осмысленна часами, а не секунды.
+        await PendingPromptRepository(session).upsert(
+            telegram_user_id, "journal", JOURNAL_PROMPT
+        )
+        return JOURNAL_PROMPT, InlineKeyboardMarkup([])
+
+    service = MemoryService(MemoryRepository(session))
+    if action == "o":
+        entry = await service.get_entry(telegram_user_id, int(item_id))
+        if entry is None:
+            return "Этой записи больше нет.", InlineKeyboardMarkup([])
+        return build_journal_entry_message(entry)
+
+    entries = await service.list_entries(telegram_user_id, type=MemoryType.JOURNAL)
+    return build_journal_entries_message(entries)
+
+
+async def _handle_digest_action(
+    session: AsyncSession,
+    action: str,
+    item_id: str,
+    telegram_user_id: int,
+    context: ContextTypes.DEFAULT_TYPE,
+    query: CallbackQuery,
+) -> tuple[str, InlineKeyboardMarkup]:
+    """Дайджесты как раздел: список тем → одна тема (её каналы) →
+    «что нового» прямо сейчас. Всё то же, что умеют команды /digest_*,
+    но без запоминания синтаксиса."""
+    service = build_digest_service(session)
+
+    if action == "n":
+        set_pending(context.user_data, PendingInput(DIGEST_NEW))
+        return _ASK_DIGEST_NEW, InlineKeyboardMarkup([])
+
+    if action == "m":
+        return build_digest_menu_message(await service.list_digests(telegram_user_id))
+
+    if action == "x":
+        digest = await service.remove_channel_by_id(telegram_user_id, int(item_id))
+        if digest is None:
+            return "Этого канала больше нет.", InlineKeyboardMarkup([])
+        return build_digest_detail_message(
+            digest, await service.list_channels(digest.id)
+        )
+
+    digest = await service.get_digest(telegram_user_id, int(item_id))
+    if digest is None:
+        return "Этого дайджеста больше нет.", InlineKeyboardMarkup([])
+
+    if action == "a":
+        set_pending(context.user_data, PendingInput(DIGEST_CHANNEL, digest.id))
+        return _ASK_DIGEST_CHANNEL, InlineKeyboardMarkup([])
+
+    if action == "r":
+        # Чтение каналов по сети + AI-саммари — это секунды, а сообщение
+        # всё это время выглядит нетронутым. «Печатает…» здесь — тот же
+        # приём, что и в handlers.py на долгих ответах.
+        await query.get_bot().send_chat_action(
+            chat_id=telegram_user_id, action=ChatAction.TYPING
+        )
+        text = await service.build_digest_text(
+            telegram_user_id, digest.name, ai_client=get_ai_client()
+        )
+        channels = await service.list_channels(digest.id)
+        if text is None:
+            detail, markup = build_digest_detail_message(digest, channels)
+            return f"Новых постов пока нет.\n\n{detail}", markup
+        # Саммари приходит от модели как обычный текст: HTML-разметки в
+        # нём нет, а угловые скобки из поста сломали бы parse_mode=HTML.
+        return escape(text, quote=False), InlineKeyboardMarkup([])
+
+    # action == "s" (и любое неизвестное действие домена) — открыть тему.
+    return build_digest_detail_message(digest, await service.list_channels(digest.id))
