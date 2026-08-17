@@ -38,6 +38,7 @@ from app.telegram.jobs import (
     send_digests_job,
     send_evening_checkin_job,
     send_evening_reflection_job,
+    send_habit_reminders_job,
     send_midday_checkin_job,
     send_monthly_insights_job,
     send_morning_briefing_job,
@@ -129,6 +130,7 @@ def build_application() -> Application:
     _register_morning_briefing(application, settings)
     _register_evening_reflection(application, settings)
     _register_task_reminders(application, settings)
+    _register_habit_reminders(application, settings)
     _register_proactive_prompts(application, settings)
     _register_weekly_digest(application, settings)
     _register_digests(application, settings)
@@ -180,6 +182,23 @@ def _register_task_reminders(application: Application, settings: Settings) -> No
         interval=settings.task_reminders_interval_seconds,
         first=10,
         name="task_reminders",
+    )
+
+
+def _register_habit_reminders(application: Application, settings: Settings) -> None:
+    """Одна джоба на все привычки: время у каждой своё, поэтому она
+    крутится с коротким шагом и сама отбирает, кому пора (см.
+    HabitService.list_due_reminders) — регистрировать по run_daily на
+    каждую привычку значило бы трогать расписание при каждой правке
+    времени, тот же довод, что и у дайджестов каналов."""
+    if not settings.habit_reminders_enabled or not settings.owner_telegram_user_id:
+        return
+
+    application.job_queue.run_repeating(
+        send_habit_reminders_job,
+        interval=settings.habit_reminders_interval_seconds,
+        first=20,
+        name="habit_reminders",
     )
 
 

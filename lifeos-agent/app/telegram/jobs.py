@@ -5,7 +5,9 @@
 import logging
 import random
 from datetime import date
+from html import escape
 
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
@@ -375,6 +377,48 @@ async def embed_pending_memories_job(context: ContextTypes.DEFAULT_TYPE) -> None
 
     if embedded:
         logger.info("Проэмбеддено %d записей памяти", embedded)
+
+
+async def send_habit_reminders_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Напоминание о привычке в заданное ею время (см. миграцию 015).
+
+    Отличие от напоминаний о задачах: у задачи момент один и навсегда, у
+    привычки время ежедневное, поэтому «уже напомнили» хранится днём
+    (`last_reminded_on`), а не флагом. Привычки, отмеченные сегодня,
+    сервис отсеивает сам — напоминать о сделанном значит приучить
+    игнорировать напоминания.
+
+    Кнопка «✅ Отметить» идёт сразу под сообщением: напоминание, после
+    которого надо идти в меню, срабатывает вдвое реже.
+    """
+    settings = get_settings()
+    telegram_user_id = settings.owner_telegram_user_id
+    if not telegram_user_id:
+        return
+
+    async with AsyncSessionLocal() as session:
+        habit_service = HabitService(HabitRepository(session))
+        for habit in await habit_service.list_due_reminders():
+            if habit.telegram_user_id != telegram_user_id:
+                continue
+            text = f"🔁 Напоминание: «{habit.title}»"
+            if habit.description:
+                text += f"\n<i>{escape(habit.description, quote=False)}</i>"
+            await context.bot.send_message(
+                chat_id=telegram_user_id,
+                text=text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                "✅ Отметить", callback_data=f"h|d|{habit.id}"
+                            )
+                        ]
+                    ]
+                ),
+            )
+            await habit_service.mark_reminded(habit)
 
 
 async def send_task_reminders_job(context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -12,26 +12,94 @@ API/Conversation — только вызывают этот сервис. См. 
 запрос, по одному на привычку (см. AUDIT.md, P-1).
 """
 
-from datetime import date
+from datetime import date, datetime, time
 from typing import Optional
 
 from app.core.ownership import owned_or_none
 from app.habits.models import Habit
 from app.habits.repository import HabitRepository
 from app.habits.streaks import current_streak, days_since_last, longest_streak
+from app.habits.templates import HabitTemplate
 
 
 class HabitService:
     def __init__(self, repository: HabitRepository) -> None:
         self._repository = repository
 
-    async def create_habit(self, telegram_user_id: int, title: str) -> Habit:
+    async def create_habit(
+        self,
+        telegram_user_id: int,
+        title: str,
+        description: Optional[str] = None,
+        reminder_time: Optional[time] = None,
+    ) -> Habit:
         title = title.strip()
         if not title:
             raise ValueError("Название привычки не может быть пустым")
 
-        habit = Habit(telegram_user_id=telegram_user_id, title=title)
+        habit = Habit(
+            telegram_user_id=telegram_user_id,
+            title=title,
+            description=(description or "").strip() or None,
+            reminder_time=reminder_time,
+        )
         return await self._repository.add(habit)
+
+    async def create_from_template(
+        self, telegram_user_id: int, template: HabitTemplate
+    ) -> Habit:
+        """Готовая привычка из каталога (см. app/habits/templates.py) —
+        с описанием и временем напоминания, проставленными заранее."""
+        return await self.create_habit(
+            telegram_user_id,
+            template.title,
+            template.description,
+            template.reminder_time,
+        )
+
+    async def update_habit(
+        self,
+        telegram_user_id: int,
+        habit_id: int,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+        reminder_time: Optional[time] = None,
+        clear_reminder: bool = False,
+        clear_description: bool = False,
+    ) -> Optional[Habit]:
+        """Правка привычки. None — не найдена или чужая.
+
+        `None` в поле означает «не трогать», а не «очистить» — иначе
+        нельзя было бы поменять одно название, не сбив напоминание. Для
+        снятия напоминания/описания есть явные `clear_*`: два разных
+        намерения не должны выражаться одним и тем же `None`."""
+        habit = owned_or_none(
+            await self._repository.get_by_id(habit_id), telegram_user_id
+        )
+        if habit is None:
+            return None
+
+        if title is not None:
+            title = title.strip()
+            if not title:
+                raise ValueError("Название привычки не может быть пустым")
+            habit.title = title
+
+        if clear_description:
+            habit.description = None
+        elif description is not None:
+            habit.description = description.strip() or None
+
+        if clear_reminder:
+            habit.reminder_time = None
+            # Иначе снятое и заново выставленное в тот же день
+            # напоминание не сработало бы до завтра.
+            habit.last_reminded_on = None
+        elif reminder_time is not None:
+            habit.reminder_time = reminder_time
+            habit.last_reminded_on = None
+
+        return await self._repository.save(habit)
 
     async def list_active_habits(self, telegram_user_id: int) -> list[Habit]:
         return await self._repository.list_by_user(telegram_user_id)
@@ -192,6 +260,36 @@ class HabitService:
             }
             for habit_id in owned_ids
         }
+
+    async def list_due_reminders(
+        self, now: Optional[time] = None, today: Optional[date] = None
+    ) -> list[Habit]:
+        """Привычки, о которых пора напомнить прямо сейчас: время
+        наступило, сегодня ещё не напоминали И сегодня ещё не отмечена —
+        напоминать о том, что человек уже сделал, значит обесценить сами
+        напоминания.
+
+        Отметку «напомнили» ставит вызывающий код (`mark_reminded`)
+        после фактической отправки: если бот упал между выборкой и
+        отправкой, напоминание не потеряется, а придёт следующим
+        прогоном."""
+        now = now or datetime.now().time()
+        today = today or date.today()
+
+        due = await self._repository.list_due_reminders(now, today)
+        if not due:
+            return []
+
+        done_today = await self._repository.list_logs_for_habits([h.id for h in due])
+        return [
+            habit
+            for habit in due
+            if today not in {log.completed_on for log in done_today.get(habit.id, [])}
+        ]
+
+    async def mark_reminded(self, habit: Habit, today: Optional[date] = None) -> Habit:
+        habit.last_reminded_on = today or date.today()
+        return await self._repository.save(habit)
 
     async def delete_habit(
         self, telegram_user_id: int, habit_id: int

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="LifeOS">
+  <!--
+    Знак LifeOS: кольцо дня. Незакрытая дуга — день/серия в процессе,
+    точка в центре — «сейчас». Цвета зашиты явно (не currentColor):
+    файл используется и как favicon, и как аватар бота, где никакого
+    наследуемого цвета нет. Дорожка кольца намеренно светло-синяя, а не
+    серая — на тёмном фоне вкладки серый сливается.
+  -->
+  <circle cx="32" cy="32" r="22" fill="none" stroke="#c7d7ff" stroke-width="8"/>
+  <path d="M32 10a22 22 0 0 1 15.6 37.6" fill="none" stroke="#2f6bff" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="32" cy="32" r="6" fill="#2f6bff"/>
+</svg>

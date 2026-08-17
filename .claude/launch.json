@@ -3,7 +3,9 @@
   "configurations": [
     {
       "name": "lifeos-api",
-      "url": "http://localhost:8000"
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--port", "8000"],
+      "port": 8000
     }
   ]
 }

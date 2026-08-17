@@ -20,6 +20,7 @@ from app.goals.repository import GoalRepository
 from app.goals.service import GoalService
 from app.habits.repository import HabitRepository
 from app.habits.service import HabitService
+from app.habits.templates import get_template
 from app.memory.models import MemoryType
 from app.memory.repository import MemoryRepository
 from app.memory.service import MemoryService
@@ -33,6 +34,7 @@ from app.telegram.keyboards import (
     build_digest_menu_message,
     build_goals_menu,
     build_goals_message,
+    build_habit_templates_message,
     build_habits_menu,
     build_habits_message,
     build_journal_entries_message,
@@ -70,7 +72,14 @@ _IDLESS_ACTIONS = {
     *((domain, action) for domain in _SECTION_DOMAINS for action in ("m", "l", "n")),
     ("w", "r"),  # порекомендуй — действует на весь список
     ("j", "f"),  # поиск по теме
+    ("h", "t"),  # каталог готовых привычек
 }
+
+# Действия, у которых третья часть callback_data — НЕ число. Пока такое
+# одно: slug готовой привычки (каталог живёт в коде, числовых id у него
+# нет, см. app/habits/templates.py). Числовую проверку для них
+# пропускаем, а сам разбор делает обработчик домена.
+_NON_NUMERIC_ACTIONS = {("h", "a")}
 
 # Что бот отвечает, когда ждёт ввод после кнопки. Одинаковый приём во
 # всех разделах: сообщение превращается в приглашение, следующее
@@ -153,7 +162,11 @@ async def handle_callback_query(
     # Часть кнопок действует не на конкретную сущность, а на раздел
     # целиком («Порекомендуй», «Записи», «◀️ Назад») — им id не нужен и не
     # передаётся. Всем остальным нужен корректный числовой id.
-    if (domain, action) not in _IDLESS_ACTIONS and _parse_item_id(item_id) is None:
+    skips_numeric_id = (domain, action) in _IDLESS_ACTIONS or (
+        domain,
+        action,
+    ) in _NON_NUMERIC_ACTIONS
+    if not skips_numeric_id and _parse_item_id(item_id) is None:
         return
 
     telegram_user_id = update.effective_user.id
@@ -257,6 +270,15 @@ async def _handle_habit_action(
     if action == "n":
         set_pending(context.user_data, PendingInput(HABIT_ADD))
         return _ASK_HABIT, InlineKeyboardMarkup([])
+    if action == "t":
+        return build_habit_templates_message()
+    if action == "a":
+        # Здесь в item_id приходит slug шаблона, а не число (см.
+        # _NON_NUMERIC_ACTIONS): каталог живёт в коде, id у него нет.
+        template = get_template(item_id)
+        if template is None:
+            return "Такой готовой привычки больше нет.", InlineKeyboardMarkup([])
+        await service.create_from_template(telegram_user_id, template)
     if action == "d":
         await service.mark_done_by_id(telegram_user_id, int(item_id))
     elif action == "x":

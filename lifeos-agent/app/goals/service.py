@@ -77,13 +77,31 @@ class GoalService:
             goal.status = status
         if progress is not None:
             goal.progress = progress
+            # 100% и есть «цель достигнута»: без этого цель оставалась в
+            # активных с полной полоской, и её приходилось закрывать
+            # второй кнопкой — выглядело как будто бот не заметил.
+            # Явно переданный status уважаем: он сильнее, чем догадка по
+            # прогрессу.
+            if status is None:
+                if progress == 100 and goal.status == ACTIVE:
+                    goal.status = COMPLETED
+                # Симметрично: сняли прогресс с сотни — цель снова в
+                # работе, иначе «-10%» на только что закрытой цели
+                # оставляло её завершённой с 90%.
+                elif progress < 100 and goal.status == COMPLETED:
+                    goal.status = ACTIVE
         goal.updated_at = datetime.now(timezone.utc)
         return await self._repository.save(goal)
 
     async def complete_goal(
         self, telegram_user_id: int, goal_id: int
     ) -> Optional[Goal]:
-        return await self.update_goal(telegram_user_id, goal_id, status=COMPLETED)
+        """Прогресс дотягиваем до 100 — завершённая цель с полоской на
+        60% выглядит как незакрытое дело (обратная сторона того же
+        рассогласования, что и «100%, но всё ещё активна»)."""
+        return await self.update_goal(
+            telegram_user_id, goal_id, status=COMPLETED, progress=100
+        )
 
     async def delete_goal(self, telegram_user_id: int, goal_id: int) -> Optional[Goal]:
         goal = owned_or_none(

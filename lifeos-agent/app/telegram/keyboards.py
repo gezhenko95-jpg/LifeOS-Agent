@@ -75,6 +75,7 @@ from telegram import (
 from app.digest.models import Digest, DigestChannel
 from app.goals.models import Goal
 from app.habits.models import Habit
+from app.habits.templates import HABIT_TEMPLATES
 from app.memory.models import MemoryEntry
 from app.tasks.formatting import (
     count_overdue,
@@ -403,9 +404,42 @@ def build_tasks_menu() -> tuple[str, InlineKeyboardMarkup]:
 def build_habits_menu() -> tuple[str, InlineKeyboardMarkup]:
     return _section_screen(
         "🔁 <b>Привычки</b>",
-        "Отметить сегодняшние или завести новую?",
-        [_open_and_add("h", "🔁 Список")],
+        "Отметить сегодняшние, завести свою или взять готовую?",
+        [
+            _open_and_add("h", "🔁 Список"),
+            [InlineKeyboardButton("✨ Готовые привычки", callback_data="h|t")],
+        ],
     )
+
+
+def build_habit_templates_message() -> tuple[str, InlineKeyboardMarkup]:
+    """Готовые привычки из каталога (см. app/habits/templates.py) — по
+    кнопке на штуку, с описанием в тексте. Пустой раздел «Привычки» —
+    главная причина, по которой их не заводят: шаблон снимает выбор
+    «что вообще считать привычкой»."""
+    lines = ["✨ <b>Готовые привычки</b>", ""]
+    rows: list[list[InlineKeyboardButton]] = []
+    for template in HABIT_TEMPLATES:
+        when = (
+            f" · напомню в {template.reminder_time:%H:%M}"
+            if template.reminder_time
+            else ""
+        )
+        lines.append(
+            f"{template.emoji} <b>{_esc(template.title)}</b>{when}\n"
+            f"      <i>{_esc(template.description)}</i>"
+        )
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    f"{template.emoji} {template.title}",
+                    callback_data=f"h|a|{template.slug}",
+                )
+            ]
+        )
+
+    rows.append(_back_to_section("h"))
+    return "\n".join(lines), InlineKeyboardMarkup(rows)
 
 
 def build_goals_menu() -> tuple[str, InlineKeyboardMarkup]:

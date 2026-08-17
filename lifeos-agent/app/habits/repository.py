@@ -6,9 +6,9 @@
 """
 
 from collections import defaultdict
-from datetime import date
+from datetime import date, time
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.core.repository import BaseRepository, escape_like
 from app.habits.models import Habit, HabitLog
@@ -39,6 +39,27 @@ class HabitRepository(BaseRepository[Habit]):
             Habit.title.ilike(f"%{escape_like(needle)}%", escape="\\"),
         )
         query = query.order_by(Habit.created_at)
+        result = await self._session.execute(query)
+        return list(result.scalars().all())
+
+    async def list_due_reminders(self, now: time, today: date) -> list[Habit]:
+        """Привычки, которым пора напомнить: время напоминания уже
+        наступило, а сегодня о них ещё не напоминали.
+
+        Через всех пользователей — проект пока single-user, тот же приём,
+        что у `TaskRepository.list_due_unreminded` (см. также
+        MULTIUSER.md: при мультиарендности здесь появится фильтр по
+        активным пользователям, а не по владельцу из настроек).
+
+        «Уже отмечена сегодня» здесь НЕ проверяется: это условие живёт в
+        сервисе, где и так загружаются логи (иначе join ради того, что
+        дешевле проверить на горстке привычек)."""
+        query = select(Habit).where(
+            Habit.archived.is_(False),
+            Habit.reminder_time.is_not(None),
+            Habit.reminder_time <= now,
+            or_(Habit.last_reminded_on.is_(None), Habit.last_reminded_on < today),
+        )
         result = await self._session.execute(query)
         return list(result.scalars().all())
 

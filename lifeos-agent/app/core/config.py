@@ -57,6 +57,13 @@ class Settings(BaseSettings):
     task_reminders_enabled: bool = True
     task_reminders_interval_seconds: int = 60
 
+    # Напоминания о привычках: у каждой своё время (habits.reminder_time,
+    # миграция 015), поэтому джоба крутится с тем же шагом, что и
+    # напоминания о задачах, и сама отбирает, кому пора. Привычки,
+    # отмеченные сегодня, пропускаются.
+    habit_reminders_enabled: bool = True
+    habit_reminders_interval_seconds: int = 60
+
     # Три касания дня (см. flows/009-daily-rhythm.md — имена настроек не
     # переименовывали при переосмыслении содержания, чтобы не задеть уже
     # настроенный .env): утро (10:30) — вопрос про сон или gap-вопрос про

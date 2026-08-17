@@ -4,6 +4,10 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>LifeOS Agent</title>
+<!-- Пути относительные: статика смонтирована в /ui (см. app/main.py),
+     а не в /static — абсолютный /static/... дал бы 404. -->
+<link rel="icon" type="image/svg+xml" href="icon.svg" />
+<link rel="apple-touch-icon" href="icon.svg" />
 <style>
   :root {
     --bg: #f4f5f7;
@@ -106,6 +110,45 @@
     font-size: 1.6rem;
     margin: 0 0 2px;
     letter-spacing: -0.02em;
+  }
+  /* Знак LifeOS: кольцо дня. Дуга «заполняется» один раз при загрузке —
+     ровно тот жест, что и у остальной страницы (полоски прогресса,
+     счётчик цифр), поэтому лого не выглядит отдельным аттракционом.
+     Точка в центре после этого тихо пульсирует: страница живая, данные
+     на ней — сегодняшние. */
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-mark { width: 34px; height: 34px; flex: none; }
+  .brand-track { fill: none; stroke: var(--accent-soft); stroke-width: 8; }
+  .brand-arc {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 8;
+    stroke-linecap: round;
+    /* Длина дуги — 52 (r=22, сектор 135°: 22 × 2.356). Задана числом, а
+       не через getTotalLength(): без JS и без скачка на первом кадре.
+       Если поменяется путь дуги — пересчитать, иначе заполнение
+       остановится раньше или начнётся с уже нарисованного куска. */
+    stroke-dasharray: 52;
+    stroke-dashoffset: 52;
+    /* ease-in-out, а не «резкий старт»: при быстром выбросе кольцо
+       заполняется в первые 300 мс и жест не успевает прочитаться. */
+    animation: brand-fill 1.1s cubic-bezier(0.65, 0, 0.35, 1) 0.15s forwards;
+  }
+  .brand-dot {
+    fill: var(--accent);
+    transform-origin: 32px 32px;
+    animation: brand-pulse 3.2s ease-in-out 1.4s infinite;
+  }
+  @keyframes brand-fill { to { stroke-dashoffset: 0; } }
+  @keyframes brand-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(0.86); opacity: 0.75; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    /* Кольцо всё равно должно быть заполненным — иначе лого выглядит
+       обрезанным, а не спокойным. */
+    .brand-arc { stroke-dashoffset: 0; animation: none; }
+    .brand-dot { animation: none; }
   }
   .subtitle { color: var(--muted); margin: 0 0 22px; font-size: 0.9rem; }
   /* Настройки нужны один раз — прячем их под спойлер, чтобы страница
@@ -517,7 +560,17 @@
 
 <div class="bg-blobs" aria-hidden="true"><span></span><span></span></div>
 
-<h1>LifeOS Agent</h1>
+<h1 class="brand">
+  <!-- Знак = /static/icon.svg, но инлайном: только так дуга может
+       заполняться анимацией и краситься текущим акцентом темы (внешний
+       <img> ни того, ни другого не умеет). -->
+  <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
+    <circle class="brand-track" cx="32" cy="32" r="22" />
+    <path class="brand-arc" d="M32 10a22 22 0 0 1 15.6 37.6" />
+    <circle class="brand-dot" cx="32" cy="32" r="6" />
+  </svg>
+  <span>LifeOS Agent</span>
+</h1>
 <p class="subtitle">Задачи, привычки, цели и полка — то же, что в боте, только целиком на одном экране.</p>
 
 <details class="settings">

@@ -2,7 +2,8 @@
 Модели привычек (Habit) и их логов выполнения (HabitLog).
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, time
+from typing import Optional
 
 from sqlalchemy import (
     BigInteger,
@@ -11,6 +12,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     String,
+    Time,
     UniqueConstraint,
     func,
 )
@@ -40,6 +42,24 @@ class Habit(Base):
 
     title: Mapped[str] = mapped_column(
         String(255), nullable=False, comment="Название привычки"
+    )
+
+    description: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Короткое описание: зачем эта привычка, что считается выполнением",
+    )
+
+    reminder_time: Mapped[Optional[time]] = mapped_column(
+        Time,
+        nullable=True,
+        comment="Местное время ежедневного напоминания (NULL — не напоминать)",
+    )
+
+    last_reminded_on: Mapped[Optional[date]] = mapped_column(
+        Date,
+        nullable=True,
+        comment="За какой день уже напомнили — чтобы не слать повторно",
     )
 
     archived: Mapped[bool] = mapped_column(

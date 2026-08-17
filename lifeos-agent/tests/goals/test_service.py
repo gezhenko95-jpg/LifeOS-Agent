@@ -78,7 +78,10 @@ async def test_update_progress_out_of_range_raises(repository):
         await service.update_progress(1, 1, -1)
 
 
-async def test_update_progress_does_not_auto_complete(repository):
+async def test_progress_100_completes_the_goal(repository):
+    """Поведение изменено 17.08.2026 по итогам живого использования:
+    раньше цель со 100% оставалась активной, и её приходилось закрывать
+    второй кнопкой — выглядело так, будто бот не заметил достижения."""
     goal = Goal(telegram_user_id=1, title="X", status="active", progress=0)
     repository.get_by_id.return_value = goal
     service = GoalService(repository)
@@ -86,7 +89,41 @@ async def test_update_progress_does_not_auto_complete(repository):
     updated = await service.update_progress(1, 1, 100)
 
     assert updated is not None
+    assert updated.status == "completed"
+
+
+async def test_progress_below_100_keeps_goal_active(repository):
+    goal = Goal(telegram_user_id=1, title="X", status="active", progress=0)
+    repository.get_by_id.return_value = goal
+    service = GoalService(repository)
+
+    updated = await service.update_progress(1, 1, 90)
+
     assert updated.status == "active"
+
+
+async def test_lowering_progress_reopens_completed_goal(repository):
+    """«−10%» на только что закрытой цели должен вернуть её в работу, а
+    не оставить завершённой с 90%."""
+    goal = Goal(telegram_user_id=1, title="X", status="completed", progress=100)
+    repository.get_by_id.return_value = goal
+    service = GoalService(repository)
+
+    updated = await service.update_progress(1, 1, 90)
+
+    assert updated.status == "active"
+
+
+async def test_explicit_status_wins_over_progress(repository):
+    """Явный статус сильнее догадки по прогрессу: 100% + «заброшена» —
+    это заброшенная цель, а не достигнутая."""
+    goal = Goal(telegram_user_id=1, title="X", status="active", progress=0)
+    repository.get_by_id.return_value = goal
+    service = GoalService(repository)
+
+    updated = await service.update_goal(1, 1, status="abandoned", progress=100)
+
+    assert updated.status == "abandoned"
 
 
 async def test_update_progress_not_found(repository):
@@ -117,6 +154,8 @@ async def test_complete_goal(repository):
 
     assert completed is not None
     assert completed.status == "completed"
+    # Завершённая цель с полоской на 80% выглядит как незакрытое дело.
+    assert completed.progress == 100
 
 
 async def test_update_goal_invalid_status_raises(repository):
