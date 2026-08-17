@@ -38,7 +38,6 @@ from app.proactive.repository import PendingPromptRepository
 from app.tasks.repository import TaskRepository
 from app.tasks.service import TaskService
 from app.telegram.keyboards import (
-    MENU_ADD_TASK,
     MENU_DIGEST,
     MENU_GOALS,
     MENU_HABITS,
@@ -50,13 +49,16 @@ from app.telegram.keyboards import (
     MENU_WATCHLIST,
     build_digest_detail_message,
     build_digest_menu_message,
+    build_goals_menu,
     build_goals_message,
+    build_habits_menu,
     build_habits_message,
     build_journal_entries_message,
     build_journal_menu,
     build_main_menu,
     build_open_site_keyboard,
     build_task_quick_actions_keyboard,
+    build_tasks_menu,
     build_tasks_message,
     build_watchlist_menu,
     build_watchlist_message,
@@ -65,7 +67,10 @@ from app.telegram.keyboards import (
 from app.telegram.pending_input import (
     DIGEST_CHANNEL,
     DIGEST_NEW,
+    GOAL_ADD,
+    HABIT_ADD,
     JOURNAL_SEARCH,
+    TASK_ADD,
     WATCHLIST_ADD,
     clear_pending,
     pop_pending,
@@ -76,7 +81,6 @@ from app.watchlist.service import WatchlistService
 
 logger = logging.getLogger(__name__)
 
-_ADD_TASK_HINT = "Окей, пиши, что за задача — с датой или без, я пойму."
 JOURNAL_PROMPT = "Что запишем в дневник? Пиши как есть — сохраню без изменений."
 
 _START_TEXT = (
@@ -92,15 +96,24 @@ _START_TEXT = (
 # Постоянное меню (ReplyKeyboardMarkup, см. keyboards.py) — нажатие
 # отправляет этот же текст обычным сообщением, поэтому просто матчим его
 # точным сравнением до разбора естественного языка.
-_MENU_ACTIONS = {
-    MENU_TASKS: "tasks",
-    MENU_HABITS: "habits",
-    MENU_GOALS: "goals",
-    MENU_ADD_TASK: "add_task",
-    MENU_JOURNAL: "journal",
-    MENU_INSIGHTS: "insights",
-    MENU_WATCHLIST: "watchlist",
+#
+# Кнопка домена всегда открывает ЭКРАН РАЗДЕЛА — одинаково для всех
+# шести доменов, никаких исключений. Экран строится чистой функцией из
+# keyboards.py, данные ему не нужны — кроме дайджестов, где сам список
+# тем и есть содержимое экрана (см. _send_digest_menu).
+_MENU_SECTIONS = {
+    MENU_TASKS: build_tasks_menu,
+    MENU_HABITS: build_habits_menu,
+    MENU_GOALS: build_goals_menu,
+    MENU_JOURNAL: build_journal_menu,
+    MENU_WATCHLIST: build_watchlist_menu,
+}
+
+# Кнопки-утилиты: своего домена и списка у них нет, экран из одного
+# пункта был бы лишним щелчком — они остаются прямым действием.
+_MENU_UTILITIES = {
     MENU_DIGEST: "digest",
+    MENU_INSIGHTS: "insights",
     MENU_SITE: "site",
     MENU_HELP: "help",
 }
@@ -236,48 +249,29 @@ async def handle_text_message(
 
     text = update.message.text
 
-    menu_action = _MENU_ACTIONS.get(text)
-    if menu_action is not None:
+    section = _MENU_SECTIONS.get(text)
+    utility = _MENU_UTILITIES.get(text)
+    if section is not None or utility is not None:
         # Ушли в другой раздел — ожидание ввода от кнопки («➕ Добавить»,
         # «➕ Канал», …) больше не актуально. Без этого оно осталось бы
         # висеть ловушкой и проглотило бы следующее сообщение вообще из
         # другой темы (см. app/telegram/pending_input.py).
         clear_pending(context.user_data)
-    if menu_action == "tasks":
-        await _send_tasks_keyboard(update)
+
+    if section is not None:
+        await _send_section(update, section())
         return
-    if menu_action == "habits":
-        await _send_habits_keyboard(update)
-        return
-    if menu_action == "goals":
-        await _send_goals_keyboard(update)
-        return
-    if menu_action == "help":
-        await _reply_via_engine(update, context, "/help")
-        return
-    if menu_action == "add_task":
-        # Заодно переотправляем меню: ReplyKeyboardMarkup живёт на
-        # клиенте, пока его не заменят, поэтому кнопка, добавленная после
-        # последнего /start, у пользователя просто не появляется — так и
-        # не появилась «🌐 Сайт». Этот ответ не несёт inline-кнопок, а
-        # значит место под клавиатуру свободно (две разом Telegram не
-        # принимает).
-        await update.message.reply_text(_ADD_TASK_HINT, reply_markup=build_main_menu())
-        return
-    if menu_action == "journal":
-        await _send_section(update, build_journal_menu())
-        return
-    if menu_action == "insights":
-        await _send_insights(update)
-        return
-    if menu_action == "watchlist":
-        await _send_section(update, build_watchlist_menu())
-        return
-    if menu_action == "digest":
+    if utility == "digest":
         await _send_digest_menu(update)
         return
-    if menu_action == "site":
+    if utility == "insights":
+        await _send_insights(update)
+        return
+    if utility == "site":
         await _send_site_link(update)
+        return
+    if utility == "help":
+        await _reply_via_engine(update, context, "/help")
         return
 
     await _route_parsed_text(update, context, text)
@@ -334,6 +328,19 @@ async def _consume_pending_input(
 
     telegram_user_id = update.effective_user.id
 
+    if pending.kind == TASK_ADD:
+        # Задача — единственный вид, где текст после кнопки всё равно
+        # разбирается движком: в нём может быть срок («завтра в 19:00»),
+        # приоритет и повтор, и переписывать этот разбор здесь заново
+        # значило бы завести второй парсер дат.
+        await _reply_via_engine(update, context, text)
+        return True
+    if pending.kind == HABIT_ADD:
+        await _create_habit_from_text(update, telegram_user_id, text)
+        return True
+    if pending.kind == GOAL_ADD:
+        await _create_goal_from_text(update, telegram_user_id, text)
+        return True
     if pending.kind == WATCHLIST_ADD:
         await _add_watchlist_item_from_text(update, telegram_user_id, text)
         return True
@@ -349,6 +356,46 @@ async def _consume_pending_input(
         )
         return True
     return False
+
+
+async def _create_habit_from_text(
+    update: Update, telegram_user_id: int, text: str
+) -> None:
+    """«➕ Добавить» в привычках: название целиком, без разбора — кнопка
+    уже сказала, что это привычка, а слово «привычка» в начале фразы (как
+    требует текстовый путь) здесь только мешало бы."""
+    if update.message is None:
+        return
+
+    async with AsyncSessionLocal() as session:
+        service = HabitService(HabitRepository(session))
+        try:
+            habit = await service.create_habit(telegram_user_id, text.strip())
+        except ValueError as exc:
+            await update.message.reply_text(str(exc))
+            return
+
+    await update.message.reply_text(f"🔁 Новая привычка: «{habit.title}»")
+
+
+async def _create_goal_from_text(
+    update: Update, telegram_user_id: int, text: str
+) -> None:
+    """«➕ Добавить» в целях. Срок цели не спрашиваем: он необязателен, а
+    лишний шаг диалога ради него отпугивает больше, чем помогает — дату
+    всегда можно поставить позже."""
+    if update.message is None:
+        return
+
+    async with AsyncSessionLocal() as session:
+        service = GoalService(GoalRepository(session))
+        try:
+            goal = await service.create_goal(telegram_user_id, text.strip())
+        except ValueError as exc:
+            await update.message.reply_text(str(exc))
+            return
+
+    await update.message.reply_text(f"🎯 Новая цель: «{goal.title}»")
 
 
 async def _add_watchlist_item_from_text(

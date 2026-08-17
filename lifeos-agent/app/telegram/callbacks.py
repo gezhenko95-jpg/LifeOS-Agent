@@ -31,12 +31,15 @@ from app.telegram.handlers import JOURNAL_PROMPT
 from app.telegram.keyboards import (
     build_digest_detail_message,
     build_digest_menu_message,
+    build_goals_menu,
     build_goals_message,
+    build_habits_menu,
     build_habits_message,
     build_journal_entries_message,
     build_journal_entry_message,
     build_journal_menu,
     build_task_confirmation_message,
+    build_tasks_menu,
     build_tasks_message,
     build_watchlist_menu,
     build_watchlist_message,
@@ -44,7 +47,10 @@ from app.telegram.keyboards import (
 from app.telegram.pending_input import (
     DIGEST_CHANNEL,
     DIGEST_NEW,
+    GOAL_ADD,
+    HABIT_ADD,
     JOURNAL_SEARCH,
+    TASK_ADD,
     WATCHLIST_ADD,
     PendingInput,
     set_pending,
@@ -58,22 +64,25 @@ _DEFAULT_HOUR = 9
 
 # Кнопки без id: действуют на раздел целиком, а не на сущность (см.
 # app/telegram/keyboards.py, где перечислен весь формат callback_data).
+_SECTION_DOMAINS = ("t", "h", "g", "j", "w", "d")
 _IDLESS_ACTIONS = {
-    ("w", "r"),  # порекомендуй
-    ("w", "m"),  # экран полки
-    ("w", "l"),  # список полки
-    ("w", "n"),  # добавить на полку
-    ("j", "m"),  # экран дневника
-    ("j", "l"),  # записи
+    # Общие для всех разделов: экран раздела / список / добавить.
+    *((domain, action) for domain in _SECTION_DOMAINS for action in ("m", "l", "n")),
+    ("w", "r"),  # порекомендуй — действует на весь список
     ("j", "f"),  # поиск по теме
-    ("j", "n"),  # новая запись
-    ("d", "m"),  # экран дайджестов
-    ("d", "n"),  # новый дайджест
 }
 
 # Что бот отвечает, когда ждёт ввод после кнопки. Одинаковый приём во
 # всех разделах: сообщение превращается в приглашение, следующее
 # сообщение пользователя ловит app/telegram/handlers.py.
+_ASK_TASK = (
+    "📋 <b>Что за задача?</b>\n\n"
+    "Напишите как есть — «завтра в 19:00 позвонить маме» или просто «купить хлеб»."
+)
+_ASK_HABIT = (
+    "🔁 <b>Какую привычку заводим?</b>\n\nОдно-два слова — «чтение», «зарядка»."
+)
+_ASK_GOAL = "🎯 <b>Какая цель?</b>\n\nНапишите коротко — «выучить испанский», «пробежать 10 км»."
 _ASK_WATCHLIST = (
     "🎬 <b>Что добавить на полку?</b>\n\n"
     "Напишите название — «Дюна», или с типом: «фильм Дюна», «книга Дюна»."
@@ -152,15 +161,15 @@ async def handle_callback_query(
     async with AsyncSessionLocal() as session:
         if domain == "t":
             text, markup = await _handle_task_action(
-                session, action, item_id, telegram_user_id
+                session, action, item_id, telegram_user_id, context
             )
         elif domain == "h":
             text, markup = await _handle_habit_action(
-                session, action, item_id, telegram_user_id
+                session, action, item_id, telegram_user_id, context
             )
         elif domain == "g":
             text, markup = await _handle_goal_action(
-                session, action, item_id, telegram_user_id
+                session, action, item_id, telegram_user_id, context
             )
         elif domain == "w":
             text, markup = await _handle_watchlist_action(
@@ -192,9 +201,19 @@ async def handle_callback_query(
 
 
 async def _handle_task_action(
-    session: AsyncSession, action: str, item_id: str, telegram_user_id: int
+    session: AsyncSession,
+    action: str,
+    item_id: str,
+    telegram_user_id: int,
+    context: ContextTypes.DEFAULT_TYPE,
 ) -> tuple[str, InlineKeyboardMarkup]:
     service = TaskService(TaskRepository(session))
+
+    if action == "m":
+        return build_tasks_menu()
+    if action == "n":
+        set_pending(context.user_data, PendingInput(TASK_ADD))
+        return _ASK_TASK, InlineKeyboardMarkup([])
 
     if action == "p":
         task = await service.update_task(
@@ -226,9 +245,18 @@ def _quick_action_result(task: Task | None) -> tuple[str, InlineKeyboardMarkup]:
 
 
 async def _handle_habit_action(
-    session: AsyncSession, action: str, item_id: str, telegram_user_id: int
+    session: AsyncSession,
+    action: str,
+    item_id: str,
+    telegram_user_id: int,
+    context: ContextTypes.DEFAULT_TYPE,
 ) -> tuple[str, InlineKeyboardMarkup]:
     service = HabitService(HabitRepository(session))
+    if action == "m":
+        return build_habits_menu()
+    if action == "n":
+        set_pending(context.user_data, PendingInput(HABIT_ADD))
+        return _ASK_HABIT, InlineKeyboardMarkup([])
     if action == "d":
         await service.mark_done_by_id(telegram_user_id, int(item_id))
     elif action == "x":
@@ -239,10 +267,19 @@ async def _handle_habit_action(
 
 
 async def _handle_goal_action(
-    session: AsyncSession, action: str, item_id: str, telegram_user_id: int
+    session: AsyncSession,
+    action: str,
+    item_id: str,
+    telegram_user_id: int,
+    context: ContextTypes.DEFAULT_TYPE,
 ) -> tuple[str, InlineKeyboardMarkup]:
     service = GoalService(GoalRepository(session))
-    if action in ("u", "n"):
+    if action == "m":
+        return build_goals_menu()
+    if action == "n":
+        set_pending(context.user_data, PendingInput(GOAL_ADD))
+        return _ASK_GOAL, InlineKeyboardMarkup([])
+    if action in ("u", "p"):
         goals = await service.list_active_goals(telegram_user_id)
         goal = next((g for g in goals if g.id == int(item_id)), None)
         if goal is not None:
