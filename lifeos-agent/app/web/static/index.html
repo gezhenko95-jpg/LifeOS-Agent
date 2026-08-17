@@ -707,6 +707,11 @@
   .calendar-card.collapsed .cal-hint { display: none; }
 
   /* Редактор записи: один диалог на задачи, привычки и цели. */
+  /* Атрибут hidden прячет элемент через display:none в стилях браузера,
+     но ЛЮБОЙ авторский display его перебивает — из-за этого диалог
+     висел поверх страницы с самой загрузки и не закрывался ни
+     «Отменой», ни сохранением. Правило ниже возвращает hidden силу. */
+  .editor-dialog[hidden] { display: none; }
   .editor-dialog {
     position: fixed;
     inset: 0;
