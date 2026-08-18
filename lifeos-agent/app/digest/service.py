@@ -109,6 +109,40 @@ class DigestService:
         await self._repository.remove_channel(channel)
         return digest
 
+    async def add_channel_by_id(
+        self, telegram_user_id: int, digest_id: int, channel_username: str
+    ) -> Optional[DigestChannel]:
+        """Добавить канал в тему, выбранную по id (так делает сайт —
+        см. specs/015-digest-api.md). Симметрично remove_channel_by_id.
+
+        None — темы нет или она чужая. Резолвить id в имя на стороне
+        вызывающего кода нельзя: здесь проверка владельца, а роутеры в
+        этом проекте бизнес-логики не содержат."""
+        digest = await self.get_digest(telegram_user_id, digest_id)
+        if digest is None:
+            return None
+        return await self.add_channel(telegram_user_id, digest.name, channel_username)
+
+    async def build_digest_text_by_id(
+        self,
+        telegram_user_id: int,
+        digest_id: int,
+        ai_client: AIClient | None = None,
+    ) -> Optional[str]:
+        """Текст дайджеста для темы, выбранной по id.
+
+        ВНИМАНИЕ: как и build_digest_text, двигает водяной знак и
+        коммитит его — то есть посты считаются прочитанными сразу, ещё
+        до того, как текст куда-то отправлен. Вызывающий код обязан
+        вернуть текст пользователю даже при сбое отправки, иначе посты
+        теряются безвозвратно (см. app/api/digest.py)."""
+        digest = await self.get_digest(telegram_user_id, digest_id)
+        if digest is None:
+            raise ValueError("Темы дайджеста нет")
+        return await self.build_digest_text(
+            telegram_user_id, digest.name, ai_client=ai_client
+        )
+
     async def add_channel(
         self, telegram_user_id: int, digest_name: str, channel_username: str
     ) -> DigestChannel:
