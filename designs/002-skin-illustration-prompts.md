@@ -279,3 +279,95 @@ Pixel art on a strict 32x32 pixel grid. Hard aliased edges, no anti-aliasing wha
 Пятый пункт проваливается чаще остальных: генератор плывёт по манере от
 запроса к запросу. Лечится тем, что стилевой блок копируется дословно.
 Если картинка выбилась — перегенерировать её, а не подгонять соседние.
+
+---
+
+# ДОПОЛНЕНИЕ: декор и герои под дизайн-систему 003
+
+Одиннадцати картинок из основной части не хватает: по
+`designs/003-groovy-design-system.md` иллюстрация нужна **в каждой**
+карточке, а не только в пустом состоянии. Ниже ещё 13 шагов.
+
+Порядок тот же: копировать промпт целиком, сохранять под именем из
+заголовка шага. Всё складывать туда же — `app/web/static/skins/groovy/`.
+
+## Что изменилось в промптах
+
+К стилевому блоку добавлено требование **чёрного контура внутри самой
+картинки**. В дизайн-системе обводка — конструкция, а не рамка: если у
+рисунка контура нет, он будет выглядеть наклейкой не отсюда рядом с
+обведёнными кнопками и карточками.
+
+**Стилевой блок дополнения** (для шагов 12–24):
+
+```
+1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
+```
+
+**Техблок** — тот же, что в основной части.
+
+---
+
+## Герои карточек (шаги 12–14)
+
+Крупные сюжетные картинки, 640×400, показываются на 150–190px.
+
+| Шаг | Файл | Subject |
+|---|---|---|
+| 12 | `hero-progress.png` | `a striped rocket flying upward past two small clouds, leaving a curly trail` |
+| 13 | `hero-weekly.png` | `a bar chart made of rounded candy-colored blocks with a smiling sun above it` |
+| 14 | `hero-quick.png` | `an open treasure chest with stars and sparkles floating out of it` |
+
+---
+
+## Угловой декор (шаги 15–22)
+
+Мелкие спрайты, **256×256** каждый (радуга и холм — 512×256). Лежат в
+углах карточек и частично выходят за край, поэтому композиция должна
+быть смещена к одному краю, а не отцентрована.
+
+**Дописать в техблок для этих восьми:** `Composition anchored to one
+edge, not centered — this is a corner sticker that will bleed off the
+edge of a card.`
+
+| Шаг | Файл | Размер | Subject |
+|---|---|---|---|
+| 15 | `decor-flowers-left.png` | 256×256 | `a cluster of three daisies and two leaves, growing from the lower left corner` |
+| 16 | `decor-flowers-right.png` | 256×256 | `a cluster of two round flowers and a leafy stem, growing from the lower right corner` |
+| 17 | `decor-cloud-small.png` | 256×256 | `a single small puffy cloud with a smiling face` |
+| 18 | `decor-cloud-big.png` | 256×256 | `a large puffy cloud, no face, two small sparkles beside it` |
+| 19 | `decor-rainbow.png` | 512×256 | `a rainbow arc with a puffy cloud at each end` |
+| 20 | `decor-hill.png` | 512×256 | `a rolling grassy hill with two tiny flowers on it` |
+| 21 | `decor-mushroom.png` | 256×256 | `a spotted mushroom with a smiling face and two blades of grass` |
+| 22 | `decor-stars.png` | 256×256 | `a loose cluster of five four-pointed stars of different sizes` |
+
+---
+
+## Волны-разделители (шаги 23–24)
+
+Широкие полосы вдоль низа карточки, **1024×256**.
+
+**Дописать в техблок для этих двух:** `A horizontal band, full width,
+flat on the left and right edges so it can tile. Wave shapes stacked
+horizontally.`
+
+| Шаг | Файл | Subject |
+|---|---|---|
+| 23 | `wave-color.png` | `stacked wavy stripes in coral, orange, gold, green and lavender` |
+| 24 | `wave-mono.png` | `stacked wavy stripes in two tones of cream, subtle` |
+
+---
+
+## Микрозвёзды НЕ генерируем
+
+Четырёхлучевые звёздочки и точки по 10–18px рисуются инлайновым SVG:
+их по 3–6 на карточку, они одноцветные и должны краситься акцентом
+домена. Картинкой это было бы 20 лишних запросов и невозможность
+перекрасить.
+
+## Про вес
+
+24 картинки в скине — это уже не 250 КБ. Реалистичная оценка 400–450 КБ.
+Мелкий декор жмётся хорошо (1–4 КБ на спрайт), основной вес по-прежнему
+на четырёх пустых состояниях и героях. Сжимать той же командой:
+палитра 200, масштаб 1.0.

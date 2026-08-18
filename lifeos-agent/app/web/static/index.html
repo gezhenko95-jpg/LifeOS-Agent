@@ -1072,17 +1072,17 @@
   :root[data-skin="pixel"] .brand-mark { image-rendering: pixelated; }
 
   /* ==================== СКИН: РЕТРО-ГРУВИ ====================
-     Тёмный сливовый фон, кремовые карточки, пухлые скругления, кнопки
-     таблетками. Как и у пикселя, скин задаёт палитру ЦЕЛИКОМ и
-     игнорирует prefers-color-scheme: это цельный образ, а не «светлая
-     версия чего-то». Полутёмного варианта нет намеренно.
+     Реализация designs/003-groovy-design-system.md.
 
-     Шрифт: Comfortaa — округлый геометрический гротеск, один из
-     немногих на Google Fonts с КИРИЛЛИЦЕЙ (у большинства «настоящих»
-     груви-шрифтов её нет, а интерфейс русский). Файлы кладём к себе в
-     fonts/, как Pixelify: внешние CDN из России не работают. Пока
-     файлов нет, @font-face молча не сработает и подхватится следующий
-     шрифт стека — скин будет жить, просто без своей типографики. */
+     Это НЕ переопределение палитры поверх обычной вёрстки — первая
+     попытка была именно такой и дала перекрашенную панель. Здесь скин
+     меняет саму конструкцию: толстый чернильный контур на каждой
+     поверхности, сплошная тень-сдвиг вместо размытой, крупная
+     типографика, разная ширина соседних карточек и иллюстрация в
+     каждой из них.
+
+     Шрифт лежит у нас (fonts/), а не грузится с fonts.gstatic.com:
+     внешние CDN из России уже подводили (см. app/api/poster.py). */
   @font-face {
     font-family: "Comfortaa";
     src: url("fonts/comfortaa-cyrillic-700.woff2") format("woff2");
@@ -1099,102 +1099,412 @@
   }
 
   :root[data-skin="groovy"] {
-    --bg: #211a2e;
-    --card-bg: #faf0dc;
-    --text: #2f2113;
-    --muted: #7c6a52;
-    --border: #e4d2ae;
-    --accent: #ef4a6f;
+    --ink: #191410;
+    --bg: #141110;
+    --card-bg: #f8eeda;
+    --paper-warm: #fcf6e8;
+    --paper-shade: #efe1c6;
+    --text: #191410;
+    /* Приглушённый текст ТЁПЛЫЙ, не серый: серый — главная примета той
+       панели, от которой уходим, и он протаскивает её обратно даже при
+       верной палитре. */
+    --muted: #7a6650;
+    --border: #191410;
+
+    --coral: #f0546a;
+    --tangerine: #f5883c;
+    --gold: #f5c33c;
+    --lilac: #9b7edb;
+    --grape: #6e4fc4;
+    --sky: #6fb7e8;
+    --mint: #63c295;
+
+    --accent: var(--coral);
     --accent-soft: #fce0e6;
-    --accent-text: #fffaf2;
-    --danger: #e0453f;
-    --high: #e0453f;
-    --overdue: #e0453f;
-    --today: #f5892c;
-    --tomorrow: #e0a92b;
+    --accent-text: #fcf6e8;
+    --danger: var(--coral);
+    --high: var(--coral);
+    --overdue: var(--coral);
+    --today: var(--tangerine);
+    --tomorrow: var(--gold);
     --later: #a2917a;
-    --ok: #4e9a5c;
-    /* Тень тёплая и двойная: плотная «подложка» цвета бумаги плюс мягкий
-       провал. Чисто размытая тень на кремовом читается грязью. */
-    --shadow: 0 3px 0 #ecd9b4, 0 10px 24px rgba(20, 10, 30, 0.28);
+    --ok: var(--mint);
+
+    /* Тень — не размытие, а продолжение контура: сплошной чернильный
+       сдвиг. Размытая тень это Material, она несовместима с контурным
+       рисованием. */
+    --shadow: 5px 5px 0 var(--ink);
     --font-display: "Comfortaa", "Trebuchet MS", "Segoe UI", sans-serif;
     --font-body: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    --radius-card: 22px;
+    --radius-card: 30px;
     --radius-control: 999px;
-    --border-width: 2px;
-    --heading-transform: none;
-    --heading-spacing: 0.01em;
+    --border-width: 4px;
+    --heading-transform: uppercase;
+    --heading-spacing: 0.04em;
   }
-  /* Тёмный вариант скина отключён намеренно: см. комментарий выше. */
+  /* Тёмного варианта нет намеренно: это цельный образ, а не «светлая
+     версия чего-то». */
 
-  :root[data-skin="groovy"] h1,
-  :root[data-skin="groovy"] .card h2 { font-family: var(--font-display); }
-  :root[data-skin="groovy"] .card:hover { transform: translateY(-3px); }
-  /* Кнопки-таблетки: у груви скругление доведено до предела, это его
-     главная примета наравне со шрифтом. */
-  :root[data-skin="groovy"] button {
-    border-radius: 999px;
-    border: 2px solid transparent;
+  /* --- Цвет домена ---------------------------------------------------
+     Один акцент на карточку, используется сразу в трёх местах: чип
+     иконки, основная кнопка, микрозвёзды. Взгляд узнаёт блок до того,
+     как прочитает заголовок. */
+  :root[data-skin="groovy"] [data-domain="tasks"],
+  :root[data-skin="groovy"] [data-domain="calendar"] { --domain: var(--coral); }
+  :root[data-skin="groovy"] [data-domain="habits"] { --domain: var(--sky); }
+  :root[data-skin="groovy"] [data-domain="goals"] { --domain: var(--lilac); }
+  :root[data-skin="groovy"] [data-domain="shelf"] { --domain: var(--gold); }
+  :root[data-skin="groovy"] [data-domain="rewards"] { --domain: var(--tangerine); }
+  :root[data-skin="groovy"] [data-domain="weekly"] { --domain: var(--grape); }
+  :root[data-skin="groovy"] [data-domain="digest"] { --domain: var(--mint); }
+
+  /* --- Сетка ---------------------------------------------------------
+     Явные 12 колонок вместо auto-fit: одинаковая ширина у всех соседей
+     и есть «одинаковые карточки», от которых уходим. Разная ширина —
+     это индивидуальность блока, а не украшение. */
+  /* Полоса шире обычных 1100px: на двенадцати колонках карточка span 3
+     иначе ужимается до 250px, а в неё должны влезать иллюстрация,
+     крупный заголовок и список. */
+  :root[data-skin="groovy"] body { max-width: 1560px; padding: 24px; }
+  :root[data-skin="groovy"] .grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 20px;
+  }
+  :root[data-skin="groovy"] .grid > .card { grid-column: span 4; }
+  :root[data-skin="groovy"] .grid > [data-domain="calendar"] { grid-column: span 12; }
+  :root[data-skin="groovy"] .grid > [data-domain="goals"],
+  :root[data-skin="groovy"] .grid > [data-domain="weekly"],
+  :root[data-skin="groovy"] .grid > [data-domain="shelf"],
+  :root[data-skin="groovy"] .grid > [data-domain="digest"] { grid-column: span 3; }
+
+  :root[data-skin="groovy"] .card {
+    /* Карточка ниже 300px — признак того, что в неё забыли положить
+       иллюстрацию. */
+    min-height: 300px;
+    padding: 26px;
+    /* Угловой декор выходит за край карточки и частично перекрывает
+       контур — так получается аппликация, а не рамка. */
+    overflow: visible;
+    position: relative;
+  }
+  :root[data-skin="groovy"] [data-domain="calendar"],
+  :root[data-skin="groovy"] [data-domain="rewards"] { padding: 30px; }
+
+  :root[data-skin="groovy"] .card:hover {
+    transform: translateY(-5px);
+    box-shadow: 9px 9px 0 var(--ink);
+  }
+
+  /* --- Типографика ---------------------------------------------------
+     Заголовок карточки был 16px — на нём и держалась «панельность».
+     Стало 26px, числа 64px. */
+  :root[data-skin="groovy"] .card h2 {
+    font-family: var(--font-display);
+    font-size: 26px;
     font-weight: 700;
-    letter-spacing: 0.01em;
+    line-height: 1.15;
+    margin-bottom: 20px;
   }
-  :root[data-skin="groovy"] button.secondary,
-  :root[data-skin="groovy"] button.danger { border-color: var(--border); }
+  :root[data-skin="groovy"] .card h3 { font-size: 15px; }
+  :root[data-skin="groovy"] .rewards-number {
+    font-family: var(--font-display);
+    font-size: 64px;
+    line-height: 1;
+  }
+  :root[data-skin="groovy"] .weekly-number,
+  :root[data-skin="groovy"] .stat-number {
+    font-family: var(--font-display);
+    font-size: 48px;
+    line-height: 1;
+  }
+  :root[data-skin="groovy"] .rewards-label {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  :root[data-skin="groovy"] ul.item-list li { font-size: 16px; font-weight: 600; }
+
+  /* --- Кнопки и поля -------------------------------------------------
+     Всё, что имеет фон, имеет и контур. Полупрозрачных рамок в системе
+     нет: контур либо чернильный, либо его нет вовсе. */
+  :root[data-skin="groovy"] button {
+    border: 3px solid var(--ink);
+    border-radius: 999px;
+    box-shadow: 3px 3px 0 var(--ink);
+    background: var(--domain, var(--coral));
+    color: var(--paper-warm);
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    min-height: 44px;
+    padding: 0 22px;
+    transition: transform 0.09s ease, box-shadow 0.09s ease;
+  }
+  :root[data-skin="groovy"] button:hover:not(:disabled) {
+    transform: translate(-2px, -2px);
+    box-shadow: 5px 5px 0 var(--ink);
+  }
+  /* Нажатие: кнопка буквально вдавливается на место своей тени. */
+  :root[data-skin="groovy"] button:active:not(:disabled) {
+    transform: translate(3px, 3px);
+    box-shadow: none;
+  }
+  :root[data-skin="groovy"] button.secondary {
+    background: var(--paper-warm);
+    color: var(--ink);
+  }
+  :root[data-skin="groovy"] button.danger { background: var(--coral); color: var(--paper-warm); }
+  :root[data-skin="groovy"] button:disabled { opacity: 0.55; box-shadow: 2px 2px 0 var(--ink); }
+
   :root[data-skin="groovy"] input,
-  :root[data-skin="groovy"] select { border-radius: 999px; }
-  :root[data-skin="groovy"] .rewards-number,
-  :root[data-skin="groovy"] .weekly-number { font-family: var(--font-display); }
-  :root[data-skin="groovy"] .achievements li { border-radius: 999px; }
-  :root[data-skin="groovy"] .toast { border-width: 2px; }
-
-  /* Глифы груви — КОНТУРНЫЕ, а не сплошные (см. ICON_LINE): толстая
-     скруглённая линия и есть характер стиля. Поэтому здесь fill и stroke
-     меняются местами относительно базового набора. */
-  :root[data-skin="groovy"] .icon-chip svg {
-    width: 68%;
-    height: 68%;
-    fill: none;
-    stroke-width: 2.6;
-    stroke-linecap: round;
-    stroke-linejoin: round;
+  :root[data-skin="groovy"] select,
+  :root[data-skin="groovy"] textarea {
+    border: 3px solid var(--ink);
+    border-radius: 18px;
+    background: var(--paper-warm);
+    color: var(--ink);
+    min-height: 44px;
+    padding: 0 16px;
+    font-weight: 600;
   }
-  :root[data-skin="groovy"] .icon-chip-muted svg { stroke: var(--accent); }
-  :root[data-skin="groovy"] .icon-chip-accent svg { stroke: var(--accent-text); }
+  :root[data-skin="groovy"] textarea { padding: 12px 16px; }
+  :root[data-skin="groovy"] input::placeholder { color: var(--muted); }
 
-  /* Иллюстрации пустых состояний. Подключены как background-image, а не
-     <img>, СПЕЦИАЛЬНО: пока картинка не сгенерирована, фон просто не
-     отрисуется — без битой иконки и без ошибки в консоли. Появится файл
-     в skins/groovy/ — появится и картинка, править код не нужно. */
-  :root[data-skin="groovy"] #taskList .empty,
-  :root[data-skin="groovy"] #habitList .empty,
-  :root[data-skin="groovy"] #goalList .empty {
-    padding-top: 132px;
+  :root[data-skin="groovy"] ul.item-list li {
+    background: var(--paper-warm);
+    border: 3px solid var(--ink);
+    border-radius: 20px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+  }
+  :root[data-skin="groovy"] .achievements li {
+    border: 3px solid var(--ink);
+    border-radius: 20px;
+    background: var(--paper-warm);
+  }
+  :root[data-skin="groovy"] .achievements li.unlocked {
+    background: var(--domain, var(--tangerine));
+    color: var(--ink);
+  }
+
+  /* --- Иконки --------------------------------------------------------
+     Скруглённый КВАДРАТ, а не круг: круглые чипы были в прошлой,
+     панельной версии. Квадрат с толстым контуром читается как фишка
+     настольной игры. Глиф берём из сплошного базового набора — тонкая
+     линия внутри толстого контура выглядит нерешительно, поэтому
+     ICON_LINE здесь не используется (см. glyphBody). */
+  :root[data-skin="groovy"] .icon-chip {
+    border-radius: 14px;
+    border: 3px solid var(--ink);
+    box-shadow: 2px 2px 0 var(--ink);
+    background: var(--domain, var(--coral));
+    width: 38px;
+    height: 38px;
+  }
+  :root[data-skin="groovy"] .icon-chip svg {
+    width: 58%;
+    height: 58%;
+    fill: var(--paper-warm);
+    stroke: none;
+  }
+  :root[data-skin="groovy"] .icon-chip-muted { background: var(--paper-shade); }
+  :root[data-skin="groovy"] .icon-chip-muted svg { fill: var(--ink); opacity: 1; }
+  :root[data-skin="groovy"] [data-icon] .icon-chip { width: 38px; height: 38px; }
+  :root[data-skin="groovy"] .rewards-label .icon-chip { width: 32px; height: 32px; }
+
+  /* --- Прогресс ------------------------------------------------------ */
+  :root[data-skin="groovy"] .progress-bar {
+    border: 3px solid var(--ink);
+    border-radius: 999px;
+    background: var(--paper-shade);
+    height: 16px;
+    width: 84px;
+    overflow: hidden;
+  }
+  :root[data-skin="groovy"] .progress-bar > span {
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--gold), var(--coral));
+    position: relative;
+  }
+  /* Блик, медленно идущий поперёк заливки: объём без градиентной каши. */
+  :root[data-skin="groovy"] .progress-bar > span::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      100deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.55) 50%,
+      transparent 70%
+    );
+    animation: groovy-sheen 2.4s linear infinite;
+  }
+  @keyframes groovy-sheen {
+    from { transform: translateX(-120%); }
+    to { transform: translateX(220%); }
+  }
+
+  /* --- Иллюстрации: уровень 1, герой ---------------------------------
+     Пустого списка без картинки в этой системе не существует. */
+  :root[data-skin="groovy"] .empty {
+    color: var(--muted);
+    font-size: 15px;
+    font-weight: 700;
+    padding-top: 176px;
     background-repeat: no-repeat;
     background-position: top center;
-    background-size: auto 120px;
+    background-size: auto 160px;
+    border: none;
   }
   :root[data-skin="groovy"] #taskList .empty { background-image: url("skins/groovy/empty-tasks.png"); }
   :root[data-skin="groovy"] #habitList .empty { background-image: url("skins/groovy/empty-habits.png"); }
   :root[data-skin="groovy"] #goalList .empty { background-image: url("skins/groovy/empty-goals.png"); }
-  /* У полки пять подсписков, и картинка в каждом означала бы пять
-     одинаковых иллюстраций подряд. Ставим только в первый: он идёт
-     сразу под заголовком карточки и работает как иллюстрация всего
-     раздела, остальные остаются текстом. */
   :root[data-skin="groovy"] #shelfMovieToWatch .empty {
-    padding-top: 112px;
-    background: url("skins/groovy/empty-shelf.png") no-repeat top center / auto 100px;
+    padding-top: 132px;
+    background-image: url("skins/groovy/empty-shelf.png");
+    background-size: auto 120px;
+  }
+  :root[data-skin="groovy"] #digestList .empty {
+    padding-top: 132px;
+    background-image: url("skins/groovy/hero-quick.png");
+    background-size: auto 120px;
   }
 
-  /* Логотип-леттеринг вместо кольца. Кольцо — анимированная инлайновая
-     SVG, у груви её заменяет готовая картинка, поэтому знак прячем.
-     Текст «LifeOS Agent» не удаляем, а уводим в visually-hidden: слово
-     LIFEOS уже нарисовано в логотипе, но заголовок страницы должен
-     остаться читаемым для скринридера и поиска. */
+  /* Карточки, где списка нет вовсе, получают героя фоном самой карточки. */
+  :root[data-skin="groovy"] [data-domain="weekly"] {
+    background-image: url("skins/groovy/hero-weekly.png");
+    background-repeat: no-repeat;
+    background-position: right -10px bottom -6px;
+    background-size: auto 140px;
+  }
+
+  /* --- Иллюстрации: уровень 2, угловой декор -------------------------
+     Лежит в углу и ВЫХОДИТ за край карточки, частично перекрывая
+     контур. Соседние карточки получают разный декор: один и тот же
+     цветок в каждом углу превращает приём в обои. */
+  :root[data-skin="groovy"] .card::before,
+  :root[data-skin="groovy"] .card::after {
+    content: "";
+    position: absolute;
+    background-repeat: no-repeat;
+    background-size: contain;
+    pointer-events: none;
+    z-index: 1;
+  }
+  :root[data-skin="groovy"] [data-domain="rewards"]::before {
+    right: -26px; bottom: -22px; width: 118px; height: 118px;
+    background-image: url("skins/groovy/decor-mushroom.png");
+  }
+  :root[data-skin="groovy"] [data-domain="rewards"]::after {
+    left: -18px; top: -20px; width: 82px; height: 82px;
+    background-image: url("skins/groovy/decor-stars.png");
+  }
+  :root[data-skin="groovy"] [data-domain="tasks"]::before {
+    left: -22px; bottom: -20px; width: 108px; height: 108px;
+    background-image: url("skins/groovy/decor-flowers-left.png");
+  }
+  :root[data-skin="groovy"] [data-domain="tasks"]::after {
+    right: -14px; top: -18px; width: 88px; height: 88px;
+    background-image: url("skins/groovy/decor-cloud-small.png");
+    animation: groovy-drift 28s ease-in-out infinite;
+  }
+  :root[data-skin="groovy"] [data-domain="habits"]::before {
+    right: -20px; top: -30px; width: 150px; height: 75px;
+    background-image: url("skins/groovy/decor-rainbow.png");
+    animation: groovy-drift 34s ease-in-out infinite;
+  }
+  :root[data-skin="groovy"] [data-domain="habits"]::after {
+    right: -18px; bottom: -20px; width: 104px; height: 104px;
+    background-image: url("skins/groovy/decor-flowers-right.png");
+  }
+  :root[data-skin="groovy"] [data-domain="goals"]::before {
+    left: -20px; bottom: -18px; width: 160px; height: 80px;
+    background-image: url("skins/groovy/decor-hill.png");
+  }
+  :root[data-skin="groovy"] [data-domain="goals"]::after {
+    right: -12px; top: -16px; width: 72px; height: 72px;
+    background-image: url("skins/groovy/decor-stars.png");
+  }
+  :root[data-skin="groovy"] [data-domain="weekly"]::before {
+    left: -16px; top: -20px; width: 92px; height: 92px;
+    background-image: url("skins/groovy/decor-cloud-big.png");
+    animation: groovy-drift 40s ease-in-out infinite;
+  }
+  :root[data-skin="groovy"] [data-domain="shelf"]::before {
+    right: -20px; bottom: -20px; width: 106px; height: 106px;
+    background-image: url("skins/groovy/decor-flowers-right.png");
+  }
+  :root[data-skin="groovy"] [data-domain="digest"]::before {
+    left: -18px; bottom: -18px; width: 100px; height: 100px;
+    background-image: url("skins/groovy/decor-flowers-left.png");
+  }
+  :root[data-skin="groovy"] [data-domain="calendar"]::before {
+    right: -18px; top: -24px; width: 96px; height: 96px;
+    background-image: url("skins/groovy/decor-cloud-small.png");
+    animation: groovy-drift 30s ease-in-out infinite;
+  }
+
+  /* Дрейф намеренно очень медленный: движение должно замечаться, только
+     если смотреть на облако специально. Быстрая анимация декора
+     превращает страницу в мигающую витрину. */
+  @keyframes groovy-drift {
+    0%, 100% { transform: translate(0, 0); }
+    50% { transform: translate(-6px, 4px); }
+  }
+
+  /* --- Иллюстрации: уровень 3, микрозвёзды ---------------------------
+     Рисуются инлайновым SVG (см. sprinkleSparkles), а не картинками:
+     их по 3-6 на карточку, они одноцветные и красятся акцентом домена —
+     картинкой это было бы 20 лишних файлов без возможности перекрасить. */
+  :root[data-skin="groovy"] .sparkle {
+    position: absolute;
+    pointer-events: none;
+    z-index: 0;
+    fill: var(--domain, var(--gold));
+    animation: groovy-twinkle 4s ease-in-out infinite;
+  }
+  @keyframes groovy-twinkle {
+    0%, 100% { opacity: 0.45; transform: scale(0.9); }
+    50% { opacity: 1; transform: scale(1.1); }
+  }
+
+  /* Пружинный «поп» счётчика при изменении. */
+  :root[data-skin="groovy"] .pop {
+    animation: groovy-pop 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @keyframes groovy-pop {
+    0% { transform: scale(1); }
+    45% { transform: scale(1.18); }
+    100% { transform: scale(1); }
+  }
+
+  :root[data-skin="groovy"] .toast {
+    border: 3px solid var(--ink);
+    box-shadow: 4px 4px 0 var(--ink);
+    background: var(--paper-warm);
+    color: var(--ink);
+    font-weight: 700;
+  }
+  :root[data-skin="groovy"] .shelf-poster { border: 3px solid var(--ink); border-radius: 16px; }
+  :root[data-skin="groovy"] .theme-swatch { border: 3px solid var(--ink); }
+  :root[data-skin="groovy"] .digest-topic { border-bottom: 3px solid var(--paper-shade); }
+  :root[data-skin="groovy"] .digest-preview {
+    border: 3px solid var(--ink);
+    border-radius: 20px;
+    background: var(--paper-warm);
+  }
+
+  /* Лого-леттеринг вместо кольца. Текст не удаляем, а уводим в
+     visually-hidden: слово LIFEOS уже нарисовано, но заголовок страницы
+     должен остаться читаемым для скринридера и поиска. */
   :root[data-skin="groovy"] .brand-mark { display: none; }
   :root[data-skin="groovy"] .brand::before {
     content: "";
-    width: 172px;
-    height: 62px;
+    width: 210px;
+    height: 76px;
     flex: none;
     background: url("skins/groovy/logo.png") no-repeat center / contain;
   }
@@ -1206,51 +1516,58 @@
     clip-path: inset(50%);
     white-space: nowrap;
   }
+  :root[data-skin="groovy"] .subtitle { color: var(--paper-shade); font-weight: 600; }
 
-  /* Аватар профиля: у груви вместо глифа звания — свой персонаж.
-     cover, а не contain: кружок должен быть заполнен целиком. */
-  :root[data-skin="groovy"] .profile-avatar {
-    background: url("skins/groovy/avatar.png") no-repeat center / cover;
-  }
-  :root[data-skin="groovy"] .profile-avatar .icon-chip { display: none; }
-
-  /* Награды на лестнице званий. Нулевая ступень («Новичок») остаётся
-     глифом: бейджей сгенерировано четыре, а ступеней пять, и начинать
-     лестницу с награды всё равно неверно — её ещё не заслужили. */
-  :root[data-skin="groovy"] .rank-ladder li:is([data-step="1"], [data-step="2"], [data-step="3"], [data-step="4"]) .icon-chip {
-    width: 2.6em;
-    height: 2.6em;
-    background-color: transparent;
+  /* Персонаж получает собственную полосу снизу, а не свободный угол:
+     угол занят переключателем тем, и на узком экране картинка налезала
+     бы на кружки. */
+  :root[data-skin="groovy"] .rewards-card { padding-bottom: 104px; }
+  :root[data-skin="groovy"] [data-domain="rewards"] {
+    background-image: url("skins/groovy/motivation.png");
     background-repeat: no-repeat;
-    background-position: center;
-    background-size: contain;
+    background-position: left 24px bottom 10px;
+    background-size: auto 84px;
   }
-  :root[data-skin="groovy"] .rank-ladder li:is([data-step="1"], [data-step="2"], [data-step="3"], [data-step="4"]) .icon-chip svg { display: none; }
-  :root[data-skin="groovy"] .rank-ladder li[data-step="1"] .icon-chip { background-image: url("skins/groovy/badge-100.png"); }
-  :root[data-skin="groovy"] .rank-ladder li[data-step="2"] .icon-chip { background-image: url("skins/groovy/badge-300.png"); }
-  :root[data-skin="groovy"] .rank-ladder li[data-step="3"] .icon-chip { background-image: url("skins/groovy/badge-600.png"); }
-  :root[data-skin="groovy"] .rank-ladder li[data-step="4"] .icon-chip { background-image: url("skins/groovy/badge-1000.png"); }
 
-  /* Персонаж в карточке визита. Ему выделена собственная полоса снизу
-     (padding-bottom), а не свободный угол: угол там занят переключателем
-     тем, и картинка налезала бы на кружки на узких экранах. */
-  :root[data-skin="groovy"] .rewards-card {
-    position: relative;
-    /* 92, а не 84: картинка 76px + отступ 6px снизу оставляли всего 2px
-       зазора до переключателя тем, и на узком экране, где кружки тем
-       переносятся на вторую строку, он бы в неё упёрся. */
-    padding-bottom: 92px;
+  /* --- Адаптив -------------------------------------------------------
+     Декор не прячется, а перестраивается: display:none на украшениях —
+     ровно тот приём, которым интерфейс на телефоне превращается обратно
+     в панель. */
+  @media (max-width: 1279px) {
+    :root[data-skin="groovy"] .grid > .card,
+    :root[data-skin="groovy"] .grid > [data-domain="goals"],
+    :root[data-skin="groovy"] .grid > [data-domain="weekly"],
+    :root[data-skin="groovy"] .grid > [data-domain="shelf"],
+    :root[data-skin="groovy"] .grid > [data-domain="digest"] { grid-column: span 6; }
+    :root[data-skin="groovy"] .card::before { transform: scale(0.7); }
   }
-  :root[data-skin="groovy"] .rewards-card::after {
-    content: "";
-    position: absolute;
-    right: 14px;
-    bottom: 6px;
-    width: 72px;
-    height: 76px;
-    background: url("skins/groovy/motivation.png") no-repeat center / contain;
-    pointer-events: none;
+  @media (max-width: 899px) {
+    :root[data-skin="groovy"] .grid { grid-template-columns: minmax(0, 1fr); }
+    :root[data-skin="groovy"] .grid > .card,
+    :root[data-skin="groovy"] .grid > [data-domain="calendar"],
+    :root[data-skin="groovy"] .grid > [data-domain="goals"],
+    :root[data-skin="groovy"] .grid > [data-domain="weekly"],
+    :root[data-skin="groovy"] .grid > [data-domain="shelf"],
+    :root[data-skin="groovy"] .grid > [data-domain="digest"] { grid-column: span 1; }
+    :root[data-skin="groovy"] .card h2 { font-size: 22px; }
+    :root[data-skin="groovy"] .rewards-number { font-size: 52px; }
+    :root[data-skin="groovy"] .empty { padding-top: 136px; background-size: auto 120px; }
   }
+  @media (max-width: 599px) {
+    :root[data-skin="groovy"] .empty { padding-top: 116px; background-size: auto 100px; }
+    /* Второй угловой элемент уходит, ПЕРВЫЙ остаётся всегда. */
+    :root[data-skin="groovy"] .card::after { display: none; }
+    :root[data-skin="groovy"] .sparkle:nth-of-type(n + 3) { display: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root[data-skin="groovy"] .card::before,
+    :root[data-skin="groovy"] .card::after,
+    :root[data-skin="groovy"] .sparkle,
+    :root[data-skin="groovy"] .progress-bar > span::after { animation: none; }
+    :root[data-skin="groovy"] .pop { animation: none; }
+  }
+
 
   /* ==================== СКИН: ЯПОНСКАЯ ГРАВЮРА ====================
      Состаренная бумага, индиго и киноварь, острые углы, плоские рамки
@@ -1482,7 +1799,7 @@
 <div class="grid">
 
 
-  <section class="card calendar-card">
+  <section class="card calendar-card" data-domain="calendar">
     <h2 data-icon="chart">Календарь</h2>
     <div class="cal-head">
       <button class="secondary" id="calPrev" title="Предыдущий месяц">‹</button>
@@ -1520,7 +1837,7 @@
     </div>
   </section>
 
-  <section class="card rewards-card">
+  <section class="card rewards-card" data-domain="rewards">
     <h2 id="rewardsTitle">Ежедневный визит</h2>
     <div class="rewards-row">
       <div class="rewards-stat">
@@ -1551,7 +1868,7 @@
     <div class="theme-picker" id="themePicker"></div>
   </section>
 
-  <section class="card">
+  <section class="card" data-domain="tasks">
     <h2>Задачи</h2>
     <form class="add-form" id="taskForm">
       <input type="text" id="taskTitle" placeholder="Название задачи" required />
@@ -1565,7 +1882,7 @@
     <ul class="item-list" id="taskList"></ul>
   </section>
 
-  <section class="card">
+  <section class="card" data-domain="habits">
     <h2>Привычки</h2>
     <form class="add-form" id="habitForm">
       <input type="text" id="habitTitle" placeholder="Название привычки" required />
@@ -1574,7 +1891,7 @@
     <ul class="item-list" id="habitList"></ul>
   </section>
 
-  <section class="card">
+  <section class="card" data-domain="goals">
     <h2>Цели</h2>
     <form class="add-form" id="goalForm">
       <input type="text" id="goalTitle" placeholder="Название цели" required />
@@ -1583,12 +1900,12 @@
     <ul class="item-list" id="goalList"></ul>
   </section>
 
-  <section class="card">
+  <section class="card" data-domain="weekly">
     <h2 data-icon="chart">Итоги недели</h2>
     <p class="stat-line"><span class="stat-number" id="weeklyTasksCount">—</span> задач выполнено за последние 7 дней</p>
   </section>
 
-  <section class="card">
+  <section class="card" data-domain="shelf">
     <h2 data-icon="shelf">Полка</h2>
     <form class="add-form" id="shelfForm">
       <input id="shelfTitle" placeholder="Название фильма или книги" />
@@ -1621,7 +1938,7 @@
     </div>
   </section>
 
-  <section class="card">
+  <section class="card" data-domain="digest">
     <h2 data-icon="repeat">Дайджесты каналов</h2>
     <form class="add-form" id="digestForm">
       <input type="text" id="digestName" placeholder="Тема одним словом, напр. ESG" required />
@@ -1753,6 +2070,60 @@ function animateNumber(el, to) {
     if (progress < 1) requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
+  popNumber(el);
+}
+
+/** Пружинный «поп» на изменившемся счётчике.
+
+    Класс снимается по окончании анимации, а не по таймеру: иначе при
+    двух изменениях подряд второй «поп» не проиграется — класс уже висит,
+    и браузер не считает это новым запуском. */
+function popNumber(el) {
+  if (getActiveSkin() !== "groovy") return;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  el.classList.remove("pop");
+  void el.offsetWidth; // принудительный reflow, иначе класс «не менялся»
+  el.classList.add("pop");
+  el.addEventListener("animationend", () => el.classList.remove("pop"), { once: true });
+}
+
+// Микрозвёзды: уровень 3 иллюстраций (см. designs/003-groovy-design-system.md).
+// Инлайновый SVG, а не картинки — их по 3-6 на карточку, они одноцветные
+// и красятся акцентом домена через currentColor-подобный var(--domain).
+const SPARKLE_PATH =
+  "M12 0c1 6.6 4.4 10 11 12-6.6 2-10 5.4-11 12-1-6.6-4.4-10-11-12 6.6-2 10-5.4 11-12z";
+
+/** Разложить звёзды по карточкам.
+
+    Позиции детерминированы индексом карточки и номером звезды, а не
+    Math.random(): при каждой перерисовке случайные звёзды прыгали бы по
+    карточке, и это читалось бы как дефект. Тот же приём, что у
+    «счастливых дней» в app/rewards/coins.py — там хеш вместо random по
+    той же причине. */
+function sprinkleSparkles() {
+  document.querySelectorAll(".sparkle").forEach((el) => el.remove());
+  if (getActiveSkin() !== "groovy") return;
+
+  document.querySelectorAll(".grid > .card").forEach((card, cardIndex) => {
+    const count = 3 + (cardIndex % 3);
+    for (let i = 0; i < count; i += 1) {
+      const seed = cardIndex * 7 + i * 13;
+      const left = 6 + ((seed * 17) % 84);
+      const top = 8 + ((seed * 29) % 80);
+      const size = 10 + ((seed * 11) % 9);
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("class", "sparkle");
+      svg.setAttribute("viewBox", "0 0 24 24");
+      svg.setAttribute("aria-hidden", "true");
+      svg.setAttribute("width", size);
+      svg.setAttribute("height", size);
+      svg.style.left = `${left}%`;
+      svg.style.top = `${top}%`;
+      svg.style.animationDelay = `${(seed % 40) / 10}s`;
+      svg.innerHTML = `<path d="${SPARKLE_PATH}"/>`;
+      card.appendChild(svg);
+    }
+  });
 }
 
 function formatDate(iso) {
@@ -1936,11 +2307,11 @@ function glyphBody(name) {
     if (!pixelCache[name]) pixelCache[name] = pixelGlyph(PIXEL_GRID[name]);
     return pixelCache[name];
   }
-  // Груви и японский делят один контурный набор — расходятся только
-  // параметрами обводки, и те заданы в CSS скина.
-  if ((skin === "groovy" || skin === "japan") && ICON_LINE[name]) {
-    return ICON_LINE[name];
-  }
+  // Контурный набор остался только у японского. Груви с ним расстался
+  // при переходе на дизайн-систему 003: там глиф лежит в чипе с
+  // контуром 3px, и тонкая линия внутри толстой рамки выглядит
+  // нерешительно — нужна сплошная заливка из базового набора.
+  if (skin === "japan" && ICON_LINE[name]) return ICON_LINE[name];
   return ICON[name] || "";
 }
 
@@ -2059,6 +2430,7 @@ function applySkin(skinId) {
     Счётчик монет здесь намеренно не трогаем (не зовём renderRewards):
     он анимируется от нуля, и на смене скина это выглядело бы сбоем. */
 function repaintIcons() {
+  sprinkleSparkles();
   document.querySelectorAll(".icon-chip").forEach((el) => el.remove());
   renderStaticIcons();
   const list = document.getElementById("achievementsList");
