@@ -485,7 +485,11 @@
   [data-icon] .icon-chip { width: 1.7em; height: 1.7em; }
   .rewards-card h2 { display: flex; align-items: center; gap: 10px; }
   .rewards-label { display: inline-flex; align-items: center; gap: 5px; }
-  .rewards-label .icon-chip { width: 1.25em; height: 1.25em; }
+  /* Тот же размер, что у обычного чипа: на 1.25em глиф внутри выходил
+     ~11.6px — самое мелкое место во всём интерфейсе, и именно там
+     иконки первыми разваливались. Разница в размере тут ничего не
+     значила визуально, а нижнюю границу читаемости опускала. */
+  .rewards-label .icon-chip { width: 1.45em; height: 1.45em; }
   .rank-line { display: flex; align-items: center; gap: 8px; }
 
   .toast {
@@ -712,6 +716,49 @@
      висел поверх страницы с самой загрузки и не закрывался ни
      «Отменой», ни сохранением. Правило ниже возвращает hidden силу. */
   .editor-dialog[hidden] { display: none; }
+
+  /* --- Дайджесты каналов --- */
+  .digest-topic {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .digest-topic:last-child { border-bottom: none; }
+  .digest-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .digest-freq {
+    flex: 1;
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+  .digest-channel { flex: 1; min-width: 0; word-break: break-all; }
+  .digest-topic .add-form { margin: 8px 0 0; }
+  .digest-preview {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-control);
+    background: var(--accent-soft);
+  }
+  /* Без этого правила hidden не сработает, если элементу когда-нибудь
+     зададут авторский display — те же грабли, из-за которых диалог
+     правки висел поверх страницы с самой загрузки. */
+  .digest-preview[hidden] { display: none; }
+  .digest-preview pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: inherit;
+    font-size: 0.85rem;
+  }
+  .digest-warn {
+    margin-bottom: 8px;
+    font-size: 0.8rem;
+    color: var(--danger);
+  }
   .editor-dialog {
     position: fixed;
     inset: 0;
@@ -757,11 +804,83 @@
 
   /* --- Звание (по накопленным монетам) --- */
   .rank-line {
-    margin-top: 12px;
     font-size: 0.85rem;
     color: var(--muted);
   }
   .rank-line b { color: var(--text); }
+
+  /* --- Профиль: аватар + звание + прогресс до следующего --- */
+  .profile {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 14px;
+  }
+  .profile-avatar {
+    width: 46px;
+    height: 46px;
+    flex: none;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .profile-avatar .icon-chip { width: 34px; height: 34px; }
+  /* min-width: 0 обязателен: без него длинная подпись «до звания…»
+     распирает флекс-строку и выдавливает аватар за край карточки. */
+  .profile-body { flex: 1; min-width: 0; }
+  .profile-bar {
+    height: 7px;
+    margin-top: 6px;
+    background: var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .profile-bar > span {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--accent);
+    border-radius: 4px;
+    transition: width 0.4s ease;
+  }
+  .profile-next {
+    margin-top: 5px;
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+
+  /* --- Лестница званий --- */
+  .rank-ladder {
+    list-style: none;
+    margin: 14px 0 0;
+    padding: 0;
+    display: flex;
+    gap: 6px;
+  }
+  .rank-ladder li {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 2px;
+    border: var(--border-width) solid var(--border);
+    border-radius: var(--radius-control);
+    font-size: 0.72rem;
+    color: var(--muted);
+    /* Недостигнутые ступени приглушены, но НЕ спрятаны: видеть, что
+       впереди, — и есть весь смысл лестницы. */
+    opacity: 0.45;
+  }
+  .rank-ladder li.reached {
+    opacity: 1;
+    color: var(--text);
+    border-color: var(--accent);
+  }
+  .rank-ladder .icon-chip { width: 2em; height: 2em; }
 
   /* --- Всплывающая награда при клике "Забрать" --- */
   .rewards-row { position: relative; }
@@ -952,6 +1071,307 @@
   /* Знак в шапке: пиксельная сетка вместо мягкого кольца. */
   :root[data-skin="pixel"] .brand-mark { image-rendering: pixelated; }
 
+  /* ==================== СКИН: РЕТРО-ГРУВИ ====================
+     Тёмный сливовый фон, кремовые карточки, пухлые скругления, кнопки
+     таблетками. Как и у пикселя, скин задаёт палитру ЦЕЛИКОМ и
+     игнорирует prefers-color-scheme: это цельный образ, а не «светлая
+     версия чего-то». Полутёмного варианта нет намеренно.
+
+     Шрифт: Comfortaa — округлый геометрический гротеск, один из
+     немногих на Google Fonts с КИРИЛЛИЦЕЙ (у большинства «настоящих»
+     груви-шрифтов её нет, а интерфейс русский). Файлы кладём к себе в
+     fonts/, как Pixelify: внешние CDN из России не работают. Пока
+     файлов нет, @font-face молча не сработает и подхватится следующий
+     шрифт стека — скин будет жить, просто без своей типографики. */
+  @font-face {
+    font-family: "Comfortaa";
+    src: url("fonts/comfortaa-cyrillic-700.woff2") format("woff2");
+    font-weight: 700;
+    font-display: swap;
+    unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+  }
+  @font-face {
+    font-family: "Comfortaa";
+    src: url("fonts/comfortaa-latin-700.woff2") format("woff2");
+    font-weight: 700;
+    font-display: swap;
+    unicode-range: U+0000-00FF, U+2000-206F, U+20AC, U+2122, U+2212;
+  }
+
+  :root[data-skin="groovy"] {
+    --bg: #211a2e;
+    --card-bg: #faf0dc;
+    --text: #2f2113;
+    --muted: #7c6a52;
+    --border: #e4d2ae;
+    --accent: #ef4a6f;
+    --accent-soft: #fce0e6;
+    --accent-text: #fffaf2;
+    --danger: #e0453f;
+    --high: #e0453f;
+    --overdue: #e0453f;
+    --today: #f5892c;
+    --tomorrow: #e0a92b;
+    --later: #a2917a;
+    --ok: #4e9a5c;
+    /* Тень тёплая и двойная: плотная «подложка» цвета бумаги плюс мягкий
+       провал. Чисто размытая тень на кремовом читается грязью. */
+    --shadow: 0 3px 0 #ecd9b4, 0 10px 24px rgba(20, 10, 30, 0.28);
+    --font-display: "Comfortaa", "Trebuchet MS", "Segoe UI", sans-serif;
+    --font-body: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --radius-card: 22px;
+    --radius-control: 999px;
+    --border-width: 2px;
+    --heading-transform: none;
+    --heading-spacing: 0.01em;
+  }
+  /* Тёмный вариант скина отключён намеренно: см. комментарий выше. */
+
+  :root[data-skin="groovy"] h1,
+  :root[data-skin="groovy"] .card h2 { font-family: var(--font-display); }
+  :root[data-skin="groovy"] .card:hover { transform: translateY(-3px); }
+  /* Кнопки-таблетки: у груви скругление доведено до предела, это его
+     главная примета наравне со шрифтом. */
+  :root[data-skin="groovy"] button {
+    border-radius: 999px;
+    border: 2px solid transparent;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+  }
+  :root[data-skin="groovy"] button.secondary,
+  :root[data-skin="groovy"] button.danger { border-color: var(--border); }
+  :root[data-skin="groovy"] input,
+  :root[data-skin="groovy"] select { border-radius: 999px; }
+  :root[data-skin="groovy"] .rewards-number,
+  :root[data-skin="groovy"] .weekly-number { font-family: var(--font-display); }
+  :root[data-skin="groovy"] .achievements li { border-radius: 999px; }
+  :root[data-skin="groovy"] .toast { border-width: 2px; }
+
+  /* Глифы груви — КОНТУРНЫЕ, а не сплошные (см. ICON_LINE): толстая
+     скруглённая линия и есть характер стиля. Поэтому здесь fill и stroke
+     меняются местами относительно базового набора. */
+  :root[data-skin="groovy"] .icon-chip svg {
+    width: 68%;
+    height: 68%;
+    fill: none;
+    stroke-width: 2.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  :root[data-skin="groovy"] .icon-chip-muted svg { stroke: var(--accent); }
+  :root[data-skin="groovy"] .icon-chip-accent svg { stroke: var(--accent-text); }
+
+  /* Иллюстрации пустых состояний. Подключены как background-image, а не
+     <img>, СПЕЦИАЛЬНО: пока картинка не сгенерирована, фон просто не
+     отрисуется — без битой иконки и без ошибки в консоли. Появится файл
+     в skins/groovy/ — появится и картинка, править код не нужно. */
+  :root[data-skin="groovy"] #taskList .empty,
+  :root[data-skin="groovy"] #habitList .empty,
+  :root[data-skin="groovy"] #goalList .empty {
+    padding-top: 132px;
+    background-repeat: no-repeat;
+    background-position: top center;
+    background-size: auto 120px;
+  }
+  :root[data-skin="groovy"] #taskList .empty { background-image: url("skins/groovy/empty-tasks.png"); }
+  :root[data-skin="groovy"] #habitList .empty { background-image: url("skins/groovy/empty-habits.png"); }
+  :root[data-skin="groovy"] #goalList .empty { background-image: url("skins/groovy/empty-goals.png"); }
+  /* У полки пять подсписков, и картинка в каждом означала бы пять
+     одинаковых иллюстраций подряд. Ставим только в первый: он идёт
+     сразу под заголовком карточки и работает как иллюстрация всего
+     раздела, остальные остаются текстом. */
+  :root[data-skin="groovy"] #shelfMovieToWatch .empty {
+    padding-top: 112px;
+    background: url("skins/groovy/empty-shelf.png") no-repeat top center / auto 100px;
+  }
+
+  /* Логотип-леттеринг вместо кольца. Кольцо — анимированная инлайновая
+     SVG, у груви её заменяет готовая картинка, поэтому знак прячем.
+     Текст «LifeOS Agent» не удаляем, а уводим в visually-hidden: слово
+     LIFEOS уже нарисовано в логотипе, но заголовок страницы должен
+     остаться читаемым для скринридера и поиска. */
+  :root[data-skin="groovy"] .brand-mark { display: none; }
+  :root[data-skin="groovy"] .brand::before {
+    content: "";
+    width: 172px;
+    height: 62px;
+    flex: none;
+    background: url("skins/groovy/logo.png") no-repeat center / contain;
+  }
+  :root[data-skin="groovy"] .brand span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* Аватар профиля: у груви вместо глифа звания — свой персонаж.
+     cover, а не contain: кружок должен быть заполнен целиком. */
+  :root[data-skin="groovy"] .profile-avatar {
+    background: url("skins/groovy/avatar.png") no-repeat center / cover;
+  }
+  :root[data-skin="groovy"] .profile-avatar .icon-chip { display: none; }
+
+  /* Награды на лестнице званий. Нулевая ступень («Новичок») остаётся
+     глифом: бейджей сгенерировано четыре, а ступеней пять, и начинать
+     лестницу с награды всё равно неверно — её ещё не заслужили. */
+  :root[data-skin="groovy"] .rank-ladder li:is([data-step="1"], [data-step="2"], [data-step="3"], [data-step="4"]) .icon-chip {
+    width: 2.6em;
+    height: 2.6em;
+    background-color: transparent;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+  }
+  :root[data-skin="groovy"] .rank-ladder li:is([data-step="1"], [data-step="2"], [data-step="3"], [data-step="4"]) .icon-chip svg { display: none; }
+  :root[data-skin="groovy"] .rank-ladder li[data-step="1"] .icon-chip { background-image: url("skins/groovy/badge-100.png"); }
+  :root[data-skin="groovy"] .rank-ladder li[data-step="2"] .icon-chip { background-image: url("skins/groovy/badge-300.png"); }
+  :root[data-skin="groovy"] .rank-ladder li[data-step="3"] .icon-chip { background-image: url("skins/groovy/badge-600.png"); }
+  :root[data-skin="groovy"] .rank-ladder li[data-step="4"] .icon-chip { background-image: url("skins/groovy/badge-1000.png"); }
+
+  /* Персонаж в карточке визита. Ему выделена собственная полоса снизу
+     (padding-bottom), а не свободный угол: угол там занят переключателем
+     тем, и картинка налезала бы на кружки на узких экранах. */
+  :root[data-skin="groovy"] .rewards-card {
+    position: relative;
+    /* 92, а не 84: картинка 76px + отступ 6px снизу оставляли всего 2px
+       зазора до переключателя тем, и на узком экране, где кружки тем
+       переносятся на вторую строку, он бы в неё упёрся. */
+    padding-bottom: 92px;
+  }
+  :root[data-skin="groovy"] .rewards-card::after {
+    content: "";
+    position: absolute;
+    right: 14px;
+    bottom: 6px;
+    width: 72px;
+    height: 76px;
+    background: url("skins/groovy/motivation.png") no-repeat center / contain;
+    pointer-events: none;
+  }
+
+  /* ==================== СКИН: ЯПОНСКАЯ ГРАВЮРА ====================
+     Состаренная бумага, индиго и киноварь, острые углы, плоские рамки
+     без теней. Как и остальные скины, палитру задаёт целиком и
+     prefers-color-scheme игнорирует.
+
+     Шрифт — системный сериф, без своего файла. Настоящих гравюрных
+     шрифтов с кириллицей практически нет, а тащить ещё 30 КБ ради
+     приблизительного попадания не стоит: Georgia даёт нужную «печатную»
+     интонацию и уже есть у всех. */
+  :root[data-skin="japan"] {
+    --bg: #ddd6c4;
+    --card-bg: #f4f0e6;
+    --text: #1c1a17;
+    --muted: #6b6558;
+    --border: #b9b0a0;
+    --accent: #1b3a6b;
+    --accent-soft: #dfe5ef;
+    --accent-text: #f4f0e6;
+    --danger: #c0392b;
+    --high: #c0392b;
+    --overdue: #c0392b;
+    --today: #c0392b;
+    --tomorrow: #b07d2b;
+    --later: #8a8478;
+    --ok: #3d6b4a;
+    /* Теней нет вовсе: оттиск на бумаге не отбрасывает тень, а рамка в
+       один волосок — единственное, что отделяет блок от листа. */
+    --shadow: none;
+    --font-display: Georgia, "Times New Roman", serif;
+    --font-body: Georgia, "Times New Roman", serif;
+    --radius-card: 0px;
+    --radius-control: 0px;
+    --border-width: 1px;
+    --heading-transform: none;
+    --heading-spacing: 0.02em;
+  }
+  /* Тёмный вариант скина отключён намеренно: см. комментарий выше. */
+  :root[data-skin="japan"] .bg-blobs { display: none; }
+
+  :root[data-skin="japan"] .card { border: 1px solid var(--border); }
+  :root[data-skin="japan"] .card:hover { transform: none; }
+  :root[data-skin="japan"] button {
+    border-radius: 0;
+    border: 1px solid var(--accent);
+    letter-spacing: 0.02em;
+  }
+  :root[data-skin="japan"] input,
+  :root[data-skin="japan"] select { border-radius: 0; }
+  :root[data-skin="japan"] .achievements li { border-radius: 0; }
+  :root[data-skin="japan"] .icon-chip { border-radius: 0; }
+  :root[data-skin="japan"] .theme-swatch { border-radius: 0; }
+  :root[data-skin="japan"] .shelf-poster { border-radius: 0; }
+  :root[data-skin="japan"] .progress-bar,
+  :root[data-skin="japan"] .progress-bar > span { border-radius: 0; }
+  :root[data-skin="japan"] .toast { border-radius: 0; }
+
+  /* Тот же контурный набор, что у груви (ICON_LINE), но линия тоньше и с
+     острыми концами — резцовый штрих вместо пухлого маркера. Ради этого
+     набор и хранится отдельно от параметров обводки. */
+  :root[data-skin="japan"] .icon-chip svg {
+    width: 66%;
+    height: 66%;
+    fill: none;
+    stroke-width: 1.8;
+    stroke-linecap: butt;
+    stroke-linejoin: miter;
+  }
+  :root[data-skin="japan"] .icon-chip-muted svg { stroke: var(--accent); }
+  :root[data-skin="japan"] .icon-chip-accent svg { stroke: var(--accent-text); }
+
+  :root[data-skin="japan"] #taskList .empty,
+  :root[data-skin="japan"] #habitList .empty,
+  :root[data-skin="japan"] #goalList .empty {
+    padding-top: 132px;
+    background-repeat: no-repeat;
+    background-position: top center;
+    background-size: auto 120px;
+  }
+  :root[data-skin="japan"] #taskList .empty { background-image: url("skins/japan/empty-tasks.png"); }
+  :root[data-skin="japan"] #habitList .empty { background-image: url("skins/japan/empty-habits.png"); }
+  :root[data-skin="japan"] #goalList .empty { background-image: url("skins/japan/empty-goals.png"); }
+  :root[data-skin="japan"] #shelfMovieToWatch .empty {
+    padding-top: 112px;
+    background: url("skins/japan/empty-shelf.png") no-repeat top center / auto 100px;
+  }
+
+  /* Лого здесь — квадратный герб (1.5:1), а не длинный леттеринг как у
+     груви, поэтому и бокс другой формы. */
+  :root[data-skin="japan"] .brand-mark { display: none; }
+  :root[data-skin="japan"] .brand::before {
+    content: "";
+    width: 96px;
+    height: 64px;
+    flex: none;
+    background: url("skins/japan/logo.png") no-repeat center / contain;
+  }
+  :root[data-skin="japan"] .brand span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  :root[data-skin="japan"] .rewards-card {
+    position: relative;
+    padding-bottom: 92px;
+  }
+  :root[data-skin="japan"] .rewards-card::after {
+    content: "";
+    position: absolute;
+    right: 14px;
+    bottom: 6px;
+    width: 104px;
+    height: 68px;
+    background: url("skins/japan/motivation.png") no-repeat center / contain;
+    pointer-events: none;
+  }
+
   /* Цветовые темы: переопределяют --accent/--accent-soft поверх базовых
      :root-блоков (см. выше) — сама "стандартная" тема отдельного блока
      не требует, она и есть значения по умолчанию. */
@@ -1025,6 +1445,8 @@
     <select id="skinSelect">
       <option value="default">Обычное</option>
       <option value="pixel">Пиксель</option>
+      <option value="groovy">Ретро-груви</option>
+      <option value="japan">Японская гравюра</option>
     </select>
     <span class="hint">Меняет шрифт и форму — цвет остаётся за темами ниже</span>
   </div>
@@ -1111,8 +1533,21 @@
       </div>
       <button id="claimButton" class="claim-button">Забрать</button>
     </div>
-    <div class="rank-line" id="rankLine"></div>
+    <!-- Профиль: кто ты сейчас и сколько осталось до следующего звания.
+         Раньше здесь была одна строка со званием, а прогресс до
+         следующего не показывался нигде — из-за этого монеты копились
+         «в никуда». -->
+    <div class="profile">
+      <div class="profile-avatar" id="profileAvatar"></div>
+      <div class="profile-body">
+        <div class="rank-line" id="rankLine"></div>
+        <div class="profile-bar"><span id="rankProgress"></span></div>
+        <div class="profile-next" id="rankNext"></div>
+      </div>
+    </div>
     <ul class="achievements" id="achievementsList"></ul>
+    <!-- Лестница званий: пять ступеней, пройденные подсвечены. -->
+    <ol class="rank-ladder" id="rankLadder"></ol>
     <div class="theme-picker" id="themePicker"></div>
   </section>
 
@@ -1186,6 +1621,21 @@
     </div>
   </section>
 
+  <section class="card">
+    <h2 data-icon="repeat">Дайджесты каналов</h2>
+    <form class="add-form" id="digestForm">
+      <input type="text" id="digestName" placeholder="Тема одним словом, напр. ESG" required />
+      <select id="digestFrequency">
+        <option value="">по запросу</option>
+        <option value="daily">каждый день</option>
+        <option value="weekly">по воскресеньям</option>
+      </select>
+      <button type="submit">+ Тема</button>
+    </form>
+    <div id="digestList"></div>
+    <div class="digest-preview" id="digestPreview" hidden></div>
+  </section>
+
 </div>
 
 <script>
@@ -1209,6 +1659,23 @@ function requireUserId() {
   return id;
 }
 
+/** Вытащить человеческий текст из тела ошибки FastAPI.
+
+    FastAPI отвечает `{"detail": "..."}`, и без разбора пользователь
+    видел в тосте сырой JSON вместо сообщения. Ошибки валидации (422)
+    приходят СПИСКОМ объектов, а не строкой, — их отдаём как есть: это
+    сообщение для разработчика, до пользователя такой ответ доходить не
+    должен вообще. */
+function extractDetail(body) {
+  try {
+    const parsed = JSON.parse(body);
+    if (typeof parsed.detail === "string") return parsed.detail;
+  } catch (e) {
+    // Не JSON — значит уже текст, показываем как есть.
+  }
+  return body;
+}
+
 async function api(path, options) {
   // Токен уходит заголовком, а не в query — иначе он осел бы в логах
   // сервера и в истории браузера.
@@ -1222,7 +1689,7 @@ async function api(path, options) {
   }
   if (!response.ok && response.status !== 204) {
     const body = await response.text();
-    throw new Error(`${response.status}: ${body}`);
+    throw new Error(`${response.status}: ${extractDetail(body)}`);
   }
   return response.status === 204 ? null : response.json();
 }
@@ -1353,31 +1820,141 @@ const ICON = {
   // в круглой подложке (см. .icon-chip), которая перекликается с кольцом
   // лого и сразу показывает состояние: залитый акцентом кружок —
   // получено, приглушённый с замком — ещё нет.
-  ring: '<circle cx="12" cy="12" r="8"/>',
+  // ring — кольцо, а не диск: сплошной круг ничем не отличался от точки.
+  ring: '<path d="M12 3.4a8.6 8.6 0 1 0 0 17.2 8.6 8.6 0 0 0 0-17.2zm0 3.6a5 5 0 1 1 0 10 5 5 0 0 1 0-10z" fill-rule="evenodd"/>',
   check: '<path d="M9.8 16.6l-4.4-4.4 1.9-1.9 2.5 2.5 6.9-6.9 1.9 1.9z"/>',
-  lock: '<path d="M6 10.5h12a1.5 1.5 0 0 1 1.5 1.5v6.5a1.5 1.5 0 0 1-1.5 1.5H6a1.5 1.5 0 0 1-1.5-1.5V12A1.5 1.5 0 0 1 6 10.5z"/><path d="M8.4 10.5V7.8a3.6 3.6 0 0 1 7.2 0v2.7h-2.3V7.8a1.3 1.3 0 0 0-2.6 0v2.7z"/>',
+  // Дужка замка утолщена до 2.9u: на 1.3u она пропадала раньше корпуса.
+  lock: '<path d="M5.6 10.6h12.8a1.8 1.8 0 0 1 1.8 1.8v6.6a1.8 1.8 0 0 1-1.8 1.8H5.6a1.8 1.8 0 0 1-1.8-1.8v-6.6a1.8 1.8 0 0 1 1.8-1.8z"/><path d="M12 3.2A4.8 4.8 0 0 0 7.2 8v2.6h2.9V8a1.9 1.9 0 0 1 3.8 0v2.6h2.9V8A4.8 4.8 0 0 0 12 3.2z"/>',
   flame: '<path d="M12 2.6c3.5 3.4 6.4 6.4 6.4 10.3a6.4 6.4 0 0 1-12.8.2c0-2.3 1.2-4.2 2.9-6.1.3 1.4 1.1 2.3 2.2 2.7C10.2 7 10.7 4.9 12 2.6z"/>',
   flameCore: '<path d="M12 2.6c3.5 3.4 6.4 6.4 6.4 10.3a6.4 6.4 0 0 1-12.8.2c0-2.3 1.2-4.2 2.9-6.1.3 1.4 1.1 2.3 2.2 2.7C10.2 7 10.7 4.9 12 2.6z"/><circle cx="12" cy="15.4" r="3.1" fill="#fff" fill-opacity=".45"/>',
-  coins: '<circle cx="9.8" cy="9.8" r="6.3"/><path d="M8.4 17.3a6.3 6.3 0 0 0 9.9-5.1 6.3 6.3 0 0 0-2.2-4.8 8.2 8.2 0 0 1-7.7 9.9z"/>',
-  repeat: '<path d="M12 4.4a7.6 7.6 0 1 1-6.6 3.8l2.2 1.3A5.1 5.1 0 1 0 12 6.9z"/><path d="M11.2 2.2l4 2.9-4 2.9z"/>',
-  book: '<path d="M4.6 5h5.1c1.1 0 2 .9 2 2v12a2.6 2.6 0 0 0-2-.9H4.6z"/><path d="M19.4 5h-5.1c-1.1 0-2 .9-2 2v12a2.6 2.6 0 0 1 2-.9h5.1z"/>',
-  target: '<circle cx="12" cy="12" r="8.4" fill-opacity=".35"/><circle cx="12" cy="12" r="4.8" fill-opacity=".55"/><circle cx="12" cy="12" r="1.9"/>',
+  // Была монета + «полумесяц», который на мелком читался каплей.
+  // Стало: монета-кольцо и брусок стопки под ней.
+  coins: '<path d="M12 3.3a7.2 7.2 0 1 0 0 14.4 7.2 7.2 0 0 0 0-14.4zm0 3.6a3.6 3.6 0 1 1 0 7.2 3.6 3.6 0 0 1 0-7.2z" fill-rule="evenodd"/><rect x="5.2" y="16.6" width="13.6" height="3.2" rx="1.5"/>',
+  // Стрелка теперь ПЕРЕСЕКАЕТ кольцо, а не висит рядом: две фигуры
+  // сливаются в один силуэт, и на 12px это читается как один объект.
+  repeat: '<path d="M12 5a7.6 7.6 0 1 0 0 15.2A7.6 7.6 0 0 0 12 5zm0 3.4a4.2 4.2 0 1 1 0 8.4 4.2 4.2 0 0 1 0-8.4z" fill-rule="evenodd"/><path d="M10.6 1.9l6 3.5-6 3.5z"/>',
+  // Зазор между страницами был тоньше штриха и схлопывался. Стало 3.2u.
+  book: '<path d="M3.8 6.2c2.6-1.4 5-1.4 6.6 0v13.2c-1.6-1.4-4-1.4-6.6 0z"/><path d="M20.2 6.2c-2.6-1.4-5-1.4-6.6 0v13.2c1.6-1.4 4-1.4 6.6 0z"/>',
+  // Три круга разной прозрачности на 12px сливались в один. Стало —
+  // кольцо и точка: контраст формой, а не альфой.
+  target: '<path d="M12 3.6a8.4 8.4 0 1 0 0 16.8 8.4 8.4 0 0 0 0-16.8zm0 3a5.4 5.4 0 1 1 0 10.8 5.4 5.4 0 0 1 0-10.8z" fill-rule="evenodd"/><circle cx="12" cy="12" r="2.6"/>',
   chart: '<rect x="4" y="12" width="4" height="7.5" rx="1.2"/><rect x="10" y="7.5" width="4" height="12" rx="1.2"/><rect x="16" y="10" width="4" height="9.5" rx="1.2"/>',
-  film: '<path d="M4.6 5.4h14.8c.9 0 1.6.7 1.6 1.6v10c0 .9-.7 1.6-1.6 1.6H4.6c-.9 0-1.6-.7-1.6-1.6V7c0-.9.7-1.6 1.6-1.6zm2.6 1.9v9.4h1.9V7.3zm7.7 0v9.4h1.9V7.3z" fill-rule="evenodd"/>',
-  shelf: '<path d="M4.4 5.6h5.2c.8 0 1.4.6 1.4 1.4v11.4H5.8c-.8 0-1.4-.6-1.4-1.4z"/><path d="M13.6 6.5l4.3 1.2c.8.2 1.2 1 1 1.7l-2.7 9.6-5-1.4 2.4-11.1z"/>',
-  rocket: '<path d="M12 2.8c3.2 2.3 4.9 5.4 4.9 9L12 15.9l-4.9-4.1c0-3.6 1.7-6.7 4.9-9zm0 4a1.9 1.9 0 1 0 0 3.8 1.9 1.9 0 0 0 0-3.8z" fill-rule="evenodd"/><path d="M9.3 16.6c-1.1 1.4-1.4 3-1.1 4.6 1.6.3 3.2 0 4.6-1.1z"/>',
+  // Перфорация плёнки (1.9u) исчезала первой. Заменено на «play» в
+  // скруглённом квадрате: дырка крупная, узнаётся при любом размере.
+  film: '<path d="M5 3.8h14a2.2 2.2 0 0 1 2.2 2.2v12a2.2 2.2 0 0 1-2.2 2.2H5a2.2 2.2 0 0 1-2.2-2.2V6A2.2 2.2 0 0 1 5 3.8zm4.6 4.4v7.6l6.4-3.8z" fill-rule="evenodd"/>',
+  // Не опознавалась как полка. Стало: три книги на основании.
+  shelf: '<path d="M5.6 7h3v10.4h-3z"/><path d="M9.6 9.4h3v8h-3z"/><path d="M13.6 5.8h3v11.6h-3z"/><rect x="3.8" y="17.4" width="16.4" height="2.6" rx="1"/>',
+  // Корпус, крылья и пламя были тремя отдельными кусками. Слиты в один
+  // силуэт, иллюминатор — дыркой.
+  rocket: '<path d="M12 2.6c3 2.5 4.6 5.7 4.6 9.4l-.1 1.3 2.3 2.7v3.5l-3.3-1.7-.9 2.2H9.4l-.9-2.2-3.3 1.7v-3.5l2.3-2.7-.1-1.3c0-3.7 1.6-6.9 4.6-9.4zm0 4.4a2 2 0 1 0 0 4 2 2 0 0 0 0-4z" fill-rule="evenodd"/>',
   star: '<path d="M12 3.4l2.6 5.4 5.9.8-4.3 4.1 1.1 5.9L12 16.8l-5.3 2.8 1.1-5.9L3.5 9.6l5.9-.8z"/>',
   crown: '<path d="M3.9 7.6l3.4 4.2L12 5.4l4.7 6.4 3.4-4.2v9.6c0 1-.8 1.8-1.8 1.8H5.7c-1 0-1.8-.8-1.8-1.8z"/>',
-  trophy: '<path d="M7.6 4.2h8.8v4.3a4.4 4.4 0 0 1-8.8 0z"/><path d="M7.6 5.6H4.9v1.7a3.1 3.1 0 0 0 3.1 3.1v-2a1.1 1.1 0 0 1-1.1-1.1zm8.8 0h2.7v1.7a3.1 3.1 0 0 1-3.1 3.1v-2a1.1 1.1 0 0 0 1.1-1.1z"/><path d="M10.9 12.6h2.2v4.2h-2.2z"/><rect x="7.6" y="18.2" width="8.8" height="1.9" rx=".95"/>',
+  // Было четыре куска (чаша, две ручки, ножка, подставка) — больше
+  // деталей, чем у любой другой иконки. Ручки убраны, остальное слито
+  // в один контур.
+  trophy: '<path d="M7.4 4.2h9.2v4.6a4.6 4.6 0 0 1-3.4 4.45v3.35h3.4a1.1 1.1 0 0 1 1.1 1.1v1.9H6.3v-1.9a1.1 1.1 0 0 1 1.1-1.1h3.4v-3.35A4.6 4.6 0 0 1 7.4 8.8z"/>',
 };
+
+// --- Пиксельный набор -------------------------------------------------
+// Глифы скина `pixel` хранятся не путями, а сеткой 12×12: строка на ряд,
+// `#` — залитая клетка. Так они физически не могут съехать с пиксельной
+// сетки — а именно съезд и убивает пиксель-арт. Рисуются потом обычными
+// <rect>, то есть остаются вектором: в отличие от растрового спрайта не
+// мылятся ни на каком масштабе и ретине.
+const PIXEL_GRID = {
+  ring:      ["....####....", "..###..###..", ".##......##.", ".#........#.", "##........##", "##........##", "##........##", "##........##", ".#........#.", ".##......##.", "..###..###..", "....####...."],
+  check:     ["............", "............", "..........##", ".........##.", "........##..", ".......##...", ".#....##....", ".##..##.....", "..####......", "...##.......", "............", "............"],
+  lock:      ["....####....", "...##..##...", "...##..##...", "...##..##...", "############", "############", "#####..#####", "#####..#####", "############", "############", "############", "............"],
+  flame:     [".....##.....", "....###.....", "....####....", "...#####....", "..#..####...", ".##...####..", ".##....####.", ".###...####.", "..####..###.", "..#########.", "...#######..", "....#####..."],
+  flameCore: [".....##.....", "....###.....", "....####....", "...#####....", "..#..####...", ".##...####..", ".##....####.", ".###...####.", "..####..###.", "..###....##.", "...######...", "....#####..."],
+  coins:     ["....####....", "..##....##..", ".#........#.", "##...##...##", "##..####..##", "##..####..##", "##...##...##", ".#........#.", "..##....##..", "....####....", "............", "############"],
+  repeat:    ["....###..#..", "..##...####.", ".##......#..", ".#..........", "##..........", "##..........", "##..........", ".#........#.", ".##......##.", "..##....##..", "...######...", "............"],
+  book:      ["............", ".####..####.", "#####..#####", "#####..#####", "#####..#####", "#####..#####", "#####..#####", "#####..#####", "#####..#####", "#####..#####", ".####..####.", "............"],
+  target:    ["....####....", "..##....##..", ".#........#.", "#..........#", "#..........#", "#....##....#", "#....##....#", "#..........#", "#..........#", ".#........#.", "..##....##..", "....####...."],
+  chart:     ["............", "............", "....###.....", "....###.....", "....###.###.", "....###.###.", "###.###.###.", "###.###.###.", "###.###.###.", "###.###.###.", "###.###.###.", "............"],
+  film:      ["............", "############", "############", "####..######", "####...#####", "####....####", "####....####", "####...#####", "####..######", "############", "############", "............"],
+  shelf:     ["............", ".......##...", ".##....##...", ".##....##...", ".##.##.##...", ".##.##.##...", ".##.##.##...", ".##.##.##...", ".##.##.##...", ".##.##.##...", "############", "............"],
+  rocket:    [".....##.....", "....####....", "....####....", "...##..##...", "...##..##...", "...######...", "..########..", ".##.####.##.", ".##.####.##.", "....####....", "....#..#....", ".....##....."],
+  star:      ["............", ".....##.....", "....####....", "....####....", "############", ".##########.", "..########..", "..###..###..", ".###....###.", ".##......##.", "............", "............"],
+  crown:     ["............", "#..........#", "##...##...##", "##..####..##", "##.######.##", "############", "############", "############", "############", "############", "............", "............"],
+  trophy:    ["............", ".##########.", ".##########.", ".##########.", "..########..", "...######...", "....####....", ".....##.....", ".....##.....", "...######...", "..########..", "............"],
+};
+
+/** Сетка 12×12 → <rect>'ы на viewBox 24. Соседние клетки в ряду
+    склеиваются в один прямоугольник: иначе на глиф уходило бы под сотню
+    элементов вместо десятка. */
+function pixelGlyph(rows) {
+  let out = "";
+  rows.forEach((row, y) => {
+    let x = 0;
+    while (x < row.length) {
+      if (row[x] !== "#") { x += 1; continue; }
+      let w = 1;
+      while (row[x + w] === "#") w += 1;
+      out += `<rect x="${x * 2}" y="${y * 2}" width="${w * 2}" height="2"/>`;
+      x += w;
+    }
+  });
+  return out;
+}
+
+const pixelCache = {};
+
+// --- Контурный набор (скин `groovy`) ----------------------------------
+// Здесь пути ОТКРЫТЫЕ и рассчитаны на обводку, а не на заливку: толстая
+// скруглённая линия — это и есть характер груви. Ширина обводки, скругление
+// концов и стыков заданы в CSS скина, а не тут: так один и тот же набор
+// сможет обслужить второй контурный скин с другими параметрами линии.
+//
+// Фигур на глиф — не больше двух: обводка сама по себе «съедает» место,
+// и то, что читалось заливкой, контуром на 13px уже слипается.
+const ICON_LINE = {
+  ring: '<circle cx="12" cy="12" r="7.5"/>',
+  check: '<path d="M5.5 12.5l4.5 4.5 8.5-9"/>',
+  lock: '<rect x="4.8" y="10.8" width="14.4" height="8.6" rx="2.6"/><path d="M8.2 10.8V7.9a3.8 3.8 0 0 1 7.6 0v2.9"/>',
+  flame: '<path d="M12 3.5c3.2 3.2 5.6 5.8 5.6 9.2a5.6 5.6 0 0 1-11.2 0c0-2 1-3.7 2.5-5.3.3 1.2 1 2 2 2.4C10 7.5 10.7 5.5 12 3.5z"/>',
+  flameCore: '<path d="M12 3.5c3.2 3.2 5.6 5.8 5.6 9.2a5.6 5.6 0 0 1-11.2 0c0-2 1-3.7 2.5-5.3.3 1.2 1 2 2 2.4C10 7.5 10.7 5.5 12 3.5z"/><circle cx="12" cy="14.8" r="2.4"/>',
+  coins: '<circle cx="12" cy="9.6" r="5.6"/><path d="M6.4 14.4v2.3c0 1.9 2.5 3.4 5.6 3.4s5.6-1.5 5.6-3.4v-2.3"/>',
+  repeat: '<path d="M19 12a7 7 0 1 1-2.7-5.5"/><path d="M19.4 3.6v3.5h-3.5"/>',
+  book: '<path d="M4 5.6h4.6A3.4 3.4 0 0 1 12 9v9.4a2.8 2.8 0 0 0-2.8-2.2H4z"/><path d="M20 5.6h-4.6A3.4 3.4 0 0 0 12 9v9.4a2.8 2.8 0 0 1 2.8-2.2H20z"/>',
+  target: '<circle cx="12" cy="12" r="7.6"/><circle cx="12" cy="12" r="3"/>',
+  chart: '<path d="M6 19.5v-5.8M12 19.5v-11M18 19.5v-8"/>',
+  film: '<rect x="3.4" y="4.6" width="17.2" height="14.8" rx="3.2"/><path d="M10.2 9.6l5.2 2.4-5.2 2.4z"/>',
+  shelf: '<path d="M6.8 17.2V8.2M12 17.2v-5.4M17.2 17.2V6.8"/><path d="M4 19.6h16"/>',
+  rocket: '<path d="M12 3.6c2.7 2.4 4.2 5.3 4.2 8.8l2 2.4v2.6l-2.8-1.4-.8 1.8H9.4l-.8-1.8-2.8 1.4v-2.6l2-2.4c0-3.5 1.5-6.4 4.2-8.8z"/><circle cx="12" cy="10" r="1.8"/>',
+  star: '<path d="M12 4.2l2.5 5 5.5.8-4 3.9 1 5.5-5-2.6-5 2.6 1-5.5-4-3.9 5.5-.8z"/>',
+  crown: '<path d="M4.6 8.4l3.4 3.8 4-5.4 4 5.4 3.4-3.8v10H4.6z"/>',
+  trophy: '<path d="M8 4.8h8v4a4 4 0 0 1-8 0z"/><path d="M12 12.8v4M8.4 19.4h7.2"/>',
+};
+
+/** Тело глифа для активного скина. Скин без своего набора берёт базовый —
+    поэтому добавить набор новому скину значит дописать сюда одну ветку,
+    а не править каждое место вызова. */
+function glyphBody(name) {
+  const skin = getActiveSkin();
+  if (skin === "pixel" && PIXEL_GRID[name]) {
+    if (!pixelCache[name]) pixelCache[name] = pixelGlyph(PIXEL_GRID[name]);
+    return pixelCache[name];
+  }
+  // Груви и японский делят один контурный набор — расходятся только
+  // параметрами обводки, и те заданы в CSS скина.
+  if ((skin === "groovy" || skin === "japan") && ICON_LINE[name]) {
+    return ICON_LINE[name];
+  }
+  return ICON[name] || "";
+}
 
 /** Иконка в круглой подложке. `variant`: "accent" — залитый акцентом
     кружок с тёмным глифом (получено/активно), "muted" — приглушённый
     (ещё не открыто). */
 function icon(name, variant = "muted") {
+  // crispEdges только у пикселя: клетка 12×12 на ~13px попадает на
+  // дробные экранные пиксели, и сглаживание съедает ту самую резкость,
+  // ради которой скин и делался. Остальным наборам оно, наоборот, вредит.
+  const rendering = getActiveSkin() === "pixel" ? ' shape-rendering="crispEdges"' : "";
   return (
     `<span class="icon-chip icon-chip-${variant}">` +
-    `<svg viewBox="0 0 24 24" aria-hidden="true">${ICON[name] || ""}</svg>` +
+    `<svg viewBox="0 0 24 24" aria-hidden="true"${rendering}>${glyphBody(name)}</svg>` +
     `</span>`
   );
 }
@@ -1472,6 +2049,28 @@ function applySkin(skinId) {
   }
   const select = document.getElementById("skinSelect");
   if (select) select.value = skinId;
+  repaintIcons();
+}
+
+/** Перерисовать все иконки под текущий скин. Нужна потому, что глифы
+    вставлены в DOM как готовый SVG, а не как ссылка на набор: сменив
+    скин, старые надо снести и вставить заново.
+
+    Счётчик монет здесь намеренно не трогаем (не зовём renderRewards):
+    он анимируется от нуля, и на смене скина это выглядело бы сбоем. */
+function repaintIcons() {
+  document.querySelectorAll(".icon-chip").forEach((el) => el.remove());
+  renderStaticIcons();
+  const list = document.getElementById("achievementsList");
+  if (list && list.children.length) renderAchievements();
+  const title = document.getElementById("rewardsTitle");
+  if (title) {
+    title.insertAdjacentHTML("afterbegin", icon("coins", "accent"));
+    document
+      .getElementById("streakLabel")
+      .insertAdjacentHTML("afterbegin", icon("flame", "accent"));
+    renderProfile();
+  }
 }
 
 document.getElementById("skinSelect").addEventListener("change", (e) => {
@@ -1544,6 +2143,57 @@ function renderStaticIcons() {
   });
 }
 
+/** Русское склонение числительного: 1 монета, 2 монеты, 5 монет.
+    Отдельный случай — 11–14: они идут по форме «много» вопреки
+    последней цифре (11 монет, а не «11 монета»). */
+function plural(n, one, few, many) {
+  const mod100 = Math.abs(n) % 100;
+  if (mod100 >= 11 && mod100 <= 14) return many;
+  const mod10 = mod100 % 10;
+  if (mod10 === 1) return one;
+  if (mod10 >= 2 && mod10 <= 4) return few;
+  return many;
+}
+
+/** Профиль: аватар, текущее звание и сколько монет до следующего.
+    Числа берём из RANKS, а не из отдельного списка порогов, — иначе
+    правка звания требовала бы синхронной правки в двух местах. */
+function renderProfile() {
+  const rank = currentRank(lastRewards.totalCoins);
+  const next = RANKS[RANKS.indexOf(rank) + 1] || null;
+
+  document.getElementById("profileAvatar").innerHTML = icon(rank.icon, "accent");
+  document.getElementById("rankLine").innerHTML = `<b>${escapeHtml(rank.title)}</b>`;
+
+  const bar = document.getElementById("rankProgress");
+  const hint = document.getElementById("rankNext");
+  if (!next) {
+    bar.style.width = "100%";
+    hint.textContent = "Высшее звание достигнуто";
+  } else {
+    // Прогресс считаем ВНУТРИ ступени (от порога текущего звания до
+    // следующего), а не от нуля: иначе на подходе к «Гуру» полоса
+    // почти не двигалась бы месяцами.
+    const span = next.min - rank.min;
+    const done = lastRewards.totalCoins - rank.min;
+    bar.style.width = `${Math.max(0, Math.min(100, Math.round((done / span) * 100)))}%`;
+    const left = next.min - lastRewards.totalCoins;
+    hint.textContent = `До звания «${next.title}» — ${left} ${plural(left, "монета", "монеты", "монет")}`;
+  }
+
+  renderRankLadder();
+}
+
+function renderRankLadder() {
+  document.getElementById("rankLadder").innerHTML = RANKS.map((r, i) => {
+    const reached = lastRewards.totalCoins >= r.min;
+    return `<li class="${reached ? "reached" : ""}" data-step="${i}" title="${escapeHtml(r.title)}">${icon(
+      r.icon,
+      reached ? "accent" : "muted"
+    )}<span>${r.min}</span></li>`;
+  }).join("");
+}
+
 function renderAchievements() {
   const list = document.getElementById("achievementsList");
   list.innerHTML = ACHIEVEMENTS.map((a) => {
@@ -1571,10 +2221,7 @@ function renderRewards() {
   btn.disabled = lastRewards.claimedToday;
   btn.textContent = lastRewards.claimedToday ? "Забрано ✓" : "Забрать";
 
-  const rank = currentRank(lastRewards.totalCoins);
-  document.getElementById("rankLine").innerHTML =
-    `${icon(rank.icon, "accent")} <b>${escapeHtml(rank.title)}</b>`;
-
+  renderProfile();
   renderThemePicker();
 }
 
@@ -2653,6 +3300,176 @@ document.getElementById("saveUserId").addEventListener("click", async () => {
   await loadAll();
 });
 
+// --- Дайджесты каналов (см. specs/015-digest-api.md) -----------------
+
+let lastDigests = [];
+
+const DIGEST_FREQUENCY_LABELS = {
+  daily: "каждый день",
+  weekly: "по воскресеньям",
+};
+
+async function loadDigests() {
+  const id = getUserId();
+  if (!id) return;
+  lastDigests = await api(`/digest?telegram_user_id=${encodeURIComponent(id)}`);
+  renderDigests();
+}
+
+function renderDigests() {
+  const box = document.getElementById("digestList");
+  if (!lastDigests.length) {
+    box.innerHTML =
+      '<div class="empty">Тем пока нет. Заведите тему и добавьте в неё каналы.</div>';
+    return;
+  }
+  box.innerHTML = lastDigests
+    .map((d) => {
+      const channels = d.channels.length
+        ? d.channels
+            .map(
+              (c) =>
+                `<li><span class="digest-channel">@${escapeHtml(c.channel_username)}</span>` +
+                `<button class="secondary digest-remove" data-channel-id="${c.id}">Убрать</button></li>`
+            )
+            .join("")
+        : '<li class="empty">Каналов нет</li>';
+      return (
+        `<div class="digest-topic">` +
+        `<div class="digest-head"><b>${escapeHtml(d.name)}</b>` +
+        `<span class="digest-freq">${DIGEST_FREQUENCY_LABELS[d.auto_frequency] || "по запросу"}</span>` +
+        `<button class="secondary digest-send" data-digest-id="${d.id}">Прислать новое</button></div>` +
+        `<ul class="item-list">${channels}</ul>` +
+        `<form class="add-form digest-add-channel" data-digest-id="${d.id}">` +
+        `<input type="text" placeholder="@канал или ссылка t.me" required />` +
+        `<button type="submit">+ Канал</button></form>` +
+        `</div>`
+      );
+    })
+    .join("");
+}
+
+/** Показать собранный дайджест прямо на странице.
+
+    Это не «предпросмотр для красоты», а страховка: сборка текста уже
+    сдвинула водяной знак на сервере, поэтому при недоставке в Telegram
+    показать текст здесь — единственный способ его не потерять
+    (см. specs/015-digest-api.md). */
+function showDigestPreview(text, error) {
+  const box = document.getElementById("digestPreview");
+  const warning = error
+    ? `<div class="digest-warn">В Telegram отправить не удалось (${escapeHtml(
+        error
+      )}). Дайджест показан здесь, чтобы не потерялся — эти посты уже помечены прочитанными.</div>`
+    : "";
+  box.innerHTML = `${warning}<pre>${escapeHtml(text)}</pre>`;
+  box.hidden = false;
+}
+
+async function sendDigest(digestId, button) {
+  const id = requireUserId();
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = "Собираю…";
+  try {
+    const result = await api(
+      `/digest/${digestId}/send?telegram_user_id=${encodeURIComponent(id)}`,
+      { method: "POST" }
+    );
+    if (result.text === null) {
+      showToast("Новых постов нет");
+    } else if (result.delivered) {
+      showToast("Дайджест отправлен в Telegram");
+      showDigestPreview(result.text, null);
+    } else {
+      showDigestPreview(result.text, result.error);
+    }
+  } catch (e) {
+    showToast(String(e.message || e));
+  } finally {
+    button.disabled = false;
+    button.textContent = label;
+  }
+}
+
+document.getElementById("digestForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = requireUserId();
+  const name = document.getElementById("digestName").value.trim();
+  if (!name) return;
+  const frequency = document.getElementById("digestFrequency").value;
+  try {
+    await api("/digest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        telegram_user_id: Number(id),
+        name,
+        // Пустая строка из <select> — это «по запросу», в API поле
+        // должно уехать как null: "" не пройдёт Literal-схему.
+        auto_frequency: frequency || null,
+      }),
+    });
+    document.getElementById("digestName").value = "";
+    await loadDigests();
+  } catch (err) {
+    showToast(String(err.message || err));
+  }
+});
+
+// Делегирование: темы и каналы перерисовываются целиком, поэтому вешать
+// обработчики на сами кнопки нельзя — они переживают одну перерисовку.
+document.getElementById("digestList").addEventListener("click", async (e) => {
+  const send = e.target.closest(".digest-send");
+  if (send) {
+    await sendDigest(send.dataset.digestId, send);
+    return;
+  }
+  const remove = e.target.closest(".digest-remove");
+  if (remove) {
+    const id = requireUserId();
+    try {
+      await api(
+        `/digest/channels/${remove.dataset.channelId}?telegram_user_id=${encodeURIComponent(id)}`,
+        { method: "DELETE" }
+      );
+      await loadDigests();
+    } catch (err) {
+      showToast(String(err.message || err));
+    }
+  }
+});
+
+document.getElementById("digestList").addEventListener("submit", async (e) => {
+  const form = e.target.closest(".digest-add-channel");
+  if (!form) return;
+  e.preventDefault();
+  const id = requireUserId();
+  const input = form.querySelector("input");
+  const channel = input.value.trim();
+  if (!channel) return;
+  const button = form.querySelector("button");
+  button.disabled = true;
+  try {
+    // Канал проверяется живым запросом на t.me ещё до сохранения, так что
+    // ответа тут можно ждать секунду-другую — кнопку блокируем, чтобы
+    // повторный клик не создал второй такой же запрос.
+    await api(`/digest/${form.dataset.digestId}/channels`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        telegram_user_id: Number(id),
+        channel_username: channel,
+      }),
+    });
+    await loadDigests();
+  } catch (err) {
+    showToast(String(err.message || err));
+  } finally {
+    button.disabled = false;
+  }
+});
+
 async function loadAll() {
   await Promise.all([
     loadTasks(),
@@ -2662,6 +3479,7 @@ async function loadAll() {
     loadWeeklyStats(),
     loadRewards(),
     loadJournal(),
+    loadDigests(),
   ]);
   // Достижения зависят от данных всех карточек разом — считаем после
   // того, как все они точно загрузились, а не по одной.
