@@ -62,7 +62,10 @@
   body {
     position: relative;
     margin: 0 auto;
-    max-width: 1100px;
+    /* Мозаика на двенадцати колонках: при 1100px карточка span 3
+       ужималась до 250px, куда не влезали ни иллюстрация, ни
+       заголовок. Ширина общая для всех скинов. */
+    max-width: 1560px;
     background: transparent;
     color: var(--text);
     font-family: var(--font-body);
@@ -245,10 +248,137 @@
     padding: 5px 10px;
   }
   button.danger:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
+  /* ==================== ШАПКА И ВКЛАДКИ ====================
+     Общая раскладка для ВСЕХ скинов (см. designs/004-ui-layout.md).
+     Скин красит её, но не строит: композиция не должна зависеть от
+     выбранного оформления — на этом и погорела первая версия груви. */
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+  }
+  .topbar .brand { margin: 0; flex: none; }
+  .tabs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    flex: 1;
+    min-width: 0;
+  }
+  .tab {
+    background: var(--card-bg);
+    color: var(--muted);
+    border: var(--border-width) solid var(--border);
+    border-radius: var(--radius-control);
+    padding: 7px 14px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active {
+    background: var(--accent);
+    color: var(--accent-text);
+    border-color: var(--accent);
+  }
+  .topstats { display: flex; gap: 8px; align-items: center; flex: none; }
+  .topchip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--card-bg);
+    border: var(--border-width) solid var(--border);
+    border-radius: var(--radius-control);
+    padding: 7px 13px;
+    font-size: 0.82rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .topchip b { color: var(--text); font-size: 1rem; }
+  .topchip-button { cursor: pointer; color: var(--text); font-weight: 600; }
+
+  /* Панель настроек поверх страницы. [hidden] прописан явно: у блока
+     свой display, а атрибут против авторского display бессилен — те же
+     грабли, из-за которых диалог правки висел поверх страницы. */
+  .settings-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 60px 16px;
+    background: rgba(0, 0, 0, 0.45);
+  }
+  .settings-panel[hidden] { display: none; }
+  .settings-box {
+    background: var(--card-bg);
+    border: var(--border-width) solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 20px;
+    width: min(560px, 100%);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* Вкладка прячет чужие карточки. Карточка НЕ удаляется из DOM:
+     рендеры ищут элементы по id, и пропажа узла обернулась бы тихой
+     поломкой вместо ошибки. */
+  .grid > .card[hidden] { display: none; }
+
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+    /* Двенадцать колонок вместо auto-fit: одинаковая ширина у всех
+       соседей и есть «одинаковые карточки», от которых уходим.
+       Раскладка мозаикой — designs/004-ui-layout.md. */
+    grid-template-columns: repeat(12, minmax(0, 1fr));
     gap: 18px;
+  }
+  /* Ряд 1: визит 3 (на два ряда) | задачи 5 | привычки 4
+     Ряд 2: визит          | цели 3 | итоги 3 | полка 3
+     Ряд 3: дайджесты 12 */
+  .grid > [data-domain="rewards"] { grid-column: span 3; grid-row: span 2; }
+  .grid > [data-domain="tasks"] { grid-column: span 5; }
+  .grid > [data-domain="habits"] { grid-column: span 4; }
+  .grid > [data-domain="goals"],
+  .grid > [data-domain="weekly"],
+  .grid > [data-domain="shelf"] { grid-column: span 3; }
+  .grid > [data-domain="digest"],
+  .grid > [data-domain="calendar"] { grid-column: span 12; }
+
+  /* Одна карточка на вкладке — во всю ширину и без соседей. */
+  .grid.single > .card { grid-column: span 12; grid-row: auto; }
+
+  @media (max-width: 1100px) {
+    .grid > [data-domain="rewards"] { grid-column: span 6; grid-row: auto; }
+    .grid > [data-domain="tasks"],
+    .grid > [data-domain="habits"],
+    .grid > [data-domain="goals"],
+    .grid > [data-domain="weekly"],
+    .grid > [data-domain="shelf"] { grid-column: span 6; }
+  }
+  @media (max-width: 760px) {
+    .grid > .card,
+    .grid > [data-domain="rewards"] { grid-column: span 12; grid-row: auto; }
+    /* Вкладки в одну строку с прокруткой ВНУТРИ полосы, а не переносом:
+       семь кнопок в три ряда съедали половину экрана телефона. Скроллится
+       сама полоса, страница по горизонтали по-прежнему не едет. */
+    .tabs {
+      order: 3;
+      width: 100%;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      scrollbar-width: none;
+      padding-bottom: 2px;
+    }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab { flex: none; }
+    .brand-mark { width: 34px; height: 34px; }
+    .brand span { font-size: 1.1rem; }
+    .topchip { padding: 6px 10px; font-size: 0.78rem; }
   }
   .card {
     background: var(--card-bg);
@@ -1166,29 +1296,6 @@
   :root[data-skin="groovy"] [data-domain="weekly"] { --domain: var(--grape); }
   :root[data-skin="groovy"] [data-domain="digest"] { --domain: var(--mint); }
 
-  /* --- Сетка ---------------------------------------------------------
-     Явные 12 колонок вместо auto-fit: одинаковая ширина у всех соседей
-     и есть «одинаковые карточки», от которых уходим. Разная ширина —
-     это индивидуальность блока, а не украшение. */
-  /* Полоса шире обычных 1100px: на двенадцати колонках карточка span 3
-     иначе ужимается до 250px, а в неё должны влезать иллюстрация,
-     крупный заголовок и список. */
-  :root[data-skin="groovy"] body { max-width: 1560px; padding: 24px; }
-  :root[data-skin="groovy"] .grid {
-    grid-template-columns: repeat(12, minmax(0, 1fr));
-    gap: 20px;
-    /* Карточка по высоте СВОЕГО содержимого, а не соседа. По умолчанию
-       grid растягивает всех в ряду до самой высокой — из-за этого у
-       целей, итогов и полки внизу зияла пустота в пол-экрана, ровно
-       та, на которую владелец и жаловался. */
-    align-items: start;
-  }
-  :root[data-skin="groovy"] .grid > .card { grid-column: span 4; }
-  :root[data-skin="groovy"] .grid > [data-domain="calendar"] { grid-column: span 12; }
-  :root[data-skin="groovy"] .grid > [data-domain="goals"],
-  :root[data-skin="groovy"] .grid > [data-domain="weekly"],
-  :root[data-skin="groovy"] .grid > [data-domain="shelf"],
-  :root[data-skin="groovy"] .grid > [data-domain="digest"] { grid-column: span 3; }
 
   :root[data-skin="groovy"] .card {
     /* Нижняя граница, а не распорка: карточка с формой из двух полей
@@ -1600,6 +1707,9 @@
     flex: none;
     background: url("skins/groovy/logo.png") no-repeat center / contain;
   }
+  @media (max-width: 760px) {
+    :root[data-skin="groovy"] .brand::before { width: 132px; height: 48px; }
+  }
   :root[data-skin="groovy"] .brand span {
     position: absolute;
     width: 1px;
@@ -1626,25 +1736,12 @@
      Декор не прячется, а перестраивается: display:none на украшениях —
      ровно тот приём, которым интерфейс на телефоне превращается обратно
      в панель. */
-  @media (max-width: 1279px) {
-    :root[data-skin="groovy"] .grid > .card,
-    :root[data-skin="groovy"] .grid > [data-domain="goals"],
-    :root[data-skin="groovy"] .grid > [data-domain="weekly"],
-    :root[data-skin="groovy"] .grid > [data-domain="shelf"],
-    :root[data-skin="groovy"] .grid > [data-domain="digest"] { grid-column: span 6; }
-    :root[data-skin="groovy"] .card::before { transform: scale(0.7); }
-  }
   @media (max-width: 899px) {
-    :root[data-skin="groovy"] .grid { grid-template-columns: minmax(0, 1fr); }
-    :root[data-skin="groovy"] .grid > .card,
-    :root[data-skin="groovy"] .grid > [data-domain="calendar"],
-    :root[data-skin="groovy"] .grid > [data-domain="goals"],
-    :root[data-skin="groovy"] .grid > [data-domain="weekly"],
-    :root[data-skin="groovy"] .grid > [data-domain="shelf"],
-    :root[data-skin="groovy"] .grid > [data-domain="digest"] { grid-column: span 1; }
-    :root[data-skin="groovy"] .card h2 { font-size: 22px; }
-    :root[data-skin="groovy"] .rewards-number { font-size: 52px; }
-    :root[data-skin="groovy"] .empty { padding-top: 136px; background-size: auto 120px; }
+    :root[data-skin="groovy"] .card h2 { font-size: 18px; }
+    :root[data-skin="groovy"] .rewards-number { font-size: 44px; }
+    :root[data-skin="groovy"] .card::before { transform: scale(0.75); }
+    :root[data-skin="groovy"] .empty,
+    :root[data-skin="groovy"] ul.item-list li.empty { padding-top: 136px; background-size: auto 120px; }
   }
   @media (max-width: 599px) {
     :root[data-skin="groovy"] .empty { padding-top: 116px; background-size: auto 100px; }
@@ -1820,47 +1917,77 @@
 
 <div class="bg-blobs" aria-hidden="true"><span></span><span></span></div>
 
-<h1 class="brand">
-  <!-- Знак = /static/icon.svg, но инлайном: только так дуга может
-       заполняться анимацией и краситься текущим акцентом темы (внешний
-       <img> ни того, ни другого не умеет). -->
-  <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
-    <circle class="brand-track" cx="32" cy="32" r="22" />
-    <path class="brand-arc" d="M32 10a22 22 0 0 1 15.6 37.6" />
-    <circle class="brand-dot" cx="32" cy="32" r="6" />
-  </svg>
-  <span>LifeOS Agent</span>
-</h1>
-<p class="subtitle">Задачи, привычки, цели и полка — то же, что в боте, только целиком на одном экране.</p>
+<header class="topbar">
+  <h1 class="brand">
+    <!-- Знак = /static/icon.svg, но инлайном: только так дуга может
+         заполняться анимацией и краситься текущим акцентом темы (внешний
+         <img> ни того, ни другого не умеет). -->
+    <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
+      <circle class="brand-track" cx="32" cy="32" r="22" />
+      <path class="brand-arc" d="M32 10a22 22 0 0 1 15.6 37.6" />
+      <circle class="brand-dot" cx="32" cy="32" r="6" />
+    </svg>
+    <span>LifeOS Agent</span>
+  </h1>
 
-<details class="settings">
-  <summary>Настройки доступа</summary>
+  <!-- Вкладки не отдельные страницы, а фильтр видимости карточек:
+       карточка в DOM ровно одна, иначе id перестали бы быть
+       уникальными и рендеры сломались бы (см. designs/004-ui-layout.md). -->
+  <nav class="tabs" id="tabs" aria-label="Разделы">
+    <button type="button" class="tab active" data-tab="dash">Панель</button>
+    <button type="button" class="tab" data-tab="tasks">Задачи</button>
+    <button type="button" class="tab" data-tab="habits">Привычки</button>
+    <button type="button" class="tab" data-tab="goals">Цели</button>
+    <button type="button" class="tab" data-tab="shelf">Полка</button>
+    <button type="button" class="tab" data-tab="calendar">Календарь</button>
+    <button type="button" class="tab" data-tab="digest">Дайджесты</button>
+  </nav>
 
-  <div class="id-bar">
-    <span>Telegram ID:</span>
-    <input id="userIdInput" type="text" placeholder="напр. 414825951" />
-    <button id="saveUserId" class="secondary">Сохранить</button>
-    <span id="userIdStatus"></span>
+  <!-- Счётчики продублированы ЗНАЧЕНИЕМ, а не узлом: на исходных
+       #coinsCount/#streakCount висят анимация счёта и «поп», переносить
+       их сюда нельзя. -->
+  <div class="topstats">
+    <span class="topchip" data-chip="coins"><b id="topCoins">0</b> монет</span>
+    <span class="topchip" data-chip="streak"><b id="topStreak">0</b> дней</span>
+    <button type="button" class="topchip topchip-button" id="settingsButton">Настройки</button>
   </div>
+</header>
 
-  <div class="id-bar">
-    <span>Токен API:</span>
-    <input id="apiTokenInput" type="password" placeholder="из api_token в .env" />
-    <button id="saveApiToken" class="secondary">Сохранить</button>
-    <span id="apiTokenStatus"></span>
-  </div>
+<!-- Настройки уехали из потока страницы в панель поверх: токен и ID
+     вводят один раз, держать их первым, что видит человек, незачем. -->
+<div class="settings-panel" id="settingsPanel" hidden>
+  <div class="settings-box">
+    <b>Настройки доступа</b>
 
-  <div class="id-bar">
-    <span>Оформление:</span>
-    <select id="skinSelect">
-      <option value="default">Обычное</option>
-      <option value="pixel">Пиксель</option>
-      <option value="groovy">Ретро-груви</option>
-      <option value="japan">Японская гравюра</option>
-    </select>
-    <span class="hint">Меняет шрифт и форму — цвет остаётся за темами ниже</span>
+    <div class="id-bar">
+      <span>Telegram ID:</span>
+      <input id="userIdInput" type="text" placeholder="напр. 414825951" />
+      <button id="saveUserId" class="secondary">Сохранить</button>
+      <span id="userIdStatus"></span>
+    </div>
+
+    <div class="id-bar">
+      <span>Токен API:</span>
+      <input id="apiTokenInput" type="password" placeholder="из api_token в .env" />
+      <button id="saveApiToken" class="secondary">Сохранить</button>
+      <span id="apiTokenStatus"></span>
+    </div>
+
+    <div class="id-bar">
+      <span>Оформление:</span>
+      <select id="skinSelect">
+        <option value="default">Обычное</option>
+        <option value="pixel">Пиксель</option>
+        <option value="groovy">Ретро-груви</option>
+        <option value="japan">Японская гравюра</option>
+      </select>
+    </div>
+
+    <div class="editor-actions">
+      <button type="button" class="secondary" id="settingsClose">Закрыть</button>
+    </div>
   </div>
-</details>
+</div>
 
 <div class="editor-dialog" id="editorDialog" hidden>
   <div class="editor-box">
@@ -2686,6 +2813,10 @@ function renderRewards() {
   }
   animateNumber(document.getElementById("coinsCount"), lastRewards.totalCoins);
   document.getElementById("streakCount").textContent = lastRewards.streak;
+  // Те же числа в шапке: они видны на любой вкладке, а карточка визита
+  // живёт только на «Панели».
+  document.getElementById("topCoins").textContent = lastRewards.totalCoins;
+  document.getElementById("topStreak").textContent = lastRewards.streak;
   const btn = document.getElementById("claimButton");
   btn.disabled = lastRewards.claimedToday;
   btn.textContent = lastRewards.claimedToday ? "Забрано ✓" : "Забрать";
@@ -3958,6 +4089,71 @@ document.getElementById("digestList").addEventListener("submit", async (e) => {
   }
 });
 
+// --- Вкладки (см. designs/004-ui-layout.md) --------------------------
+// Вкладка — фильтр видимости, а не отдельная страница: карточка в DOM
+// ровно одна. Иначе пришлось бы дублировать разметку, id перестали бы
+// быть уникальными и все рендеры сломались бы разом.
+
+const TAB_KEY = "lifeos_tab";
+
+// Какие карточки показывает каждая вкладка. «Панель» — мозаика из
+// семи; календарь на ней намеренно отсутствует, он занимал весь верх
+// экрана и ломал композицию.
+const TAB_CARDS = {
+  dash: ["rewards", "tasks", "habits", "goals", "weekly", "shelf", "digest"],
+  tasks: ["tasks"],
+  habits: ["habits"],
+  goals: ["goals"],
+  shelf: ["shelf"],
+  calendar: ["calendar"],
+  digest: ["digest"],
+};
+
+function getActiveTab() {
+  const saved = localStorage.getItem(TAB_KEY);
+  return TAB_CARDS[saved] ? saved : "dash";
+}
+
+function applyTab(tabId) {
+  const visible = TAB_CARDS[tabId] || TAB_CARDS.dash;
+  document.querySelectorAll(".grid > .card").forEach((card) => {
+    card.hidden = !visible.includes(card.dataset.domain);
+  });
+  // Одиночная карточка растягивается на всю ширину — иначе она заняла
+  // бы свои 3 колонки из 12 и висела бы узкой полосой слева.
+  document.querySelector(".grid").classList.toggle("single", visible.length === 1);
+  document.querySelectorAll(".tab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.tab === tabId);
+  });
+  // Звёзды раскладываются по видимым карточкам, поэтому после смены
+  // вкладки их надо пересыпать.
+  if (typeof sprinkleSparkles === "function") sprinkleSparkles();
+}
+
+document.getElementById("tabs").addEventListener("click", (e) => {
+  const btn = e.target.closest(".tab");
+  if (!btn) return;
+  localStorage.setItem(TAB_KEY, btn.dataset.tab);
+  applyTab(btn.dataset.tab);
+});
+
+// --- Панель настроек --------------------------------------------------
+const settingsPanel = document.getElementById("settingsPanel");
+document.getElementById("settingsButton").addEventListener("click", () => {
+  settingsPanel.hidden = false;
+});
+document.getElementById("settingsClose").addEventListener("click", () => {
+  settingsPanel.hidden = true;
+});
+// Клик по затемнению закрывает — но только по нему самому, а не по
+// содержимому коробки.
+settingsPanel.addEventListener("click", (e) => {
+  if (e.target === settingsPanel) settingsPanel.hidden = true;
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !settingsPanel.hidden) settingsPanel.hidden = true;
+});
+
 async function loadAll() {
   await Promise.all([
     loadTasks(),
@@ -3975,6 +4171,7 @@ async function loadAll() {
   renderDayPanel();
 }
 
+applyTab(getActiveTab());
 applySkin(getActiveSkin());
 renderStaticIcons();
 setupCollapsibleCards();
