@@ -1196,9 +1196,12 @@
        не должна (см. align-items: start выше). */
     min-height: 210px;
     padding: 20px;
-    /* Угловой декор выходит за край карточки и частично перекрывает
-       контур — так получается аппликация, а не рамка. */
-    overflow: visible;
+    /* Декор ЗАПРАВЛЕН ВНУТРЬ и обрезается скруглением карточки.
+       Была ошибка: он выпускался наружу (overflow: visible и
+       отрицательные отступы), и одиннадцать наклеек висели на чёрном
+       фоне между карточками — отсюда ощущение съехавшей вёрстки.
+       В референсе за пределами карточек нет ничего. */
+    overflow: hidden;
     position: relative;
   }
   :root[data-skin="groovy"] [data-domain="calendar"],
@@ -1378,20 +1381,30 @@
 
   /* --- Иллюстрации: уровень 1, герой ---------------------------------
      Пустого списка без картинки в этой системе не существует. */
-  :root[data-skin="groovy"] .empty {
+  /* Второй селектор с `ul.item-list li` — не для красоты: пустое
+     состояние это <li>, и правило строки списка (0,3,2) перебивало
+     голый `.empty` (0,3,0). Из-за этого иллюстрация обрезалась в
+     полоску 53px с отступом 12px вместо 176 — картинка грузилась, но
+     её не было видно. Тот же класс ошибки, что со span у календаря. */
+  :root[data-skin="groovy"] .empty,
+  :root[data-skin="groovy"] ul.item-list li.empty {
     color: var(--muted);
     font-size: 15px;
     font-weight: 700;
-    padding-top: 176px;
+    text-align: center;
+    padding: 176px 8px 12px;
     background-repeat: no-repeat;
     background-position: top center;
     background-size: auto 160px;
     border: none;
+    background-color: transparent;
+    margin-bottom: 0;
   }
   :root[data-skin="groovy"] #taskList .empty { background-image: url("skins/groovy/empty-tasks.png"); }
   :root[data-skin="groovy"] #habitList .empty { background-image: url("skins/groovy/empty-habits.png"); }
   :root[data-skin="groovy"] #goalList .empty { background-image: url("skins/groovy/empty-goals.png"); }
-  :root[data-skin="groovy"] #shelfMovieToWatch .empty {
+  :root[data-skin="groovy"] #shelfMovieToWatch .empty,
+  :root[data-skin="groovy"] ul#shelfMovieToWatch li.empty {
     padding-top: 132px;
     background-image: url("skins/groovy/empty-shelf.png");
     background-size: auto 120px;
@@ -1410,12 +1423,20 @@
     background-position: right -10px bottom -6px;
     background-size: auto 140px;
   }
+  /* Два слоя: ракета справа и полоса земли по низу. Холм именно
+     полосой, а не угловым спрайтом: у файла непрозрачные края (51%
+     периметра), вырезанным по контуру он не был и в углу выглядел
+     зелёным ящиком. Растянутый на всю ширину и обрезанный скруглением
+     карточки, он работает ровно так, как должен. */
   :root[data-skin="groovy"] [data-domain="goals"] {
     background-color: var(--card-bg);
-    background-image: url("skins/groovy/hero-progress.png");
-    background-repeat: no-repeat;
-    background-position: right -14px bottom 10px;
-    background-size: auto 132px;
+    background-image:
+      url("skins/groovy/hero-progress.png"),
+      url("skins/groovy/decor-hill.png");
+    background-repeat: no-repeat, no-repeat;
+    background-position: right 6px bottom 34px, bottom center;
+    background-size: auto 108px, 100% 46px;
+    padding-bottom: 58px;
   }
 
   /* Волна по низу карточки. Растягивается на всю ширину, а НЕ повторяется
@@ -1462,50 +1483,47 @@
     z-index: 1;
   }
   :root[data-skin="groovy"] [data-domain="rewards"]::before {
-    right: -26px; bottom: -22px; width: 118px; height: 118px;
+    right: 4px; bottom: 4px; width: 96px; height: 96px;
     background-image: url("skins/groovy/decor-mushroom.png");
   }
   :root[data-skin="groovy"] [data-domain="rewards"]::after {
-    left: -18px; top: -44px; width: 82px; height: 82px;
+    left: 12px; top: 6px; width: 62px; height: 62px;
     background-image: url("skins/groovy/decor-stars.png");
   }
-  :root[data-skin="groovy"] [data-domain="tasks"]::before {
-    left: -16px; bottom: 30px; width: 108px; height: 108px;
-    background-image: url("skins/groovy/decor-flowers-left.png");
-  }
   :root[data-skin="groovy"] [data-domain="tasks"]::after {
-    right: -14px; top: -46px; width: 88px; height: 88px;
+    right: 6px; top: 4px; width: 72px; height: 72px;
     background-image: url("skins/groovy/decor-cloud-small.png");
     animation: groovy-drift 28s ease-in-out infinite;
   }
   :root[data-skin="groovy"] [data-domain="habits"]::before {
-    right: -20px; top: -48px; width: 150px; height: 75px;
+    left: 6px; bottom: 6px; width: 122px; height: 61px;
     background-image: url("skins/groovy/decor-rainbow.png");
     animation: groovy-drift 34s ease-in-out infinite;
   }
   :root[data-skin="groovy"] [data-domain="habits"]::after {
-    right: -18px; bottom: -20px; width: 104px; height: 104px;
+    right: 4px; bottom: 4px; width: 88px; height: 88px;
     background-image: url("skins/groovy/decor-flowers-right.png");
   }
-  :root[data-skin="groovy"] [data-domain="goals"]::before {
-    left: -20px; bottom: -18px; width: 160px; height: 80px;
-    background-image: url("skins/groovy/decor-hill.png");
-  }
   :root[data-skin="groovy"] [data-domain="weekly"]::before {
-    left: -16px; top: -50px; width: 92px; height: 92px;
+    left: 6px; top: 4px; width: 74px; height: 74px;
     background-image: url("skins/groovy/decor-cloud-big.png");
     animation: groovy-drift 40s ease-in-out infinite;
   }
   :root[data-skin="groovy"] [data-domain="shelf"]::before {
-    right: -20px; bottom: -20px; width: 106px; height: 106px;
+    right: 4px; bottom: 4px; width: 90px; height: 90px;
     background-image: url("skins/groovy/decor-flowers-right.png");
   }
-  :root[data-skin="groovy"] [data-domain="digest"]::before {
-    left: -14px; bottom: 30px; width: 100px; height: 100px;
+  :root[data-skin="groovy"] [data-domain="shelf"]::after {
+    left: 4px; bottom: 4px; width: 78px; height: 78px;
     background-image: url("skins/groovy/decor-flowers-left.png");
   }
+
+  /* Нижняя полоса под декор: без неё цветы и радуга ложились под
+     кнопки, потому что содержимое доходит до самого низа карточки. */
+  :root[data-skin="groovy"] [data-domain="habits"],
+  :root[data-skin="groovy"] [data-domain="shelf"] { padding-bottom: 76px; }
   :root[data-skin="groovy"] [data-domain="calendar"]::before {
-    right: -18px; top: -52px; width: 96px; height: 96px;
+    right: 8px; top: 6px; width: 78px; height: 78px;
     background-image: url("skins/groovy/decor-cloud-small.png");
     animation: groovy-drift 30s ease-in-out infinite;
   }
@@ -1552,7 +1570,18 @@
     font-weight: 700;
   }
   :root[data-skin="groovy"] .shelf-poster { border: 3px solid var(--ink); border-radius: 16px; }
-  :root[data-skin="groovy"] .theme-swatch { border: 3px solid var(--ink); }
+  /* Кружки тем — ТОЧКИ ЦВЕТА, а не кнопки. Общее правило для button
+     дало им min-height 36px и боковые поля 16px, и вместо 22-пиксельных
+     точек вышли таблетки шириной 37px. Возвращаем размер явно. */
+  :root[data-skin="groovy"] .theme-swatch {
+    border: 3px solid var(--ink);
+    box-shadow: none;
+    width: 26px;
+    height: 26px;
+    min-height: 0;
+    padding: 0;
+  }
+  :root[data-skin="groovy"] .theme-swatch:hover:not(:disabled) { transform: scale(1.15); box-shadow: none; }
   :root[data-skin="groovy"] .digest-topic { border-bottom: 3px solid var(--paper-shade); }
   :root[data-skin="groovy"] .digest-preview {
     border: 3px solid var(--ink);
