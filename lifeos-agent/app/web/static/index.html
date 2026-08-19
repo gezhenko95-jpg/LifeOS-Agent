@@ -592,7 +592,9 @@
     border-radius: var(--radius-control);
     background: var(--accent-soft);
     color: var(--text);
-    cursor: grab;
+    /* pointer, а не grab: основное действие по плашке — открыть задачу,
+       перетаскивание вторично. */
+    cursor: pointer;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1145,6 +1147,12 @@
   /* Тёмного варианта нет намеренно: это цельный образ, а не «светлая
      версия чего-то». */
 
+  /* Декоративные размытые пятна выключены: в референсе фон плоский
+     почти чёрный, а пятна давали бурый и зелёный подтёк по краям и
+     ломали контраст кремовых карточек. Размытие вообще чужое этому
+     стилю — здесь всё либо контур, либо плоская заливка. */
+  :root[data-skin="groovy"] .bg-blobs { display: none; }
+
   /* --- Цвет домена ---------------------------------------------------
      Один акцент на карточку, используется сразу в трёх местах: чип
      иконки, основная кнопка, микрозвёзды. Взгляд узнаёт блок до того,
@@ -1169,6 +1177,11 @@
   :root[data-skin="groovy"] .grid {
     grid-template-columns: repeat(12, minmax(0, 1fr));
     gap: 20px;
+    /* Карточка по высоте СВОЕГО содержимого, а не соседа. По умолчанию
+       grid растягивает всех в ряду до самой высокой — из-за этого у
+       целей, итогов и полки внизу зияла пустота в пол-экрана, ровно
+       та, на которую владелец и жаловался. */
+    align-items: start;
   }
   :root[data-skin="groovy"] .grid > .card { grid-column: span 4; }
   :root[data-skin="groovy"] .grid > [data-domain="calendar"] { grid-column: span 12; }
@@ -1178,17 +1191,18 @@
   :root[data-skin="groovy"] .grid > [data-domain="digest"] { grid-column: span 3; }
 
   :root[data-skin="groovy"] .card {
-    /* Карточка ниже 300px — признак того, что в неё забыли положить
-       иллюстрацию. */
-    min-height: 300px;
-    padding: 26px;
+    /* Нижняя граница, а не распорка: карточка с формой из двух полей
+       не должна схлопываться в полоску, но и тянуться в пустоту тоже
+       не должна (см. align-items: start выше). */
+    min-height: 210px;
+    padding: 20px;
     /* Угловой декор выходит за край карточки и частично перекрывает
        контур — так получается аппликация, а не рамка. */
     overflow: visible;
     position: relative;
   }
   :root[data-skin="groovy"] [data-domain="calendar"],
-  :root[data-skin="groovy"] [data-domain="rewards"] { padding: 30px; }
+  :root[data-skin="groovy"] [data-domain="rewards"] { padding: 24px; }
 
   :root[data-skin="groovy"] .card:hover {
     transform: translateY(-5px);
@@ -1198,17 +1212,20 @@
   /* --- Типографика ---------------------------------------------------
      Заголовок карточки был 16px — на нём и держалась «панельность».
      Стало 26px, числа 64px. */
+  /* 19px, а не 26: на 26 «ДАЙДЖЕСТЫ КАНАЛОВ» ломались на две строки и
+     заголовок начинал спорить с иллюстрацией за внимание. В референсе
+     заголовок компактный, крупные тут только ЧИСЛА. */
   :root[data-skin="groovy"] .card h2 {
     font-family: var(--font-display);
-    font-size: 26px;
+    font-size: 19px;
     font-weight: 700;
-    line-height: 1.15;
-    margin-bottom: 20px;
+    line-height: 1.2;
+    margin-bottom: 14px;
   }
   :root[data-skin="groovy"] .card h3 { font-size: 15px; }
   :root[data-skin="groovy"] .rewards-number {
     font-family: var(--font-display);
-    font-size: 64px;
+    font-size: 52px;
     line-height: 1;
   }
   :root[data-skin="groovy"] .weekly-number,
@@ -1235,12 +1252,12 @@
     background: var(--domain, var(--coral));
     color: var(--paper-warm);
     font-family: var(--font-display);
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 700;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.03em;
     text-transform: uppercase;
-    min-height: 44px;
-    padding: 0 22px;
+    min-height: 36px;
+    padding: 0 16px;
     transition: transform 0.09s ease, box-shadow 0.09s ease;
   }
   :root[data-skin="groovy"] button:hover:not(:disabled) {
@@ -1263,11 +1280,12 @@
   :root[data-skin="groovy"] select,
   :root[data-skin="groovy"] textarea {
     border: 3px solid var(--ink);
-    border-radius: 18px;
+    border-radius: 14px;
     background: var(--paper-warm);
     color: var(--ink);
-    min-height: 44px;
-    padding: 0 16px;
+    min-height: 36px;
+    padding: 0 12px;
+    font-size: 14px;
     font-weight: 600;
   }
   :root[data-skin="groovy"] textarea { padding: 12px 16px; }
@@ -1314,6 +1332,17 @@
   :root[data-skin="groovy"] .icon-chip-muted svg { fill: var(--ink); opacity: 1; }
   :root[data-skin="groovy"] [data-icon] .icon-chip { width: 38px; height: 38px; }
   :root[data-skin="groovy"] .rewards-label .icon-chip { width: 32px; height: 32px; }
+
+  /* Клетки календаря: своё скругление вместо --radius-control. У груви
+     контрол — таблетка (999px), и номер дня в левом верхнем углу уезжал
+     за скругление: было видно «.7» вместо «17». */
+  :root[data-skin="groovy"] .cal-day {
+    border-radius: 16px;
+    border-width: 3px;
+    padding: 7px 9px;
+  }
+  :root[data-skin="groovy"] .cal-daynum { font-size: 0.8rem; font-weight: 700; }
+  :root[data-skin="groovy"] .cal-task { border-radius: 10px; font-weight: 600; }
 
   /* --- Прогресс ------------------------------------------------------ */
   :root[data-skin="groovy"] .progress-bar {
@@ -1375,12 +1404,14 @@
 
   /* Карточки, где списка нет вовсе, получают героя фоном самой карточки. */
   :root[data-skin="groovy"] [data-domain="weekly"] {
+    background-color: var(--card-bg);
     background-image: url("skins/groovy/hero-weekly.png");
     background-repeat: no-repeat;
     background-position: right -10px bottom -6px;
     background-size: auto 140px;
   }
   :root[data-skin="groovy"] [data-domain="goals"] {
+    background-color: var(--card-bg);
     background-image: url("skins/groovy/hero-progress.png");
     background-repeat: no-repeat;
     background-position: right -14px bottom 10px;
@@ -1393,6 +1424,7 @@
      безобидно — у неё нет «правильных» пропорций. */
   :root[data-skin="groovy"] [data-domain="tasks"],
   :root[data-skin="groovy"] [data-domain="digest"] {
+    background-color: var(--card-bg);
     background-repeat: no-repeat;
     background-position: bottom center;
     background-size: 100% 46px;
@@ -1554,6 +1586,7 @@
      бы на кружки. */
   :root[data-skin="groovy"] .rewards-card { padding-bottom: 104px; }
   :root[data-skin="groovy"] [data-domain="rewards"] {
+    background-color: var(--card-bg);
     background-image: url("skins/groovy/motivation.png");
     background-repeat: no-repeat;
     background-position: left 24px bottom 10px;
@@ -1831,7 +1864,7 @@
 
 
   <section class="card calendar-card" data-domain="calendar">
-    <h2 data-icon="chart">Календарь</h2>
+    <h2 data-icon="ring">Календарь</h2>
     <div class="cal-head">
       <button class="secondary" id="calPrev" title="Предыдущий месяц">‹</button>
       <span class="cal-title" id="calTitle"></span>
@@ -1900,7 +1933,7 @@
   </section>
 
   <section class="card" data-domain="tasks">
-    <h2>Задачи</h2>
+    <h2 data-icon="check">Задачи</h2>
     <form class="add-form" id="taskForm">
       <input type="text" id="taskTitle" placeholder="Название задачи" required />
       <select id="taskPriority">
@@ -1914,7 +1947,7 @@
   </section>
 
   <section class="card" data-domain="habits">
-    <h2>Привычки</h2>
+    <h2 data-icon="repeat">Привычки</h2>
     <form class="add-form" id="habitForm">
       <input type="text" id="habitTitle" placeholder="Название привычки" required />
       <button type="submit">Добавить</button>
@@ -1923,7 +1956,7 @@
   </section>
 
   <section class="card" data-domain="goals">
-    <h2>Цели</h2>
+    <h2 data-icon="target">Цели</h2>
     <form class="add-form" id="goalForm">
       <input type="text" id="goalTitle" placeholder="Название цели" required />
       <button type="submit">Добавить</button>
@@ -1970,7 +2003,7 @@
   </section>
 
   <section class="card" data-domain="digest">
-    <h2 data-icon="repeat">Дайджесты каналов</h2>
+    <h2 data-icon="star">Дайджесты</h2>
     <form class="add-form" id="digestForm">
       <input type="text" id="digestName" placeholder="Тема одним словом, напр. ESG" required />
       <select id="digestFrequency">
@@ -2136,12 +2169,16 @@ function sprinkleSparkles() {
   if (getActiveSkin() !== "groovy") return;
 
   document.querySelectorAll(".grid > .card").forEach((card, cardIndex) => {
-    const count = 3 + (cardIndex % 3);
+    const count = 2 + (cardIndex % 2);
     for (let i = 0; i < count; i += 1) {
       const seed = cardIndex * 7 + i * 13;
-      const left = 6 + ((seed * 17) % 84);
-      const top = 8 + ((seed * 29) % 80);
-      const size = 10 + ((seed * 11) % 9);
+      // Звёзды жмутся к КРАЯМ карточки, а не рассыпаются по центру: в
+      // середине пустой карточки они читались как мусор, а не как
+      // блёстки вокруг иллюстрации.
+      const nearLeft = seed % 2 === 0;
+      const left = nearLeft ? 4 + ((seed * 17) % 14) : 82 + ((seed * 17) % 14);
+      const top = 6 + ((seed * 29) % 22) + (seed % 3 === 0 ? 62 : 0);
+      const size = 9 + ((seed * 11) % 6);
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       svg.setAttribute("class", "sparkle");
       svg.setAttribute("viewBox", "0 0 24 24");
@@ -3474,11 +3511,30 @@ async function createTaskOnDay(dayKeyValue, title) {
 // --- Перенос задачи на другой день ----------------------------------
 
 let calDragTaskId = null;
+// Различаем клик и перетаскивание: без флага задача открывалась бы и
+// после переноса на другой день, если браузер решил дослать click.
+let calDragStarted = false;
+
+/** Клик по плашке задачи в календаре открывает её в редакторе.
+
+    Слушаем всю карточку календаря, а не сетку: плашки есть и в месячной
+    сетке, и в панели часов, обработчик один на оба места. */
+document.querySelector(".calendar-card").addEventListener("click", (e) => {
+  const chip = e.target.closest(".cal-task");
+  if (!chip) return;
+  if (calDragStarted) {
+    calDragStarted = false;
+    return;
+  }
+  e.stopPropagation();
+  openEditor("task", Number(chip.dataset.taskId));
+});
 
 document.querySelector(".calendar-card").addEventListener("dragstart", (e) => {
   const chip = e.target.closest(".cal-task");
   if (!chip) return;
   calDragTaskId = Number(chip.dataset.taskId);
+  calDragStarted = true;
   chip.classList.add("dragging");
   e.dataTransfer.effectAllowed = "move";
   // Firefox не начинает перетаскивание без setData.
