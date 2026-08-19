@@ -322,39 +322,134 @@ Pixel art on a strict 32x32 pixel grid. Hard aliased edges, no anti-aliasing wha
 
 ## Угловой декор (шаги 15–22)
 
-Мелкие спрайты, **256×256** каждый (радуга и холм — 512×256). Лежат в
-углах карточек и частично выходят за край, поэтому композиция должна
-быть смещена к одному краю, а не отцентрована.
+Мелкие спрайты. Лежат в углах карточек и **выходят за край** —
+поэтому у них другой техблок, чем у картинок из основной части:
+там композиция центрируется, здесь наоборот прижимается к краю.
+Промпты ниже уже собраны целиком, ничего дописывать не надо.
 
-**Дописать в техблок для этих восьми:** `Composition anchored to one
-edge, not centered — this is a corner sticker that will bleed off the
-edge of a card.`
+### Шаг 15 — `decor-flowers-left.png` (256×256)
 
-| Шаг | Файл | Размер | Subject |
-|---|---|---|---|
-| 15 | `decor-flowers-left.png` | 256×256 | `a cluster of three daisies and two leaves, growing from the lower left corner` |
-| 16 | `decor-flowers-right.png` | 256×256 | `a cluster of two round flowers and a leafy stem, growing from the lower right corner` |
-| 17 | `decor-cloud-small.png` | 256×256 | `a single small puffy cloud with a smiling face` |
-| 18 | `decor-cloud-big.png` | 256×256 | `a large puffy cloud, no face, two small sparkles beside it` |
-| 19 | `decor-rainbow.png` | 512×256 | `a rainbow arc with a puffy cloud at each end` |
-| 20 | `decor-hill.png` | 512×256 | `a rolling grassy hill with two tiny flowers on it` |
-| 21 | `decor-mushroom.png` | 256×256 | `a spotted mushroom with a smiling face and two blades of grass` |
-| 22 | `decor-stars.png` | 256×256 | `a loose cluster of five four-pointed stars of different sizes` |
+Задачи, дайджесты — левый нижний угол.
+
+```
+1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
+
+Subject: a tight cluster of three daisies and two leaves, growing up from the BOTTOM-LEFT corner, stems rooted at the corner.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Composition anchored to one edge and touching it, NOT centered — this is a corner sticker that will bleed off the edge of a card. One tight cluster, no scene, no ground line.
+```
+
+### Шаг 16 — `decor-flowers-right.png` (256×256)
+
+Привычки, полка — правый нижний угол.
+
+```
+1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
+
+Subject: a tight cluster of two round flowers and one leafy stem, growing up from the BOTTOM-RIGHT corner, stems rooted at the corner.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Composition anchored to one edge and touching it, NOT centered — this is a corner sticker that will bleed off the edge of a card. One tight cluster, no scene, no ground line.
+```
+
+### Шаг 17 — `decor-cloud-small.png` (256×256)
+
+Задачи, календарь — правый верхний угол, медленно дрейфует.
+
+```
+1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
+
+Subject: a single small puffy cloud with a simple smiling face, pushed to the TOP-RIGHT corner.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Composition anchored to one edge and touching it, NOT centered — this is a corner sticker that will bleed off the edge of a card. One tight cluster, no scene, no ground line.
+```
+
+### Шаг 18 — `decor-cloud-big.png` (256×256)
+
+Итоги недели — левый верхний угол, дрейфует.
+
+```
+1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
+
+Subject: one large puffy cloud without a face and two small four-pointed sparkles beside it, pushed to the TOP-LEFT corner.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Composition anchored to one edge and touching it, NOT centered — this is a corner sticker that will bleed off the edge of a card. One tight cluster, no scene, no ground line.
+```
+
+### Шаг 19 — `decor-rainbow.png` (512×256)
+
+Привычки — верхний правый край, лежит поперёк.
+
+```
+1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
+
+Subject: a rainbow arc with a puffy cloud at each end, the arc rising from the BOTTOM edge of the frame so its two ends are cut off by that edge.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Composition anchored to one edge and touching it, NOT centered — this is a corner sticker that will bleed off the edge of a card. One tight cluster, no scene, no ground line.
+```
+
+### Шаг 20 — `decor-hill.png` (512×256)
+
+Цели — нижний левый край.
+
+```
+1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
+
+Subject: a rolling grassy hill with two tiny flowers on it, occupying the BOTTOM half of the frame and running off both the left and right edges.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Composition anchored to one edge and touching it, NOT centered — this is a corner sticker that will bleed off the edge of a card. One tight cluster, no scene, no ground line.
+```
+
+### Шаг 21 — `decor-mushroom.png` (256×256)
+
+Ежедневный визит — правый нижний угол.
+
+```
+1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
+
+Subject: one spotted mushroom with a simple smiling face and two blades of grass at its base, pushed to the BOTTOM-RIGHT corner.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Composition anchored to one edge and touching it, NOT centered — this is a corner sticker that will bleed off the edge of a card. One tight cluster, no scene, no ground line.
+```
+
+### Шаг 22 — `decor-stars.png` (256×256)
+
+Визит и цели — верхние углы.
+
+```
+1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
+
+Subject: a loose cluster of five four-pointed stars of different sizes, gathered toward one corner of the frame.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Composition anchored to one edge and touching it, NOT centered — this is a corner sticker that will bleed off the edge of a card. One tight cluster, no scene, no ground line.
+```
 
 ---
 
 ## Волны-разделители (шаги 23–24)
 
-Широкие полосы вдоль низа карточки, **1024×256**.
+Широкие полосы **1024×256** вдоль низа карточки. Техблок снова свой:
+полоса должна доходить до обоих краёв, иначе на широкой карточке
+будет виден шов.
 
-**Дописать в техблок для этих двух:** `A horizontal band, full width,
-flat on the left and right edges so it can tile. Wave shapes stacked
-horizontally.`
+### Шаг 23 — `wave-color.png` (1024×256)
 
-| Шаг | Файл | Subject |
-|---|---|---|
-| 23 | `wave-color.png` | `stacked wavy stripes in coral, orange, gold, green and lavender` |
-| 24 | `wave-mono.png` | `stacked wavy stripes in two tones of cream, subtle` |
+```
+1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
+
+Subject: horizontally stacked wavy stripes in coral red, sunset orange, golden yellow, sage green and dusty lavender, five stripes total.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow. No text, no letters, no numbers anywhere in the image. A horizontal band spanning the full width of the image, with the stripes running off both the left and right edges so the band can tile seamlessly. Nothing floating above or below the band.
+```
+
+### Шаг 24 — `wave-mono.png` (1024×256)
+
+```
+1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
+
+Subject: horizontally stacked wavy stripes in two close tones of cream and warm beige, subtle and low contrast, four stripes total.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow. No text, no letters, no numbers anywhere in the image. A horizontal band spanning the full width of the image, with the stripes running off both the left and right edges so the band can tile seamlessly. Nothing floating above or below the band.
+```
 
 ---
 
