@@ -1253,7 +1253,16 @@
 
     --accent: var(--coral);
     --accent-soft: #fce0e6;
-    --accent-text: #fcf6e8;
+    /* Тёмный текст, не paper-warm: paper-warm на coral даёт контраст
+       3.15:1 — ниже порога WCAG AA 4.5:1 для обычного текста. Тёмный
+       --ink проходит с запасом (5.38:1). См. --domain-text ниже — та же
+       проблема была у всех доменных кнопок. */
+    --accent-text: var(--ink);
+    /* По умолчанию доменные кнопки и чипы читаются тёмным текстом —
+       посчитано WCAG-контрастом по каждому цвету домена, --ink проходит
+       AA (≥4.5:1) везде, КРОМЕ grape (3.11:1, недостаточно) — там нужен
+       светлый текст (см. override у [data-domain="weekly"] ниже). */
+    --domain-text: var(--ink);
     --danger: var(--coral);
     --high: var(--coral);
     --overdue: var(--coral);
@@ -1293,7 +1302,9 @@
   :root[data-skin="groovy"] [data-domain="goals"] { --domain: var(--lilac); }
   :root[data-skin="groovy"] [data-domain="shelf"] { --domain: var(--gold); }
   :root[data-skin="groovy"] [data-domain="rewards"] { --domain: var(--tangerine); }
-  :root[data-skin="groovy"] [data-domain="weekly"] { --domain: var(--grape); }
+  /* grape — единственный домен, где тёмный --domain-text не проходит
+     контраст (3.11:1); здесь нужен светлый текст (5.45:1). */
+  :root[data-skin="groovy"] [data-domain="weekly"] { --domain: var(--grape); --domain-text: var(--paper-warm); }
   :root[data-skin="groovy"] [data-domain="digest"] { --domain: var(--mint); }
 
 
@@ -1360,7 +1371,7 @@
     border-radius: 999px;
     box-shadow: 3px 3px 0 var(--ink);
     background: var(--domain, var(--coral));
-    color: var(--paper-warm);
+    color: var(--domain-text, var(--ink));
     font-family: var(--font-display);
     font-size: 13px;
     font-weight: 700;
@@ -1383,8 +1394,26 @@
     background: var(--paper-warm);
     color: var(--ink);
   }
-  :root[data-skin="groovy"] button.danger { background: var(--coral); color: var(--paper-warm); }
+  /* ink, не paper-warm: coral+paper-warm даёт 3.15:1, ниже AA. */
+  :root[data-skin="groovy"] button.danger { background: var(--coral); color: var(--ink); }
   :root[data-skin="groovy"] button:disabled { opacity: 0.55; box-shadow: 2px 2px 0 var(--ink); }
+
+  /* Найдено impeccable-критикой: .tab.active из базовых стилей (0,2,0)
+     проигрывал специфичности общего правила groovy `button` выше
+     (0,2,1 — атрибут+псевдокласс+элемент), и активная вкладка красилась
+     в тот же цвет, что и все остальные. Ни одна вкладка не выглядела
+     "текущей" — ровно тот класс бага со специфичностью, что уже стоил
+     трёх вечеров в этой сессии (см. HANDOFF). Явный оверрайд ниже
+     возвращает видимое различие. */
+  :root[data-skin="groovy"] .tab {
+    background: var(--paper-warm);
+    color: var(--muted);
+  }
+  :root[data-skin="groovy"] .tab.active {
+    background: var(--accent);
+    color: var(--accent-text);
+    border-color: var(--ink);
+  }
 
   :root[data-skin="groovy"] input,
   :root[data-skin="groovy"] select,
@@ -1435,7 +1464,9 @@
   :root[data-skin="groovy"] .icon-chip svg {
     width: 58%;
     height: 58%;
-    fill: var(--paper-warm);
+    /* Тот же принцип, что у кнопок: тёмная заливка проходит контраст
+       (WCAG non-text 3:1) на всех доменах кроме grape. */
+    fill: var(--domain-text, var(--ink));
     stroke: none;
   }
   :root[data-skin="groovy"] .icon-chip-muted { background: var(--paper-shade); }
@@ -1534,7 +1565,16 @@
      полосой, а не угловым спрайтом: у файла непрозрачные края (51%
      периметра), вырезанным по контуру он не был и в углу выглядел
      зелёным ящиком. Растянутый на всю ширину и обрезанный скруглением
-     карточки, он работает ровно так, как должен. */
+     карточки, он работает ровно так, как должен.
+
+     Высота полосы была 46px при нативной пропорции файла 396×256
+     (≈1,55:1) — это растягивало холм по горизонтали примерно в 4 раза
+     (найдено impeccable-критикой: «плывущие» бугры, неравномерные по
+     размеру). 100px держит то же решение (полоса на всю ширину,
+     обрезка скруглением), но с растяжением ~1,9× вместо ~4× —
+     заметно мягче на глаз. Останавливаться на честной пропорции
+     (~155px) нельзя: карточка «Цели» в мозаике узкая (3 колонки),
+     и полоса такой высоты столкнула бы холм с содержимым списка. */
   :root[data-skin="groovy"] [data-domain="goals"] {
     background-color: var(--card-bg);
     background-image:
@@ -1542,8 +1582,8 @@
       url("skins/groovy/decor-hill.png");
     background-repeat: no-repeat, no-repeat;
     background-position: right 6px bottom 34px, bottom center;
-    background-size: auto 108px, 100% 46px;
-    padding-bottom: 58px;
+    background-size: auto 108px, 100% 100px;
+    padding-bottom: 106px;
   }
 
   /* Волна по низу карточки. Растягивается на всю ширину, а НЕ повторяется
