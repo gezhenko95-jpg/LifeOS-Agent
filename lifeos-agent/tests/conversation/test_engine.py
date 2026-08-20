@@ -938,8 +938,12 @@ async def test_ai_fallback_failure_keeps_old_message(
 
 
 async def test_add_watchlist_item(
-    task_service, habit_service, memory_service, watchlist_service
+    task_service, habit_service, memory_service, watchlist_service, monkeypatch
 ):
+    # Тест проверяет поведение без карточек-обложек, а не зависит от
+    # того, настроены ли tmdb/google_books ключи в .env этой машины.
+    monkeypatch.setattr("app.conversation.engine.get_tmdb_client", lambda: None)
+    monkeypatch.setattr("app.conversation.engine.get_books_client", lambda: None)
     watchlist_service.create_item.return_value = SimpleNamespace(
         title="Дюна", media_type="movie"
     )

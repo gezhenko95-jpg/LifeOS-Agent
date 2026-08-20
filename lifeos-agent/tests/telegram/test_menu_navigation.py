@@ -384,6 +384,10 @@ async def test_watchlist_pending_accepts_bare_title(no_db, monkeypatch):
     service.create_item.return_value = _watchlist_item(1)
     monkeypatch.setattr(handlers, "WatchlistService", lambda repository: service)
     monkeypatch.setattr(handlers, "WatchlistRepository", MagicMock())
+    # Тест проверяет поведение без карточек-обложек, а не зависит от
+    # того, настроены ли tmdb/google_books ключи в .env этой машины.
+    monkeypatch.setattr(handlers, "get_tmdb_client", lambda: None)
+    monkeypatch.setattr(handlers, "get_books_client", lambda: None)
 
     update, context = _update(), _context()
     pending_input.set_pending(
@@ -403,6 +407,10 @@ async def test_watchlist_pending_keeps_media_type_when_written(no_db, monkeypatc
     service.create_item.return_value = _watchlist_item(1)
     monkeypatch.setattr(handlers, "WatchlistService", lambda repository: service)
     monkeypatch.setattr(handlers, "WatchlistRepository", MagicMock())
+    # Тест проверяет поведение без карточек-обложек, а не зависит от
+    # того, настроены ли tmdb/google_books ключи в .env этой машины.
+    monkeypatch.setattr(handlers, "get_tmdb_client", lambda: None)
+    monkeypatch.setattr(handlers, "get_books_client", lambda: None)
 
     update, context = _update(), _context()
     pending_input.set_pending(

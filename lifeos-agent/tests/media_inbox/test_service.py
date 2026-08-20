@@ -49,6 +49,10 @@ async def test_movie_with_title_creates_watchlist_item(monkeypatch):
         "app.media_inbox.service.classify_image",
         AsyncMock(return_value=ImageClassification(category="movie", title="Дюна")),
     )
+    # Тест проверяет поведение без карточек-обложек, а не зависит от
+    # того, настроены ли tmdb/google_books ключи в .env этой машины.
+    monkeypatch.setattr("app.media_inbox.service.get_tmdb_client", lambda: None)
+    monkeypatch.setattr("app.media_inbox.service.get_books_client", lambda: None)
     drive = _drive_client()
     watchlist = _watchlist_service()
     service = MediaInboxService(drive, watchlist, AsyncMock())

@@ -162,7 +162,14 @@ class Settings(BaseSettings):
     # сервер с доменом.
     public_ui_url: str = ""
 
-    model_config = SettingsConfigDict(env_file=".env")
+    # extra="ignore": .env содержит и переменные, нужные только
+    # docker-compose (POSTGRES_PASSWORD — подставляется в database_url и
+    # в сервис db), а не самому приложению. В контейнере на проде файла
+    # .env физически нет — значения приходят через env_file: докера
+    # прямо в окружение процесса, и pydantic-settings трогает только
+    # объявленные поля. Локально же .env читается файлом целиком, и без
+    # extra="ignore" лишний ключ валит Settings() ошибкой валидации.
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 @lru_cache
