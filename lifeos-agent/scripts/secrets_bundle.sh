@@ -106,8 +106,39 @@ unpack() {
         echo "    -> ${dst}"
     done
 
+    ensure_ssh_alias
     ok "разложено"
     echo "Проверить машину: python lifeos-agent/scripts/doctor.py"
+}
+
+# Ключа мало: deploy.sh ходит на хост по имени lifeos-eu, а имя живёт в
+# ~/.ssh/config. Без этой записи ключ лежит правильно, а деплой всё равно
+# не работает — и причина неочевидная. Дописываем, если её нет.
+ensure_ssh_alias() {
+    local key="${HOME}/.ssh/lifeos_main"
+    local config="${HOME}/.ssh/config"
+
+    [ -f "${key}" ] || return 0
+    if [ -f "${config}" ] && grep -qE "^[[:space:]]*Host[[:space:]]+.*lifeos-eu" "${config}"; then
+        echo "    ${GREY}алиас lifeos-eu в ~/.ssh/config уже есть${RESET}"
+        return 0
+    fi
+
+    mkdir -p "${HOME}/.ssh"
+    chmod 700 "${HOME}/.ssh"
+    # Пустая строка перед блоком: без неё запись слипнется с предыдущей
+    # и ssh прочитает её как продолжение чужого Host.
+    {
+        echo ""
+        echo "Host lifeos-eu"
+        echo "  HostName 148.135.208.126"
+        echo "  User root"
+        echo "  IdentityFile ~/.ssh/lifeos_main"
+        echo "  ServerAliveInterval 20"
+        echo "  ServerAliveCountMax 6"
+    } >> "${config}"
+    chmod 600 "${config}"
+    echo "    -> добавлен алиас lifeos-eu в ${config}"
 }
 
 case "${MODE}" in
