@@ -16,11 +16,11 @@
 > уходил наружу вместе с паролем. Убран, владелец меняет его в панели.
 > Новые пароли сюда не вписывать, только ссылку на менеджер паролей.
 
-> **Появились design-скилы в `.claude/skills/`** — genjutsu, animate,
-> impeccable, web-design-guidelines, agent-browser (подробности ниже).
-> Это не код проекта, а сторонние инструменты для Claude Code — если их
-> когда-нибудь понадобится обновить или снести, искать здесь, а не в
-> `app/`.
+> **Появились design-скилы в `.claude/skills/`** — cast, paint (вместе
+> они genjutsu), animate, impeccable, web-design-guidelines,
+> agent-browser (подробности ниже). Это не код проекта, а сторонние
+> инструменты для Claude Code — если их когда-нибудь понадобится
+> обновить или снести, искать здесь, а не в `app/`.
 
 ---
 
@@ -130,10 +130,16 @@ Accessibility — формального требования никогда н�
 непроверенных источников (npx/npm-установщики), это владелец делал
 **сам, в своём терминале**, не я. Итог:
 
-- **genjutsu** (`cast`/`paint` + 12 подскилов, без `ui-ux-pro-max` — там
-  были `.py`-скрипты) — анимации, чистый CSS (`css-native`), аудит
-  дизайна, motion-принципы. Подходит под наш стек (vanilla HTML/CSS/JS,
-  без React).
+- **genjutsu** — два top-level скила `cast` и `paint`, у каждого своя
+  копия 12 подскилов в `_jutsu/` рядом (без `ui-ux-pro-max` — там были
+  `.py`-скрипты). Анимации, чистый CSS (`css-native`), аудит дизайна,
+  motion-принципы. Подходит под наш стек (vanilla HTML/CSS/JS, без
+  React). **Важно:** `SKILL.md` обязан лежать прямо в
+  `.claude/skills/<имя>/SKILL.md` — вложенность на уровень глубже
+  (`.claude/skills/genjutsu/skills/cast/SKILL.md`, как ставит
+  оригинальный маркетплейс-инсталлятор) Claude Code не сканирует, скил
+  просто не появляется. Если понадобится ставить ещё скилы из
+  подобных многоскиловых репозиториев — разворачивать так же плоско.
 - **animate** (по курсу Emil Kowalski) — easing/тайминги, примеры
   hover/toast/modal.
 - **web-design-guidelines** (Vercel) — на каждый вызов сам подтягивает
@@ -154,9 +160,10 @@ Accessibility — формального требования никогда н�
   прямо в `Bash` без слэш-команды. Скил-доку (`agent-browser skills get
   core`) сохранил в `.claude/skills/agent-browser/SKILL.md`.
 
-Все скилы, кроме `agent-browser`, подгружаются в реестр Claude Code
-один раз при старте сессии — станут настоящими слэш-командами
-(`/genjutsu:cast`, `/impeccable audit`, …) после рестарта.
+Скилы из `.claude/skills/` подхватываются реестром Claude Code сами —
+рестарт сессии не обязателен (проверено: `cast`/`paint` появились в
+списке доступных без него). Работают через `Skill`-инструмент
+(`impeccable audit`, `cast`, …).
 
 ---
 
@@ -201,7 +208,7 @@ bash scripts/deploy.sh --check  # сверка прод/гит/локаль
 ├── .claude/settings.json                   — разрешение на deploy.sh (NEW)
 ├── .claude/settings.local.json             — хук impeccable design detector (NEW)
 └── .claude/skills/                         (NEW)
-    ├── genjutsu/       — cast/paint + 12 подскилов (без ui-ux-pro-max)
+    ├── cast/, paint/   — genjutsu; у каждого своя копия _jutsu/ (12 подскилов, без ui-ux-pro-max)
     ├── animate/        — easing/тайминги, Emil Kowalski
     ├── web-design-guidelines/ — accessibility/UX-аудит через WebFetch
     ├── impeccable/     — критика/полировка UI, хук на каждую правку
