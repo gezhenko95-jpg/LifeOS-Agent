@@ -1382,6 +1382,13 @@
     font-size: 64px;
     line-height: 1;
   }
+  /* Пробовал покрасить #coinsCount в --tangerine (домен визита/монет по
+     п.12) отдельно от --coral у серии — контраст мандарина на кремовом
+     фоне 2.15:1, ХУЖЕ, чем у уже используемого коралла (2.95:1, и тот
+     на грани). Ни один доменный акцент не проходит честные 3:1 для
+     крупного текста на --card-bg, кроме grape и ink — различать числа
+     цветом здесь физически нельзя без потери читаемости. Оставлено
+     одним цветом (--accent, унаследовано из общего .rewards-number). */
   :root[data-skin="groovy"] .weekly-number,
   :root[data-skin="groovy"] .stat-number {
     font-family: var(--font-display);
@@ -1670,8 +1677,12 @@
     right: 4px; bottom: 4px; width: 96px; height: 96px;
     background-image: url("skins/groovy/decor-mushroom.png");
   }
+  /* Было left:12px — сталкивалось с заголовком «ЕЖЕДНЕВНЫЙ ВИЗИТ»:
+     чип-иконка и звёзды одновременно претендовали на левый верхний
+     угол, а заголовок в две строки ещё и переносился поверх звёзд.
+     Правый верхний угол у этой карточки свободен. */
   :root[data-skin="groovy"] [data-domain="rewards"]::after {
-    left: 12px; top: 6px; width: 62px; height: 62px;
+    right: 8px; top: 6px; width: 62px; height: 62px;
     background-image: url("skins/groovy/decor-stars.png");
   }
   :root[data-skin="groovy"] [data-domain="tasks"]::after {
