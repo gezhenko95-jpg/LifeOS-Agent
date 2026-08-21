@@ -1187,7 +1187,20 @@
   :root[data-skin="pixel"] button.danger { background: var(--card-bg); color: #111; }
   :root[data-skin="pixel"] .rewards-number,
   :root[data-skin="pixel"] .weekly-number { font-family: var(--font-display); }
-  /* Пустые состояния — пунктирная рамка, как в макете. */
+  /* Пустые состояния — пунктирная рамка, как в макете. Слот под
+     иллюстрацию (padding-top + background-image на 4 файла из
+     002-skin-illustration-prompts.md, СКИН 4, плюс motivation.png на
+     карточке визита) НЕ подключаем сейчас: проверено агент-браузером —
+     background-image на несуществующий файл действительно ничего не
+     рисует, НО padding-top под картинку остаётся и открывает пустую
+     дыру над текстом «Пока нет задач» уже сегодня, с текущим CSS без
+     единой картинки. Разметка и картинки должны прийти ОДНИМ изменением
+     (так, как это в итоге сделали для groovy), а не порознь. Когда
+     появятся 11 PNG в skins/pixel/ — добавить сюда те же четыре
+     #id .empty { background-image: url(...) } правила, что у groovy
+     (строки выше, блок [data-skin="groovy"] .empty), с padding-top
+     ~148px под 128px иллюстрацию, и background-image на
+     [data-domain="rewards"] с motivation.png. */
   :root[data-skin="pixel"] .empty {
     border: 2px dashed var(--border);
     padding: 22px 12px;
@@ -1200,8 +1213,22 @@
   :root[data-skin="pixel"] .progress-bar,
   :root[data-skin="pixel"] .progress-bar > span { border-radius: 0; }
   :root[data-skin="pixel"] .toast { border-radius: 0; border-width: 2px; box-shadow: 4px 4px 0 #111; }
-  /* Знак в шапке: пиксельная сетка вместо мягкого кольца. */
-  :root[data-skin="pixel"] .brand-mark { image-rendering: pixelated; }
+  /* logo.png ЕЩЁ НЕ подключаем через .brand::before (тот приём, что у
+     groovy): пустой url() на несуществующий файл не рисует ничего, но
+     сам псевдоэлемент занял бы 148×42px пустого места в шапке ДО того,
+     как файл появится — визуальная регрессия прямо сейчас. Когда logo.png
+     будет в skins/pixel/, добавить .brand::before по образцу groovy
+     (см. блок [data-skin="groovy"] .brand::before выше) — тогда же
+     скрыть .brand-mark и увести текст в visually-hidden.
+
+     Пиксель-арт нельзя масштабировать сглаживанием — обязателен на
+     КАЖДОМ слоте с иллюстрацией скина, не только на .brand-mark:
+     пустые состояния и карточка визита из правил выше. */
+  :root[data-skin="pixel"] .brand-mark,
+  :root[data-skin="pixel"] .empty,
+  :root[data-skin="pixel"] [data-domain="rewards"] {
+    image-rendering: pixelated;
+  }
 
   /* ==================== СКИН: РЕТРО-ГРУВИ ====================
      Реализация designs/003-groovy-design-system.md.
@@ -1309,10 +1336,9 @@
 
 
   :root[data-skin="groovy"] .card {
-    /* Нижняя граница, а не распорка: карточка с формой из двух полей
-       не должна схлопываться в полоску, но и тянуться в пустоту тоже
-       не должна (см. align-items: start выше). */
-    min-height: 210px;
+    /* 300px по 003 п.9: «карточка ниже — признак того, что в неё забыли
+       положить иллюстрацию». Было 210px. */
+    min-height: 300px;
     padding: 20px;
     /* Декор ЗАПРАВЛЕН ВНУТРЬ и обрезается скруглением карточки.
        Была ошибка: он выпускался наружу (overflow: visible и
@@ -1324,6 +1350,9 @@
   }
   :root[data-skin="groovy"] [data-domain="calendar"],
   :root[data-skin="groovy"] [data-domain="rewards"] { padding: 24px; }
+  /* 003 п.3: крупная карточка (визит, полка) — 34px, не 30px. */
+  :root[data-skin="groovy"] [data-domain="rewards"],
+  :root[data-skin="groovy"] [data-domain="shelf"] { border-radius: 34px; }
 
   :root[data-skin="groovy"] .card:hover {
     transform: translateY(-5px);
@@ -1333,9 +1362,12 @@
   /* --- Типографика ---------------------------------------------------
      Заголовок карточки был 16px — на нём и держалась «панельность».
      Стало 26px, числа 64px. */
-  /* 19px, а не 26: на 26 «ДАЙДЖЕСТЫ КАНАЛОВ» ломались на две строки и
-     заголовок начинал спорить с иллюстрацией за внимание. В референсе
-     заголовок компактный, крупные тут только ЧИСЛА. */
+  /* 19px, а не 26 из 003 п.5 — ПРОВЕРЕНО ЕЩЁ РАЗ в этой сессии (агент-
+     браузер, инъекция 26px + скриншот): «ЕЖЕДНЕВНЫЙ ВИЗИТ» обрезается
+     об угловой декор, «ИТОГИ НЕДЕЛИ» ломается на две строки. Причина
+     та же, что и раньше — узкие карточки в мозаике 004. В референсе
+     заголовок компактный, крупные тут только ЧИСЛА. Это подтверждённое
+     отступление от документа, не забытая правка. */
   :root[data-skin="groovy"] .card h2 {
     font-family: var(--font-display);
     font-size: 19px;
@@ -1344,9 +1376,10 @@
     margin-bottom: 14px;
   }
   :root[data-skin="groovy"] .card h3 { font-size: 15px; }
+  /* 003 п.5: крупное число (монеты, серия) — 64px, было 52px. */
   :root[data-skin="groovy"] .rewards-number {
     font-family: var(--font-display);
-    font-size: 52px;
+    font-size: 64px;
     line-height: 1;
   }
   :root[data-skin="groovy"] .weekly-number,
@@ -1366,6 +1399,9 @@
   /* --- Кнопки и поля -------------------------------------------------
      Всё, что имеет фон, имеет и контур. Полупрозрачных рамок в системе
      нет: контур либо чернильный, либо его нет вовсе. */
+  /* 003 п.6: высота кнопки 44px (было 36), боковые поля 22px (было 16),
+     шрифт 15px (было 13) — проверено, что при этих размерах ничего не
+     ломается (агент-браузер, скриншот десктопа/мобилки). */
   :root[data-skin="groovy"] button {
     border: 3px solid var(--ink);
     border-radius: 999px;
@@ -1373,12 +1409,12 @@
     background: var(--domain, var(--coral));
     color: var(--domain-text, var(--ink));
     font-family: var(--font-display);
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 700;
     letter-spacing: 0.03em;
     text-transform: uppercase;
-    min-height: 36px;
-    padding: 0 16px;
+    min-height: 44px;
+    padding: 0 22px;
     transition: transform 0.09s ease, box-shadow 0.09s ease;
   }
   :root[data-skin="groovy"] button:hover:not(:disabled) {
@@ -1419,7 +1455,8 @@
   :root[data-skin="groovy"] select,
   :root[data-skin="groovy"] textarea {
     border: 3px solid var(--ink);
-    border-radius: 14px;
+    /* 003 п.3: поле ввода — 18px, было 14px. */
+    border-radius: 18px;
     background: var(--paper-warm);
     color: var(--ink);
     min-height: 36px;
@@ -1919,6 +1956,258 @@
     pointer-events: none;
   }
 
+  /* ==================== СКИН: ГРАФФИТИ ====================
+     designs/002-skin-illustration-prompts.md, СКИН 3. Единственный скин,
+     переопределяющий РЕЖИМ, а не только акцент: карточки тёмные, текст
+     светлый. Полный набор токенов задан явно и не зависит от системной
+     темы браузера — та же стратегия, что у groovy/pixel/japan:
+     :root[data-skin="graffiti"] специфичнее, чем :root внутри
+     @media(prefers-color-scheme:dark) (см. базовые токены вверху файла),
+     и всегда выигрывает независимо от системной темы. Проверено
+     агент-браузером в обоих режимах (media dark и light) — расхождений
+     нет именно потому, что НИ ОДИН токен здесь не оставлен
+     недоопределённым: светлого текста на светлой карточке быть не
+     может, если card-bg и text заданы вместе, одним блоком, а не по
+     частям.
+
+     Картинок (11 штук, см. 002 «СКИН 3: graffiti») пока нет —
+     генератора изображений в этой сессии нет (Nano Banana не
+     подключён, у impeccable generate-image.mjs нет OPENAI_API_KEY).
+     CSS готов принять их без правок: те же имена файлов и слоты, что
+     у groovy/pixel (#taskList .empty, [data-domain="rewards"] и т.д.),
+     добавляются тем же паттерном, когда картинки появятся — сейчас
+     сознательно НЕ подключены, чтобы не открыть пустую дыру под
+     иллюстрацию раньше самой иллюстрации (см. соседний блок pixel,
+     тот же урок). */
+  :root[data-skin="graffiti"] {
+    /* Асфальт, не чистый чёрный — на нём стены-карточки читаются
+       отдельным слоем. */
+    --bg: #0c0a10;
+    --card-bg: #17131d;
+    --paper-warm: #211c2b;
+    --paper-shade: #2a2333;
+    --text: #f5f0e8;
+    --muted: #b3a6c4;
+    --ink: #f5f0e8;
+    --border: #f5f0e8;
+
+    --violet: #8b3dff;
+    --magenta: #ff2ea6;
+    --orange: #ff8a1e;
+    --acid: #e8ff2e;
+    --cyan: #29e0ff;
+    --toxic: #39ff6a;
+
+    --accent: var(--magenta);
+    --accent-soft: #3a1530;
+    --accent-text: #17131d;
+    /* По умолчанию тёмный текст на неоне — посчитано WCAG-контрастом,
+       проходит AA везде, КРОМЕ violet (см. override у goals/weekly). */
+    --domain-text: var(--card-bg);
+    --danger: var(--magenta);
+    --high: var(--magenta);
+    --overdue: var(--magenta);
+    --today: var(--orange);
+    --tomorrow: var(--acid);
+    --later: #6f6480;
+    --ok: var(--toxic);
+
+    --shadow: 5px 5px 0 var(--violet);
+    --font-display: "Comfortaa", "Trebuchet MS", "Segoe UI", sans-serif;
+    --font-body: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --radius-card: 18px;
+    --radius-control: 999px;
+    --border-width: 3px;
+    --heading-transform: uppercase;
+    --heading-spacing: 0.03em;
+  }
+  :root[data-skin="graffiti"] .bg-blobs { display: none; }
+
+  :root[data-skin="graffiti"] [data-domain="tasks"],
+  :root[data-skin="graffiti"] [data-domain="calendar"] { --domain: var(--magenta); }
+  :root[data-skin="graffiti"] [data-domain="habits"] { --domain: var(--cyan); }
+  /* violet — единственный домен здесь, где ни card-bg (3.67:1), ни
+     --text (4.40:1) не проходят WCAG AA — посчитано отдельно, нужен
+     чистый белый (4.99:1). */
+  :root[data-skin="graffiti"] [data-domain="goals"] { --domain: var(--violet); --domain-text: #ffffff; }
+  :root[data-skin="graffiti"] [data-domain="shelf"] { --domain: var(--acid); }
+  :root[data-skin="graffiti"] [data-domain="rewards"] { --domain: var(--orange); }
+  :root[data-skin="graffiti"] [data-domain="weekly"] { --domain: var(--violet); --domain-text: #ffffff; }
+  :root[data-skin="graffiti"] [data-domain="digest"] { --domain: var(--toxic); }
+
+  :root[data-skin="graffiti"] .card {
+    min-height: 300px;
+    box-shadow: var(--shadow);
+  }
+  :root[data-skin="graffiti"] .card:hover {
+    transform: translateY(-4px);
+    box-shadow: 8px 8px 0 var(--violet);
+  }
+  :root[data-skin="graffiti"] .card h2 {
+    font-family: var(--font-display);
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+  }
+
+  :root[data-skin="graffiti"] button {
+    border: 3px solid var(--ink);
+    border-radius: 999px;
+    box-shadow: 3px 3px 0 var(--violet);
+    background: var(--domain, var(--magenta));
+    /* Тёмный текст на неоне читается лучше светлого — тот же расчёт
+       контраста, что у groovy. --domain-text даёт исключение для
+       violet (см. [data-domain="goals"/"weekly"] выше). */
+    color: var(--domain-text, var(--card-bg));
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    min-height: 40px;
+    padding: 0 18px;
+    transition: transform 0.09s ease, box-shadow 0.09s ease;
+  }
+  :root[data-skin="graffiti"] button:hover:not(:disabled) {
+    transform: translate(-2px, -2px);
+    box-shadow: 5px 5px 0 var(--violet);
+  }
+  :root[data-skin="graffiti"] button:active:not(:disabled) {
+    transform: translate(3px, 3px);
+    box-shadow: none;
+  }
+  :root[data-skin="graffiti"] button.secondary {
+    background: var(--paper-warm);
+    color: var(--text);
+  }
+  :root[data-skin="graffiti"] button.danger { background: var(--magenta); color: var(--card-bg); }
+  :root[data-skin="graffiti"] button:disabled { opacity: 0.5; box-shadow: 2px 2px 0 var(--violet); }
+
+  :root[data-skin="graffiti"] .tab {
+    background: var(--paper-warm);
+    color: var(--muted);
+    border-color: var(--ink);
+  }
+  :root[data-skin="graffiti"] .tab.active {
+    background: var(--accent);
+    color: var(--card-bg);
+    border-color: var(--ink);
+  }
+
+  :root[data-skin="graffiti"] input,
+  :root[data-skin="graffiti"] select,
+  :root[data-skin="graffiti"] textarea {
+    border: 3px solid var(--ink);
+    border-radius: 12px;
+    background: var(--paper-warm);
+    color: var(--text);
+    min-height: 40px;
+    padding: 0 12px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  :root[data-skin="graffiti"] textarea { padding: 12px 16px; }
+  :root[data-skin="graffiti"] input::placeholder { color: var(--muted); }
+
+  :root[data-skin="graffiti"] ul.item-list li {
+    background: var(--paper-warm);
+    border: 3px solid var(--ink);
+    border-radius: 14px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    color: var(--text);
+  }
+  :root[data-skin="graffiti"] .achievements li {
+    border: 3px solid var(--ink);
+    border-radius: 14px;
+    background: var(--paper-warm);
+    color: var(--text);
+  }
+  :root[data-skin="graffiti"] .achievements li.unlocked {
+    background: var(--domain, var(--orange));
+    color: var(--domain-text, var(--card-bg));
+  }
+
+  :root[data-skin="graffiti"] .icon-chip {
+    border-radius: 10px;
+    border: 3px solid var(--ink);
+    box-shadow: 2px 2px 0 var(--violet);
+    background: var(--domain, var(--magenta));
+    width: 36px;
+    height: 36px;
+  }
+  :root[data-skin="graffiti"] .icon-chip svg {
+    width: 58%;
+    height: 58%;
+    fill: var(--domain-text, var(--card-bg));
+    stroke: none;
+  }
+  :root[data-skin="graffiti"] .icon-chip-muted { background: var(--paper-shade); }
+  :root[data-skin="graffiti"] .icon-chip-muted svg { fill: var(--text); opacity: 1; }
+
+  :root[data-skin="graffiti"] .progress-bar {
+    border: 3px solid var(--ink);
+    border-radius: 999px;
+    background: var(--paper-shade);
+    height: 14px;
+    width: 84px;
+    overflow: hidden;
+  }
+  :root[data-skin="graffiti"] .progress-bar > span {
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--acid), var(--magenta));
+  }
+
+  :root[data-skin="graffiti"] .toast {
+    border: 3px solid var(--ink);
+    box-shadow: 4px 4px 0 var(--violet);
+    background: var(--paper-warm);
+    color: var(--text);
+    font-weight: 700;
+  }
+  :root[data-skin="graffiti"] .shelf-poster { border: 3px solid var(--ink); border-radius: 12px; }
+  :root[data-skin="graffiti"] .theme-swatch {
+    border: 3px solid var(--ink);
+    box-shadow: none;
+    width: 26px;
+    height: 26px;
+    min-height: 0;
+    padding: 0;
+  }
+  :root[data-skin="graffiti"] .theme-swatch:hover:not(:disabled) { transform: scale(1.15); box-shadow: none; }
+  :root[data-skin="graffiti"] .digest-topic { border-bottom: 3px solid var(--paper-shade); }
+  :root[data-skin="graffiti"] .digest-preview {
+    border: 3px solid var(--ink);
+    border-radius: 14px;
+    background: var(--paper-warm);
+    color: var(--text);
+  }
+
+  /* Пустые состояния — пока без картинки (см. блок с объяснением выше
+     и в блоке pixel): просто читаемый текст на тёмной карточке, никакой
+     дыры под будущую иллюстрацию, пока файла нет. */
+  :root[data-skin="graffiti"] .empty,
+  :root[data-skin="graffiti"] ul.item-list li.empty {
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 700;
+    text-align: center;
+    padding: 22px 12px;
+    border: none;
+    background-color: transparent;
+    margin-bottom: 0;
+  }
+
+  /* Лого — тот же приём, что у groovy/japan, подключить, когда появится
+     skins/graffiti/logo.png (см. комментарий в начале блока). До тех
+     пор .brand-mark (кольцо) остаётся видимым — свой текстовый логотип
+     подключать одним изменением вместе с файлом, не раньше (тот же
+     довод про пустое место, что у pixel). */
+
+  @media (prefers-reduced-motion: reduce) {
+    :root[data-skin="graffiti"] .card { transition: none; }
+  }
+
   /* Цветовые темы: переопределяют --accent/--accent-soft поверх базовых
      :root-блоков (см. выше) — сама "стандартная" тема отдельного блока
      не требует, она и есть значения по умолчанию. */
@@ -2020,6 +2309,7 @@
         <option value="pixel">Пиксель</option>
         <option value="groovy">Ретро-груви</option>
         <option value="japan">Японская гравюра</option>
+        <option value="graffiti">Граффити</option>
       </select>
     </div>
 
