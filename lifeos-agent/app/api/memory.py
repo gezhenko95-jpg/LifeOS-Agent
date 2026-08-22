@@ -9,9 +9,9 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.container import build_memory_service
 from app.db.session import get_session
 from app.memory.models import MemoryType
-from app.memory.repository import MemoryRepository
 from app.memory.schemas import MemoryEntryCreate, MemoryEntryRead, MemoryEntryUpdate
 from app.memory.service import MemoryService
 
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/memory", tags=["memory"])
 
 
 def get_memory_service(session: AsyncSession = Depends(get_session)) -> MemoryService:
-    return MemoryService(MemoryRepository(session))
+    return build_memory_service(session)
 
 
 @router.post("", response_model=MemoryEntryRead, status_code=status.HTTP_201_CREATED)

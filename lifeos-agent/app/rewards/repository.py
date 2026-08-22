@@ -32,6 +32,12 @@ class RewardsRepository:
         await self._session.refresh(checkin)
         return checkin
 
+    async def rollback(self) -> None:
+        """Для вызывающего кода, поймавшего IntegrityError от add_checkin
+        (см. RewardsService.claim_today) — сессия после неудачного commit
+        остаётся в состоянии "требует rollback перед следующим запросом"."""
+        await self._session.rollback()
+
     async def list_days(self, telegram_user_id: int) -> set[date]:
         query = select(Checkin.checked_on).where(
             Checkin.telegram_user_id == telegram_user_id

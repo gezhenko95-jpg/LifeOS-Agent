@@ -122,16 +122,33 @@ class DriveClient:
         return created.get("webViewLink", "")
 
 
+_client_cache: dict[str, DriveClient] = {}
+
+
 def get_drive_client(settings: Settings | None = None) -> DriveClient | None:
     """None, если token.json не найден/не настроен — Фаза 2 полностью
-    опциональна, как и AI-клиент (см. app/ai/client.py::get_ai_client),
-    остальной бот работает без неё."""
+    опциональна, как и AI-клиент (см. app/ai/client.py::get_ai_client).
+
+    Кэш на процесс, тем же приёмом, что у get_ai_client: раньше клиент
+    (а с ним DriveClient._folder_cache и discovery-сервис) пересобирался
+    заново на каждое входящее фото — token.json перечитывался и минимум
+    один files().list() уходил в Drive впустую (см. AUDIT.md). Кэшировать
+    безопасно: обновление access-токена по refresh_token у google-auth
+    происходит в памяти автоматически (см. докстринг DriveClient), это
+    не тот же файл token.json, что был прочитан при создании клиента."""
     settings = settings or get_settings()
+    cached = _client_cache.get(settings.drive_token_file)
+    if cached is not None:
+        return cached
+
     try:
-        return DriveClient(settings.drive_token_file)
+        client = DriveClient(settings.drive_token_file)
     except (OSError, ValueError) as exc:
         # OSError — не только "файла нет" (FileNotFoundError), но и
         # IsADirectoryError: Docker создаёт пустую директорию на месте
         # незамонтированного файла в bind mount (см. docker-compose.yml).
         logger.info("Google Drive не настроен (%s) — Media Inbox выключен", exc)
         return None
+
+    _client_cache[settings.drive_token_file] = client
+    return client

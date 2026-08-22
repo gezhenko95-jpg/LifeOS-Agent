@@ -171,7 +171,23 @@ def parse_intent(text: str) -> ParsedIntent:
             media_type=media_type,
         )
 
-    priority, without_priority = _extract_priority(stripped)
+    return parse_add_task(stripped)
+
+
+def parse_add_task(text: str) -> ParsedIntent:
+    """Разобрать текст как ADD_TASK напрямую, минуя весь остальной
+    waterfall parse_intent (HELP/LIST/COMPLETE/DELETE/JOURNAL/...).
+
+    Нужно для ответа на кнопку "➕ Добавить" (задача, см. handlers.py
+    `_consume_pending_input`, TASK_ADD): пользователь уже явно нажал
+    "добавить задачу", и его следующий текст обязан стать заголовком
+    задачи (с датой/приоритетом/повтором внутри, как обычно), а не
+    заново классифицироваться с нуля — иначе текст вроде "готово к
+    отправке письмо" ловится _COMPLETE_KEYWORDS ("готово" первым
+    словом) как COMPLETE_TASK, задача не находится, и вместо создания
+    новой пользователь получает "не нашёл задачу" — ввод после кнопки
+    молча теряется."""
+    priority, without_priority = _extract_priority(text)
     recurrence, without_recurrence = extract_recurrence(without_priority)
     due_date, remaining = extract_due_date(without_recurrence)
     return ParsedIntent(

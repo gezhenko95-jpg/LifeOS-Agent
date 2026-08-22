@@ -401,7 +401,7 @@ async def send_habit_reminders_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         for habit in await habit_service.list_due_reminders():
             if habit.telegram_user_id != telegram_user_id:
                 continue
-            text = f"🔁 Напоминание: «{habit.title}»"
+            text = f"🔁 Напоминание: «{escape(habit.title, quote=False)}»"
             if habit.description:
                 text += f"\n<i>{escape(habit.description, quote=False)}</i>"
             await context.bot.send_message(
@@ -431,7 +431,9 @@ async def send_task_reminders_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         task_service = TaskService(TaskRepository(session))
         due_tasks = await task_service.list_due_reminders()
         for task in due_tasks:
+            if task.telegram_user_id != telegram_user_id:
+                continue
             await context.bot.send_message(
                 chat_id=telegram_user_id, text=f"⏰ Напоминание: «{task.title}»"
             )
-            await task_service.mark_reminded(task.id)
+            await task_service.mark_reminded(telegram_user_id, task.id)

@@ -19,7 +19,7 @@ from telegram.ext import ContextTypes
 
 from app.ai.client import AIServiceError, get_ai_client
 from app.conversation.intent import Intent, ParsedIntent
-from app.conversation.parser import parse_intent
+from app.conversation.parser import parse_add_task, parse_intent
 from app.core.config import get_settings
 from app.core.container import build_digest_service, build_engine
 from app.db.session import AsyncSessionLocal
@@ -35,7 +35,6 @@ from app.media_inbox.service import MediaInboxService
 from app.memory.models import MemoryType
 from app.memory.repository import MemoryRepository
 from app.memory.service import MemoryService
-from app.proactive.repository import PendingPromptRepository
 from app.tasks.repository import TaskRepository
 from app.tasks.service import TaskService
 from app.telegram.keyboards import (
@@ -334,9 +333,14 @@ async def _consume_pending_input(
     if pending.kind == TASK_ADD:
         # Задача — единственный вид, где текст после кнопки всё равно
         # разбирается движком: в нём может быть срок («завтра в 19:00»),
-        # приоритет и повтор, и переписывать этот разбор здесь заново
-        # значило бы завести второй парсер дат.
-        await _reply_via_engine(update, context, text)
+        # приоритет и повтор. Но intent обязан быть ADD_TASK всегда —
+        # без parse_add_task общий parse_intent (внутри движка) мог бы
+        # перехватить, например, "готово к отправке письмо" как
+        # COMPLETE_TASK ("готово" — триггер), и ввод после кнопки молча
+        # терялся бы (см. HANDOFF/code-review). parse_add_task — тот же
+        # разбор даты/приоритета/повтора, что и обычный ADD_TASK-хвост
+        # parse_intent, второй парсер дат не заводится.
+        await _reply_via_engine(update, context, text, parsed=parse_add_task(text))
         return True
     if pending.kind == HABIT_ADD:
         await _create_habit_from_text(update, telegram_user_id, text)
@@ -917,24 +921,6 @@ async def _send_insights(update: Update) -> None:
         findings = await service.build_findings(telegram_user_id)
 
     await update.message.reply_text(build_insights_text(findings))
-
-
-async def _open_journal_prompt(update: Update) -> None:
-    """Кнопка «📝 Дневник» — вручную открывает дневниковый pending
-    (в отличие от проактивных вопросов, здесь нет gap-detection выбора
-    категории — пользователь сам решил писать в дневник прямо сейчас).
-    Следующее сообщение уйдёт в дневник без префикса "дневник:" — см.
-    ConversationEngine._try_capture_journal."""
-    if update.message is None or update.effective_user is None:
-        return
-    telegram_user_id = update.effective_user.id
-
-    async with AsyncSessionLocal() as session:
-        await PendingPromptRepository(session).upsert(
-            telegram_user_id, "journal", JOURNAL_PROMPT
-        )
-
-    await update.message.reply_text(JOURNAL_PROMPT)
 
 
 async def _reply_via_engine(

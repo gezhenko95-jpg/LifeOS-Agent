@@ -214,8 +214,12 @@ class TaskService:
         """
         return await self._repository.list_due_unreminded(datetime.now(timezone.utc))
 
-    async def mark_reminded(self, task_id: int) -> Optional[Task]:
-        task = await self._repository.get_by_id(task_id)
+    async def mark_reminded(
+        self, telegram_user_id: int, task_id: int
+    ) -> Optional[Task]:
+        task = owned_or_none(
+            await self._repository.get_by_id(task_id), telegram_user_id
+        )
         if task is None:
             return None
         task.reminded_at = datetime.now(timezone.utc)

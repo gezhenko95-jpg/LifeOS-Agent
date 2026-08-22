@@ -11,6 +11,8 @@ Rewards Service — ежедневный чек-ин мини-игры "🪙 З�
 from dataclasses import dataclass
 from datetime import date
 
+from sqlalchemy.exc import IntegrityError
+
 from app.habits.streaks import current_streak
 from app.rewards import coins
 from app.rewards.repository import RewardsRepository
@@ -40,7 +42,15 @@ class RewardsService:
         today = date.today()
         already = await self._repository.has_checkin_on(telegram_user_id, today)
         if not already:
-            await self._repository.add_checkin(telegram_user_id, today)
+            try:
+                await self._repository.add_checkin(telegram_user_id, today)
+            except IntegrityError:
+                # Гонка: два почти одновременных клика "Забрать" (двойной
+                # тап, ретрай после таймаута) оба проходят has_checkin_on
+                # как False. UniqueConstraint uq_checkin_day ловит второй
+                # insert — день всё равно уже отмечен первым запросом,
+                # значит вести себя нужно идемпотентно, а не падать 500-й.
+                await self._repository.rollback()
         return await self._status(telegram_user_id, today)
 
     async def get_status(self, telegram_user_id: int) -> RewardsStatus:

@@ -6,6 +6,7 @@ from datetime import date, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from app.rewards.service import RewardsService
 
@@ -51,6 +52,22 @@ async def test_claim_today_is_idempotent(repository):
     status = await service.claim_today(1)
 
     repository.add_checkin.assert_not_awaited()
+    assert status.claimed_today is True
+
+
+async def test_claim_today_survives_concurrent_double_claim_race(repository):
+    """Два почти одновременных клика "Забрать" оба видят has_checkin_on
+    как False (классическая гонка check-then-act); второй add_checkin
+    ловит IntegrityError от UniqueConstraint uq_checkin_day — сервис
+    обязан откатить сессию и вернуть обычный статус, а не 500-ю ошибку."""
+    repository.has_checkin_on.return_value = False
+    repository.add_checkin.side_effect = IntegrityError("insert", {}, Exception("x"))
+    repository.list_days.return_value = {TODAY}
+    service = RewardsService(repository)
+
+    status = await service.claim_today(1)
+
+    repository.rollback.assert_awaited_once()
     assert status.claimed_today is True
 
 

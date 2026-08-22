@@ -10,6 +10,7 @@ Goals, без снапшотов истории (ADR-004) — прогресс �
 
 import logging
 from datetime import datetime, timedelta, timezone
+from html import escape
 
 from app.ai.client import AIClient, AIServiceError
 from app.goals.service import GoalService
@@ -20,6 +21,15 @@ logger = logging.getLogger(__name__)
 
 _MAX_GOALS = 5
 _WEEK = timedelta(days=7)
+
+
+def _esc(text: str) -> str:
+    """Как app/scheduler/briefing.py::_esc — сообщение уходит с
+    parse_mode=HTML, любой пользовательский текст (заголовки, AI-инсайт)
+    обязан пройти через это, иначе `<`/`&` в названии рвёт разбор
+    HTML-сущностей и вся отправка падает (см. AUDIT.md)."""
+    return escape(str(text), quote=False)
+
 
 _INSIGHT_SYSTEM_PROMPT = (
     "Ты — личный ассистент пользователя. Ниже черновик его еженедельного "
@@ -62,7 +72,7 @@ async def _format_habits_section(
     for habit in habits:
         streak = streaks.get(habit.id, 0)
         suffix = f" — 🔥 {streak}" if streak > 0 else " — пока без серии"
-        lines.append(f"• {habit.title}{suffix}")
+        lines.append(f"• {_esc(habit.title)}{suffix}")
     return "\n".join(lines)
 
 
@@ -74,7 +84,9 @@ async def _format_goals_section(
         return ""
 
     lines = ["", "Цели:"]
-    lines.extend(f"🎯 {goal.title} — {goal.progress}%" for goal in goals[:_MAX_GOALS])
+    lines.extend(
+        f"🎯 {_esc(goal.title)} — {goal.progress}%" for goal in goals[:_MAX_GOALS]
+    )
     return "\n".join(lines)
 
 
@@ -118,6 +130,6 @@ async def build_weekly_digest(
     if ai_client is not None:
         insight = await _generate_insight(ai_client, text)
         if insight:
-            text = f"{text}\n\n💡 {insight}"
+            text = f"{text}\n\n💡 {_esc(insight)}"
 
     return text

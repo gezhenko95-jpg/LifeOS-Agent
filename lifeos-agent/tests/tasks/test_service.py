@@ -209,7 +209,7 @@ async def test_mark_reminded_sets_timestamp(repository):
     repository.get_by_id.return_value = task
     service = TaskService(repository)
 
-    updated = await service.mark_reminded(1)
+    updated = await service.mark_reminded(1, 1)
 
     assert updated is not None
     assert updated.reminded_at is not None
@@ -219,7 +219,17 @@ async def test_mark_reminded_not_found(repository):
     repository.get_by_id.return_value = None
     service = TaskService(repository)
 
-    result = await service.mark_reminded(999)
+    result = await service.mark_reminded(1, 999)
+
+    assert result is None
+
+
+async def test_mark_reminded_wrong_owner_returns_none(repository):
+    task = Task(telegram_user_id=1, title="X", status="active", reminded_at=None)
+    repository.get_by_id.return_value = task
+    service = TaskService(repository)
+
+    result = await service.mark_reminded(2, 1)
 
     assert result is None
 

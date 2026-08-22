@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.conversation.intent import Intent
 from app.digest.models import Digest, DigestChannel
 from app.digest.scraper import ChannelScrapeError
 from app.goals.models import Goal
@@ -513,7 +514,37 @@ async def test_task_pending_still_goes_through_engine(no_db, monkeypatch):
     )
 
     assert handled is True
-    route.assert_awaited_once_with(update, context, "завтра в 19:00 позвонить маме")
+    route.assert_awaited_once()
+    args, kwargs = route.await_args
+    assert args == (update, context, "завтра в 19:00 позвонить маме")
+    assert kwargs["parsed"].intent is Intent.ADD_TASK
+    assert kwargs["parsed"].title == "позвонить маме"
+    assert kwargs["parsed"].due_date is not None
+
+
+async def test_task_pending_forces_add_task_even_if_text_looks_like_other_intent(
+    no_db, monkeypatch
+):
+    """Ответ на кнопку "Добавить задачу" обязан стать заголовком задачи,
+    даже если текст сам по себе матчит другое намерение (здесь —
+    COMPLETE_TASK по слову "готово" первым словом) — иначе ввод после
+    кнопки молча теряется вместо создания задачи (см. code review)."""
+    route = AsyncMock()
+    monkeypatch.setattr(handlers, "_reply_via_engine", route)
+
+    update, context = _update(), _context()
+    pending_input.set_pending(
+        context.user_data, pending_input.PendingInput(pending_input.TASK_ADD)
+    )
+
+    handled = await handlers._consume_pending_input(
+        update, context, "готово к отправке письмо"
+    )
+
+    assert handled is True
+    _, kwargs = route.await_args
+    assert kwargs["parsed"].intent is Intent.ADD_TASK
+    assert kwargs["parsed"].title == "готово к отправке письмо"
 
 
 async def test_digest_new_pending_parses_name_and_frequency(no_db, monkeypatch):

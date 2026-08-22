@@ -178,25 +178,14 @@ class HabitService:
             for habit_id in owned_ids
         }
 
-    async def days_since_last_completion(
-        self, telegram_user_id: int, habit_id: int
-    ) -> Optional[int]:
-        """Сколько дней прошло с последней отметки (None — ни разу не
-        отмечалась, или привычка не найдена/не принадлежит пользователю).
-        Используется нэджем "стрик прервался" (см. app/scheduler/nudges.py)."""
-        habit = owned_or_none(
-            await self._repository.get_by_id(habit_id), telegram_user_id
-        )
-        if habit is None:
-            return None
-        return days_since_last(await self._completed_days(habit_id))
-
     async def days_since_last_completion_bulk(
         self, telegram_user_id: int, habit_ids: list[int]
     ) -> dict[int, Optional[int]]:
-        """Как days_since_last_completion, но для нескольких привычек
-        одним запросом (см. AUDIT.md, P-1) — нэджи проверяют это условие
-        для каждой активной привычки."""
+        """Сколько дней прошло с последней отметки, для нескольких
+        привычек одним запросом (см. AUDIT.md, P-1) — нэджи проверяют
+        это условие для каждой активной привычки. None — ни разу не
+        отмечалась. Одиночного варианта нет: единственный вызывающий
+        код (nudges.py) всегда работает списком активных привычек."""
         owned_ids = await self._owned_ids(telegram_user_id, habit_ids)
         by_habit = await self._repository.list_logs_for_habits(owned_ids)
         return {
@@ -205,17 +194,6 @@ class HabitService:
             )
             for habit_id in owned_ids
         }
-
-    async def get_longest_streak(self, telegram_user_id: int, habit_id: int) -> int:
-        """Рекорд самой длинной последовательности подряд идущих дней —
-        не обязательно текущей (в отличие от get_streak), а за всю
-        историю логов."""
-        habit = owned_or_none(
-            await self._repository.get_by_id(habit_id), telegram_user_id
-        )
-        if habit is None:
-            return 0
-        return longest_streak(await self._completed_days(habit_id))
 
     async def get_longest_streaks_bulk(
         self, telegram_user_id: int, habit_ids: list[int]
@@ -231,25 +209,14 @@ class HabitService:
             for habit_id in owned_ids
         }
 
-    async def get_completed_days(
-        self, telegram_user_id: int, habit_id: int, since: date
-    ) -> set[date]:
-        """Дни (>= since), когда привычка была отмечена — для тепловой
-        карты в графике дайджеста (см. app/scheduler/charts.py)."""
-        habit = owned_or_none(
-            await self._repository.get_by_id(habit_id), telegram_user_id
-        )
-        if habit is None:
-            return set()
-        logs = await self._repository.list_logs(habit_id)
-        return {log.completed_on for log in logs if log.completed_on >= since}
-
     async def get_completed_days_bulk(
         self, telegram_user_id: int, habit_ids: list[int], since: date
     ) -> dict[int, set[date]]:
-        """Как get_completed_days, но для нескольких привычек одним
-        запросом (см. AUDIT.md, P-1) — используется графиком дайджеста и
-        вечерним чек-ином, где привычки перебираются циклом."""
+        """Дни (>= since), когда привычка была отмечена, для нескольких
+        привычек одним запросом (см. AUDIT.md, P-1) — используется
+        графиком дайджеста и вечерним чек-ином, где привычки
+        перебираются циклом. Одиночного варианта нет: оба вызывающих
+        места всегда работают списком привычек."""
         owned_ids = await self._owned_ids(telegram_user_id, habit_ids)
         by_habit = await self._repository.list_logs_for_habits(owned_ids)
         return {

@@ -9,8 +9,8 @@ from dataclasses import asdict
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.container import build_rewards_service
 from app.db.session import get_session
-from app.rewards.repository import RewardsRepository
 from app.rewards.schemas import CheckinRequest, RewardsStatusRead
 from app.rewards.service import RewardsService
 
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/rewards", tags=["rewards"])
 def get_rewards_service(
     session: AsyncSession = Depends(get_session),
 ) -> RewardsService:
-    return RewardsService(RewardsRepository(session))
+    return build_rewards_service(session)
 
 
 @router.get("/status", response_model=RewardsStatusRead)

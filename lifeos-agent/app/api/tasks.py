@@ -9,8 +9,8 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.container import build_task_service
 from app.db.session import get_session
-from app.tasks.repository import TaskRepository
 from app.tasks.schemas import TaskCreate, TaskRead, TaskStats, TaskUpdate
 from app.tasks.service import TaskService
 
@@ -20,7 +20,7 @@ _WEEK = timedelta(days=7)
 
 
 def get_task_service(session: AsyncSession = Depends(get_session)) -> TaskService:
-    return TaskService(TaskRepository(session))
+    return build_task_service(session)
 
 
 @router.post("", response_model=TaskRead, status_code=status.HTTP_201_CREATED)

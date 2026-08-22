@@ -7,8 +7,8 @@ REST API для целей.
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.container import build_goal_service
 from app.db.session import get_session
-from app.goals.repository import GoalRepository
 from app.goals.schemas import GoalCreate, GoalRead, GoalUpdate
 from app.goals.service import GoalService
 
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/goals", tags=["goals"])
 
 
 def get_goal_service(session: AsyncSession = Depends(get_session)) -> GoalService:
-    return GoalService(GoalRepository(session))
+    return build_goal_service(session)
 
 
 @router.post("", response_model=GoalRead, status_code=status.HTTP_201_CREATED)

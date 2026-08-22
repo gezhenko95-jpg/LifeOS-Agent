@@ -7,9 +7,9 @@ REST API для привычек.
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.container import build_habit_service
 from app.db.session import get_session
 from app.habits.models import Habit
-from app.habits.repository import HabitRepository
 from app.habits.schemas import HabitCreate, HabitRead, HabitUpdate
 from app.habits.service import HabitService
 
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/habits", tags=["habits"])
 
 
 def get_habit_service(session: AsyncSession = Depends(get_session)) -> HabitService:
-    return HabitService(HabitRepository(session))
+    return build_habit_service(session)
 
 
 async def _to_read_model(habit: Habit, service: HabitService) -> HabitRead:

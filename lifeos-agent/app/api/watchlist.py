@@ -7,9 +7,9 @@ REST API для Watchlist.
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.container import build_watchlist_service
 from app.db.session import get_session
 from app.watchlist.books import get_books_client
-from app.watchlist.repository import WatchlistRepository
 from app.watchlist.schemas import WatchlistCreate, WatchlistRead
 from app.watchlist.service import WatchlistService
 from app.watchlist.tmdb import get_tmdb_client
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/watchlist", tags=["watchlist"])
 def get_watchlist_service(
     session: AsyncSession = Depends(get_session),
 ) -> WatchlistService:
-    return WatchlistService(WatchlistRepository(session))
+    return build_watchlist_service(session)
 
 
 @router.post("", response_model=WatchlistRead, status_code=status.HTTP_201_CREATED)
