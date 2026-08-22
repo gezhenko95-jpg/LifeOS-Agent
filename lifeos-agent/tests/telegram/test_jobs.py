@@ -108,3 +108,30 @@ async def test_morning_briefing_no_owner_does_nothing(monkeypatch):
     await jobs.send_morning_briefing_job(context)
 
     context.bot.send_message.assert_not_awaited()
+
+
+async def test_send_finance_report_job_sends_report(no_db, monkeypatch):
+    monkeypatch.setattr(jobs, "get_settings", _owner_settings)
+    monkeypatch.setattr(jobs, "get_ai_client", lambda settings: None)
+    monkeypatch.setattr(
+        jobs, "build_finance_report", AsyncMock(return_value="Финансы за август")
+    )
+    monkeypatch.setattr(jobs, "build_finance_service", lambda session: AsyncMock())
+
+    context = _context()
+    await jobs.send_finance_report_job(context)
+
+    context.bot.send_message.assert_awaited_once()
+    _, kwargs = context.bot.send_message.call_args
+    assert kwargs["text"] == "Финансы за август"
+
+
+async def test_send_finance_report_job_no_owner_does_nothing(monkeypatch):
+    monkeypatch.setattr(
+        jobs, "get_settings", lambda: MagicMock(owner_telegram_user_id=0)
+    )
+
+    context = _context()
+    await jobs.send_finance_report_job(context)
+
+    context.bot.send_message.assert_not_awaited()

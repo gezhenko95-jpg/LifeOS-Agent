@@ -13,6 +13,7 @@ from app.db.base import Base
 
 # Импортируем модели здесь, чтобы Alembic их увидел
 from app.digest.models import Digest, DigestChannel  # noqa: F401
+from app.finance.models import Transaction  # noqa: F401
 from app.goals.models import Goal  # noqa: F401
 from app.habits.models import Habit, HabitLog  # noqa: F401
 from app.memory.models import MemoryEntry  # noqa: F401

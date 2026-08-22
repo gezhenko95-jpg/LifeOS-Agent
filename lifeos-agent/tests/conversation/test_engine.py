@@ -1363,3 +1363,104 @@ async def test_journal_capture_shows_reward(
 
     assert reply.startswith("📝 Записал в дневник.")
     assert "🪙 +5" in reply
+
+
+# --- Финансы (specs/017-finance.md) ---
+
+
+@pytest.fixture
+def finance_service():
+    return AsyncMock()
+
+
+async def test_add_expense_calls_service_and_confirms(
+    task_service, habit_service, memory_service, finance_service
+):
+    finance_service.add_transaction.return_value = SimpleNamespace(
+        amount=500, category="transport"
+    )
+    engine = ConversationEngine(
+        task_service, habit_service, memory_service, finance_service=finance_service
+    )
+
+    reply = (await engine.handle_message(1, "потратил 500 на такси")).text
+
+    assert "500" in reply
+    assert "Транспорт" in reply
+    finance_service.add_transaction.assert_awaited_once()
+    args, kwargs = finance_service.add_transaction.await_args
+    assert args[0] == 1
+    assert kwargs["category"] == "transport"
+
+
+async def test_add_income_calls_service_and_confirms(
+    task_service, habit_service, memory_service, finance_service
+):
+    finance_service.add_transaction.return_value = SimpleNamespace(amount=80000)
+    engine = ConversationEngine(
+        task_service, habit_service, memory_service, finance_service=finance_service
+    )
+
+    reply = (await engine.handle_message(1, "получил зарплату 80000")).text
+
+    assert "80000" in reply
+    finance_service.add_transaction.assert_awaited_once()
+
+
+async def test_add_expense_without_amount_asks_to_reformulate(
+    task_service, habit_service, memory_service, finance_service
+):
+    engine = ConversationEngine(
+        task_service, habit_service, memory_service, finance_service=finance_service
+    )
+
+    reply = (await engine.handle_message(1, "потратил на продукты")).text
+
+    assert "Не понял сумму" in reply
+    finance_service.add_transaction.assert_not_awaited()
+
+
+async def test_add_expense_without_finance_service_is_graceful(
+    task_service, habit_service, memory_service
+):
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = (await engine.handle_message(1, "потратил 500 на такси")).text
+
+    assert "не настроен" in reply
+
+
+async def test_add_expense_shows_reward_on_first_claim(
+    task_service, habit_service, memory_service, finance_service, rewards_service
+):
+    finance_service.add_transaction.return_value = SimpleNamespace(
+        amount=500, category="transport"
+    )
+    rewards_service.claim_today.return_value = _rewards_status(just_claimed=True)
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        finance_service=finance_service,
+        rewards_service=rewards_service,
+    )
+
+    reply = (await engine.handle_message(1, "потратил 500 на такси")).text
+
+    assert "🪙 +5" in reply
+
+
+async def test_add_expense_without_amount_gets_no_reward(
+    task_service, habit_service, memory_service, finance_service, rewards_service
+):
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        finance_service=finance_service,
+        rewards_service=rewards_service,
+    )
+
+    await engine.handle_message(1, "потратил на продукты")
+
+    rewards_service.claim_today.assert_not_awaited()

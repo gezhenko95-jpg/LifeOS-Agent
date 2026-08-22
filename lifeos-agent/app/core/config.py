@@ -86,6 +86,13 @@ class Settings(BaseSettings):
     weekly_digest_hour: int = 20
     weekly_digest_minute: int = 0
 
+    # Финансовый отчёт по воскресеньям (см. specs/017-finance.md) — считает
+    # за текущий календарный месяц, отправляется еженедельно как
+    # промежуточная сверка.
+    finance_report_enabled: bool = True
+    finance_report_hour: int = 20
+    finance_report_minute: int = 15
+
     # Дайджесты Telegram-каналов (см. specs/013-channel-digests.md). Одна
     # ежедневная job на ВСЕ дайджесты владельца: "daily" обрабатываются
     # каждый прогон, "weekly" — только по воскресеньям, без частоты —

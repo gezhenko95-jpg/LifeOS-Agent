@@ -38,6 +38,7 @@ from app.telegram.jobs import (
     send_digests_job,
     send_evening_checkin_job,
     send_evening_reflection_job,
+    send_finance_report_job,
     send_habit_reminders_job,
     send_midday_checkin_job,
     send_monthly_insights_job,
@@ -132,6 +133,7 @@ def build_application() -> Application:
     _register_habit_reminders(application, settings)
     _register_proactive_prompts(application, settings)
     _register_weekly_digest(application, settings)
+    _register_finance_report(application, settings)
     _register_digests(application, settings)
     _register_nudges(application, settings)
     _register_monthly_insights(application, settings)
@@ -251,6 +253,23 @@ def _register_weekly_digest(application: Application, settings: Settings) -> Non
         ),
         days=_SUNDAY,
         name="weekly_digest",
+    )
+
+
+def _register_finance_report(application: Application, settings: Settings) -> None:
+    if not settings.finance_report_enabled or not settings.owner_telegram_user_id:
+        return
+
+    local_tz = datetime.now().astimezone().tzinfo
+    application.job_queue.run_daily(
+        send_finance_report_job,
+        time=time(
+            hour=settings.finance_report_hour,
+            minute=settings.finance_report_minute,
+            tzinfo=local_tz,
+        ),
+        days=_SUNDAY,
+        name="finance_report",
     )
 
 

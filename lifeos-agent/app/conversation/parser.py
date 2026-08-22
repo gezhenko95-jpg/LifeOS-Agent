@@ -5,6 +5,7 @@ Rule-based разбор намерения пользователя (без LLM,
 import re
 from typing import Optional
 
+from app.conversation.amount_parser import extract_amount
 from app.conversation.date_parser import extract_due_date, extract_recurrence
 from app.conversation.intent import Intent, ParsedIntent
 
@@ -70,6 +71,57 @@ _EXPLICIT_RECALL_PHRASES = (
 )
 _COMPLETE_KEYWORDS = ("выполнил", "сделал", "готово", "закрой")
 _DELETE_KEYWORDS = ("удали", "убери", "отмени")
+# Финансы (specs/017-finance.md) — якорем на начало сообщения, тот же
+# приём и то же обоснование, что у COMPLETE/DELETE выше (AUDIT.md B-6):
+# "потратил"/"получил" почти всегда открывают фразу о трате/доходе, а не
+# упоминаются посреди другого предложения.
+_EXPENSE_KEYWORDS = (
+    "потратил",
+    "потратила",
+    "купил",
+    "купила",
+    "заплатил",
+    "заплатила",
+    "оплатил",
+    "оплатила",
+)
+_INCOME_KEYWORDS = (
+    "получил",
+    "получила",
+    "зарплата",
+    "заработал",
+    "заработала",
+    "доход",
+)
+# Первое совпавшее слово внутри остатка текста (после вырезания триггера
+# и суммы) определяет категорию — см. app/finance/models.py::CATEGORIES.
+# Нет совпадения — категория "other", не отказ сохранить трату
+# (specs/017-finance.md).
+_FINANCE_CATEGORY_KEYWORDS: tuple[tuple[str, str], ...] = (
+    ("аренд", "rent"),  # аренда/аренду/арендную (не полное слово — падежи)
+    ("ипотек", "rent"),
+    ("коммунал", "utilities"),
+    ("свет", "utilities"),
+    ("вод", "utilities"),  # вода/воду — без окончания, тот же довод
+    ("подписк", "subscriptions"),
+    ("кредит", "credit"),
+    ("рассрочк", "credit"),
+    ("продукт", "groceries"),
+    ("магазин", "groceries"),
+    ("такси", "transport"),
+    ("метро", "transport"),
+    ("бензин", "transport"),
+    ("транспорт", "transport"),
+    ("кафе", "eating_out"),
+    ("ресторан", "eating_out"),
+    ("кофе", "eating_out"),
+    ("аптек", "health"),
+    ("врач", "health"),
+    ("лекарств", "health"),
+    ("кино", "entertainment"),
+    ("подарок", "entertainment"),
+    ("одежд", "shopping"),
+)
 # COMPLETE/DELETE — командные слова, срабатывающие ЯКОРЕМ на начало
 # сообщения (см. AUDIT.md B-6: «команда почти всегда в начале») — без
 # якоря «не могу решить, сделал ли я уже отчёт» превращалось бы в
@@ -156,6 +208,36 @@ def parse_intent(text: str) -> ParsedIntent:
     if keyword:
         return ParsedIntent(
             intent=Intent.DELETE_TASK, title=_remove_keyword(stripped, keyword)
+        )
+
+    # Финансы — ДО watchlist, а не после: "потратил 500 на фильм в кино"
+    # иначе перехватывался бы бесякорным триггером watchlist ("фильм" —
+    # голое существительное, ищется где угодно в фразе, см.
+    # _WATCHLIST_TRIGGERS) вместо того, чтобы стать тратой. Якорь на
+    # начало сообщения ("потратил"/"купил"/...) — более сильный сигнал,
+    # чем совпадение голого существительного где-то в середине (тот же
+    # довод, что и у COMPLETE/DELETE, AUDIT.md B-6). Расплата: "купил
+    # книгу для дочки" без суммы теперь тоже ADD_EXPENSE (переспросит
+    # сумму), а не ADD_WATCHLIST_ITEM — это осознанно принято, "купил"
+    # само по себе ближе к тратe, чем к "хочу прочитать".
+    keyword = _starts_with_any(lowered, _INCOME_KEYWORDS)
+    if keyword:
+        without_keyword = _remove_keyword(stripped, keyword)
+        amount, remaining = extract_amount(without_keyword)
+        return ParsedIntent(
+            intent=Intent.ADD_INCOME, amount=amount, title=remaining or None
+        )
+
+    keyword = _starts_with_any(lowered, _EXPENSE_KEYWORDS)
+    if keyword:
+        without_keyword = _remove_keyword(stripped, keyword)
+        amount, remaining = extract_amount(without_keyword)
+        category = _match_finance_category(remaining.lower())
+        return ParsedIntent(
+            intent=Intent.ADD_EXPENSE,
+            amount=amount,
+            finance_category=category,
+            title=remaining or None,
         )
 
     journal_content = _extract_journal_entry(stripped, lowered)
@@ -323,6 +405,15 @@ def _match_watchlist_trigger(lowered: str) -> Optional[tuple[str, str]]:
         if re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", lowered):
             return phrase, media_type
     return None
+
+
+def _match_finance_category(lowered_remaining: str) -> str:
+    """Первое совпавшее слово в остатке текста (без триггера/суммы) →
+    категория; нет совпадения → "other" (см. app/finance/models.py)."""
+    for keyword, category in _FINANCE_CATEGORY_KEYWORDS:
+        if keyword in lowered_remaining:
+            return category
+    return "other"
 
 
 def _extract_priority(text: str) -> tuple[str, str]:

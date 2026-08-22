@@ -17,6 +17,8 @@ from app.conversation.engine import ConversationEngine
 from app.digest.repository import DigestRepository
 from app.digest.scraper import get_channel_scraper
 from app.digest.service import DigestService
+from app.finance.repository import FinanceRepository
+from app.finance.service import FinanceService
 from app.goals.repository import GoalRepository
 from app.goals.service import GoalService
 from app.habits.repository import HabitRepository
@@ -57,6 +59,10 @@ def build_rewards_service(session: AsyncSession) -> RewardsService:
     return RewardsService(RewardsRepository(session))
 
 
+def build_finance_service(session: AsyncSession) -> FinanceService:
+    return FinanceService(FinanceRepository(session))
+
+
 def build_digest_service(session: AsyncSession) -> DigestService:
     """Скрейпер отдаётся фабрикой, а не создаётся здесь: внутри — один
     httpx.AsyncClient на процесс (keep-alive, см. app/digest/scraper.py),
@@ -85,4 +91,5 @@ def build_engine(
         pending_prompt_service=build_prompt_service(session),
         watchlist_service=build_watchlist_service(session),
         rewards_service=build_rewards_service(session),
+        finance_service=build_finance_service(session),
     )

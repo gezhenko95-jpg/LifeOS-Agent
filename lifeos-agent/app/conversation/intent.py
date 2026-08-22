@@ -24,6 +24,8 @@ class Intent(str, Enum):
     JOURNAL_ENTRY = "journal_entry"
     ADD_WATCHLIST_ITEM = "add_watchlist_item"
     LIST_WATCHLIST = "list_watchlist"
+    ADD_EXPENSE = "add_expense"
+    ADD_INCOME = "add_income"
     HELP = "help"
 
 
@@ -35,3 +37,7 @@ class ParsedIntent:
     priority: str = "normal"
     recurrence: Optional[str] = None  # только для ADD_TASK: daily|weekly|monthly
     media_type: Optional[str] = None  # только для ADD_WATCHLIST_ITEM: movie|book|other
+    amount: Optional[int] = None  # только для ADD_EXPENSE/ADD_INCOME
+    finance_category: Optional[str] = (
+        None  # только для ADD_EXPENSE (см. app/finance/models.py)
+    )

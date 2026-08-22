@@ -13,7 +13,11 @@ from telegram.ext import ContextTypes
 
 from app.ai.client import get_ai_client
 from app.core.config import get_settings
-from app.core.container import build_digest_service, build_prompt_service
+from app.core.container import (
+    build_digest_service,
+    build_finance_service,
+    build_prompt_service,
+)
 from app.db.session import AsyncSessionLocal
 from app.digest.service import DAILY, WEEKLY
 from app.goals.repository import GoalRepository
@@ -29,6 +33,7 @@ from app.scheduler.briefing import build_morning_briefing
 from app.scheduler.charts import gather_chart_data, render_chart
 from app.scheduler.evening_checkin import build_evening_checkin_text
 from app.scheduler.evening_reflection import build_evening_reflection_prompt
+from app.scheduler.finance_report import build_finance_report
 from app.scheduler.nudges import build_nudges
 from app.scheduler.weekly_digest import build_weekly_digest
 from app.tasks.repository import TaskRepository
@@ -214,6 +219,29 @@ async def send_weekly_digest_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         chart = await _try_build_chart(telegram_user_id, task_service, habit_service)
 
     await _send_text_or_photo(context, telegram_user_id, text, chart)
+
+
+async def send_finance_report_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Финансовый отчёт по воскресеньям (см. specs/017-finance.md) —
+    отдельная джоба, НЕ часть app/digest/ (решено владельцем заранее,
+    см. HANDOFF)."""
+    settings = get_settings()
+    telegram_user_id = settings.owner_telegram_user_id
+    if not telegram_user_id:
+        logger.warning(
+            "owner_telegram_user_id не задан — финансовый отчёт не отправлен"
+        )
+        return
+
+    async with AsyncSessionLocal() as session:
+        finance_service = build_finance_service(session)
+        text = await build_finance_report(
+            telegram_user_id, finance_service, ai_client=get_ai_client(settings)
+        )
+
+    await context.bot.send_message(
+        chat_id=telegram_user_id, text=text, parse_mode=ParseMode.HTML
+    )
 
 
 async def send_digests_job(context: ContextTypes.DEFAULT_TYPE) -> None:

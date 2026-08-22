@@ -531,3 +531,77 @@ def test_command_word_at_start_still_works():
     assert parse_intent("Удали молоко").intent is Intent.DELETE_TASK
     assert parse_intent("Выполнил молоко").intent is Intent.COMPLETE_TASK
     assert parse_intent("Покажи задачи").intent is Intent.LIST_TASKS
+
+
+# --- Финансы (specs/017-finance.md) ---
+
+
+def test_add_expense_basic():
+    result = parse_intent("потратил 1200 на продукты")
+
+    assert result.intent is Intent.ADD_EXPENSE
+    assert result.amount == 1200
+    assert result.finance_category == "groceries"
+
+
+def test_add_expense_alternate_keyword():
+    result = parse_intent("купил 500 на такси")
+
+    assert result.intent is Intent.ADD_EXPENSE
+    assert result.amount == 500
+    assert result.finance_category == "transport"
+
+
+def test_add_expense_unknown_category_falls_back_to_other():
+    result = parse_intent("потратил 300 на непонятно что")
+
+    assert result.intent is Intent.ADD_EXPENSE
+    assert result.finance_category == "other"
+
+
+def test_add_expense_without_amount():
+    result = parse_intent("потратил на продукты")
+
+    assert result.intent is Intent.ADD_EXPENSE
+    assert result.amount is None
+
+
+def test_add_expense_mandatory_category():
+    result = parse_intent("оплатил аренду 30000")
+
+    assert result.intent is Intent.ADD_EXPENSE
+    assert result.finance_category == "rent"
+    assert result.amount == 30000
+
+
+def test_add_income_basic():
+    result = parse_intent("получил зарплату 80000")
+
+    assert result.intent is Intent.ADD_INCOME
+    assert result.amount == 80000
+
+
+def test_add_income_alternate_keyword():
+    result = parse_intent("доход 5000")
+
+    assert result.intent is Intent.ADD_INCOME
+    assert result.amount == 5000
+
+
+def test_expense_keyword_takes_priority_over_bare_watchlist_noun():
+    """Осознанный приоритет (см. parser.py, комментарий перед финансовым
+    блоком): "потратил ... фильм" — трата, а не запись в "посмотреть
+    позже", хотя "фильм" — голый триггер watchlist."""
+    result = parse_intent("потратил 500 на фильм в кино")
+
+    assert result.intent is Intent.ADD_EXPENSE
+    assert result.finance_category == "entertainment"
+
+
+def test_watchlist_trigger_without_finance_keyword_still_works():
+    """Регрессия: обычное "хочу посмотреть фильм X" не должно было
+    начать классифицироваться как трата — оно не начинается с триггера
+    финансов вообще."""
+    result = parse_intent("хочу посмотреть фильм Дюна")
+
+    assert result.intent is Intent.ADD_WATCHLIST_ITEM

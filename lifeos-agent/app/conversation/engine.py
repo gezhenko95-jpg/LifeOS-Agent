@@ -21,6 +21,8 @@ from app.ai.client import AIClient
 from app.conversation.ai_fallback import parse_intent_with_ai
 from app.conversation.intent import Intent, ParsedIntent
 from app.conversation.parser import parse_intent
+from app.finance.models import CATEGORIES, EXPENSE, INCOME
+from app.finance.service import FinanceService
 from app.goals.service import GoalService
 from app.habits.models import Habit
 from app.habits.service import HabitService
@@ -75,6 +77,9 @@ _HELP_TEXT = (
     "• посмотреть/прочитать позже — «посмотреть фильм Дюна», «книга X», "
     "или кнопка «🎬 Посмотреть» в меню; «список книг»/«список фильмов»/"
     "«полка» — показать список\n"
+    "• траты и доходы — «потратил 500 на такси», «получил зарплату "
+    "80000»; раз в неделю пришлю отчёт: сколько свободных денег осталось "
+    "в этом месяце\n"
     "• иногда я сам спрашиваю о целях/привычках/проектах или прошу "
     "дневник — просто ответьте текстом, и я запомню это как надо\n"
     "• всё это есть в меню снизу и работает одинаково: любая кнопка "
@@ -135,6 +140,7 @@ class ConversationEngine:
         pending_prompt_service: PendingPromptService | None = None,
         watchlist_service: WatchlistService | None = None,
         rewards_service: RewardsService | None = None,
+        finance_service: FinanceService | None = None,
     ) -> None:
         self._tasks = task_service
         self._habits = habit_service
@@ -144,6 +150,7 @@ class ConversationEngine:
         self._pending_prompts = pending_prompt_service
         self._watchlist = watchlist_service
         self._rewards = rewards_service
+        self._finance = finance_service
 
     async def _with_reward(
         self, telegram_user_id: int, result: EngineResult
@@ -224,8 +231,14 @@ class ConversationEngine:
                 created_task=result.created_task,
                 watchlist_item=result.watchlist_item,
             )
-        if result.created_task is not None:
-            # Только ADD_TASK имеет структурный признак успеха здесь.
+        finance_success = (
+            parsed.intent in (Intent.ADD_EXPENSE, Intent.ADD_INCOME)
+            and parsed.amount is not None
+        )
+        if result.created_task is not None or finance_success:
+            # Только ADD_TASK/ADD_EXPENSE/ADD_INCOME имеют структурный
+            # признак успеха здесь (created_task, либо amount не None —
+            # значит транзакция реально создана, а не "не понял сумму").
             # COMPLETE_TASK/HABIT_DONE/ADD_WATCHLIST_ITEM через свободный
             # текст награду в этой итерации не получают — у них нет
             # признака успеха без разбора текста ответа, а гадать по
@@ -387,8 +400,40 @@ class ConversationEngine:
             return await self._add_watchlist_item(telegram_user_id, parsed)
         if parsed.intent is Intent.LIST_WATCHLIST:
             return EngineResult(await self._list_watchlist(telegram_user_id))
+        if parsed.intent is Intent.ADD_EXPENSE:
+            return EngineResult(await self._add_expense(telegram_user_id, parsed))
+        if parsed.intent is Intent.ADD_INCOME:
+            return EngineResult(await self._add_income(telegram_user_id, parsed))
         text, task = await self._add_task(telegram_user_id, parsed)
         return EngineResult(text, task)
+
+    async def _add_expense(self, telegram_user_id: int, parsed: ParsedIntent) -> str:
+        """specs/017-finance.md. `finance_service is None` — фича не
+        подключена (см. app/core/container.py) — тот же принцип
+        опциональности, что у остальных сервисов движка."""
+        if self._finance is None:
+            return "Финансовый учёт пока не настроен."
+        if parsed.amount is None:
+            return "Не понял сумму. Напишите, например: «потратил 500 на такси»."
+        transaction = await self._finance.add_transaction(
+            telegram_user_id,
+            EXPENSE,
+            parsed.amount,
+            category=parsed.finance_category,
+            note=parsed.title,
+        )
+        label = CATEGORIES.get(transaction.category or "", transaction.category or "")
+        return f"💸 Записал трату: {transaction.amount} ₽ — {label}"
+
+    async def _add_income(self, telegram_user_id: int, parsed: ParsedIntent) -> str:
+        if self._finance is None:
+            return "Финансовый учёт пока не настроен."
+        if parsed.amount is None:
+            return "Не понял сумму. Напишите, например: «получил зарплату 80000»."
+        transaction = await self._finance.add_transaction(
+            telegram_user_id, INCOME, parsed.amount, note=parsed.title
+        )
+        return f"💰 Записал доход: {transaction.amount} ₽"
 
     async def _add_task(
         self, telegram_user_id: int, parsed: ParsedIntent
