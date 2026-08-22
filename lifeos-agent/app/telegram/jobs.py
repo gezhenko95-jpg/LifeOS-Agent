@@ -56,6 +56,14 @@ SUNDAY_WEEKDAY = 6
 
 
 async def send_morning_briefing_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Утренний слот (см. flows/009-daily-rhythm.md). С specs/016-
+    engagement-hooks.md дописывает снизу утренний рефлексивный вопрос
+    (раньше — отдельная джоба send_morning_reflection_job в отдельном
+    слоте 10:30) тем же паттерном, что уже использует вечерний чек-ин
+    для gap-вопроса: меньше отдельных push-сообщений в день, у которых
+    нет действия/награды за прочтение — было замечено, что только
+    дайджесты каналов реально читаются регулярно, остальное "иногда
+    читаю, но не действую"."""
     settings = get_settings()
     telegram_user_id = settings.owner_telegram_user_id
     if not telegram_user_id:
@@ -63,6 +71,8 @@ async def send_morning_briefing_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             "owner_telegram_user_id не задан — утренний брифинг не отправлен"
         )
         return
+
+    ai_client = get_ai_client(settings)
 
     async with AsyncSessionLocal() as session:
         task_service = TaskService(TaskRepository(session))
@@ -75,9 +85,16 @@ async def send_morning_briefing_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             memory_service,
             habit_service,
             goal_service,
-            ai_client=get_ai_client(settings),
+            ai_client=ai_client,
         )
         chart = await _try_build_chart(telegram_user_id, task_service, habit_service)
+
+        prompt_service = build_prompt_service(session)
+        question = await prompt_service.pick_morning_reflection(
+            telegram_user_id, allow_gap=ai_client is not None
+        )
+        if question:
+            text = f"{text}\n\n{question}"
 
     await _send_text_or_photo(context, telegram_user_id, text, chart)
 
@@ -99,33 +116,6 @@ async def send_evening_reflection_job(context: ContextTypes.DEFAULT_TYPE) -> Non
         question = await build_evening_reflection_prompt(get_ai_client(settings))
         await PendingPromptRepository(session).upsert(
             telegram_user_id, "journal", question
-        )
-
-    await context.bot.send_message(chat_id=telegram_user_id, text=question)
-
-
-async def send_morning_reflection_job(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Утренний рефлексивный слот 10:30 (см. flows/009-daily-rhythm.md) —
-    сон, факт/экзистенциальный вопрос, или (если есть реальный гэп в
-    профиле) обычный проактивный вопрос про цель/привычку/проект.
-
-    Дневниковая ветка (сон) не зависит от AI-ключа (нечего разбирать) и
-    работает всегда; gap-ветка (вопрос про цель/привычку/проект) требует
-    AI для разбора ответа (ConversationEngine._try_answer_pending_prompt)
-    — без ключа передаём allow_gap=False, чтобы не открывать вопрос, на
-    который бот сам же не сможет распознать ответ.
-    """
-    settings = get_settings()
-    telegram_user_id = settings.owner_telegram_user_id
-    if not telegram_user_id:
-        return
-
-    ai_client = get_ai_client(settings)
-
-    async with AsyncSessionLocal() as session:
-        service = build_prompt_service(session)
-        question = await service.pick_morning_reflection(
-            telegram_user_id, allow_gap=ai_client is not None
         )
 
     await context.bot.send_message(chat_id=telegram_user_id, text=question)
@@ -251,7 +241,9 @@ async def send_digests_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         service = build_digest_service(session)
         digests = await service.list_digests(telegram_user_id)
 
-        texts = []
+        # (id, text) — не просто text: кнопке "⭐ Сохранить" ниже нужен id
+        # темы в callback_data (см. specs/016-engagement-hooks.md).
+        to_send: list[tuple[int, str]] = []
         for digest in digests:
             if digest.auto_frequency == DAILY or (
                 digest.auto_frequency == WEEKLY and is_sunday
@@ -260,10 +252,15 @@ async def send_digests_job(context: ContextTypes.DEFAULT_TYPE) -> None:
                     telegram_user_id, digest.name, ai_client=ai_client
                 )
                 if text:
-                    texts.append(text)
+                    to_send.append((digest.id, text))
 
-    for text in texts:
-        await context.bot.send_message(chat_id=telegram_user_id, text=text)
+    for digest_id, text in to_send:
+        markup = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("⭐ Сохранить", callback_data=f"d|f|{digest_id}")]]
+        )
+        await context.bot.send_message(
+            chat_id=telegram_user_id, text=text, reply_markup=markup
+        )
 
 
 async def _try_build_chart(

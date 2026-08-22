@@ -40,6 +40,7 @@ async def test_claim_today_first_time_adds_checkin(repository):
     assert status.total_coins == 12
     assert status.coins_today == 12
     assert status.lucky_today is False
+    assert status.just_claimed is True
 
 
 async def test_claim_today_is_idempotent(repository):
@@ -53,6 +54,7 @@ async def test_claim_today_is_idempotent(repository):
 
     repository.add_checkin.assert_not_awaited()
     assert status.claimed_today is True
+    assert status.just_claimed is False
 
 
 async def test_claim_today_survives_concurrent_double_claim_race(repository):
@@ -69,6 +71,7 @@ async def test_claim_today_survives_concurrent_double_claim_race(repository):
 
     repository.rollback.assert_awaited_once()
     assert status.claimed_today is True
+    assert status.just_claimed is False
 
 
 async def test_get_status_without_claiming_does_not_add_checkin(repository):

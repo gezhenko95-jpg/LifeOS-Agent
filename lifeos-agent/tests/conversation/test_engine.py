@@ -38,6 +38,11 @@ def watchlist_service():
     return AsyncMock()
 
 
+@pytest.fixture
+def rewards_service():
+    return AsyncMock()
+
+
 async def test_add_task_without_date(task_service, habit_service, memory_service):
     task_service.create_task.return_value = SimpleNamespace(
         title="Купить молоко", due_date=None, priority="normal", recurrence=None
@@ -1263,3 +1268,98 @@ async def test_journal_capture_delayed_reply_within_same_day_still_works(
         source="quick_capture",
     )
     task_service.create_task.assert_not_awaited()
+
+
+# --- Награда за "сделал"-действия (specs/016-engagement-hooks.md) ---
+
+
+def _rewards_status(just_claimed: bool, coins: int = 5, streak: int = 3):
+    from app.rewards.service import RewardsStatus
+
+    return RewardsStatus(
+        claimed_today=True,
+        streak=streak,
+        total_coins=42,
+        coins_today=coins,
+        lucky_today=False,
+        just_claimed=just_claimed,
+    )
+
+
+async def test_add_task_shows_reward_on_first_claim(
+    task_service, habit_service, memory_service, rewards_service
+):
+    task_service.create_task.return_value = SimpleNamespace(
+        title="Купить молоко", due_date=None, priority="normal", recurrence=None
+    )
+    rewards_service.claim_today.return_value = _rewards_status(just_claimed=True)
+    engine = ConversationEngine(
+        task_service, habit_service, memory_service, rewards_service=rewards_service
+    )
+
+    reply = (await engine.handle_message(1, "Купить молоко")).text
+
+    assert "🪙 +5" in reply
+    assert "🔥 3" in reply
+    rewards_service.claim_today.assert_awaited_once_with(1)
+
+
+async def test_add_task_no_reward_line_when_already_claimed_today(
+    task_service, habit_service, memory_service, rewards_service
+):
+    task_service.create_task.return_value = SimpleNamespace(
+        title="Купить молоко", due_date=None, priority="normal", recurrence=None
+    )
+    rewards_service.claim_today.return_value = _rewards_status(just_claimed=False)
+    engine = ConversationEngine(
+        task_service, habit_service, memory_service, rewards_service=rewards_service
+    )
+
+    reply = (await engine.handle_message(1, "Купить молоко")).text
+
+    assert "🪙" not in reply
+
+
+async def test_engine_without_rewards_service_works_as_before(
+    task_service, habit_service, memory_service
+):
+    """rewards_service не передан (как во всех остальных тестах этого
+    файла и в старом коде, который его ещё не знает) — поведение не
+    меняется, реворда просто нет."""
+    task_service.create_task.return_value = SimpleNamespace(
+        title="Купить молоко", due_date=None, priority="normal", recurrence=None
+    )
+    engine = ConversationEngine(task_service, habit_service, memory_service)
+
+    reply = (await engine.handle_message(1, "Купить молоко")).text
+
+    assert "🪙" not in reply
+
+
+async def test_journal_capture_shows_reward(
+    task_service,
+    habit_service,
+    memory_service,
+    goal_service,
+    pending_prompt_service,
+    rewards_service,
+):
+    pending_prompt_service.get_open.return_value = SimpleNamespace(
+        category="journal",
+        question_text="Что запишем в дневник?",
+        asked_at=datetime.now(timezone.utc),
+    )
+    rewards_service.claim_today.return_value = _rewards_status(just_claimed=True)
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        goal_service=goal_service,
+        pending_prompt_service=pending_prompt_service,
+        rewards_service=rewards_service,
+    )
+
+    reply = (await engine.handle_message(1, "Устал сегодня")).text
+
+    assert reply.startswith("📝 Записал в дневник.")
+    assert "🪙 +5" in reply

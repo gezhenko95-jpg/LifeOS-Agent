@@ -28,6 +28,7 @@ from app.memory.models import MemoryType
 from app.memory.service import MemoryService
 from app.proactive.ai_extract import extract_prompt_answer
 from app.proactive.service import PendingPromptService
+from app.rewards.service import RewardsService
 from app.tasks.formatting import format_due_human, task_created_prefix
 from app.tasks.models import Task
 from app.tasks.service import TaskService
@@ -133,6 +134,7 @@ class ConversationEngine:
         goal_service: GoalService | None = None,
         pending_prompt_service: PendingPromptService | None = None,
         watchlist_service: WatchlistService | None = None,
+        rewards_service: RewardsService | None = None,
     ) -> None:
         self._tasks = task_service
         self._habits = habit_service
@@ -141,6 +143,28 @@ class ConversationEngine:
         self._goals = goal_service
         self._pending_prompts = pending_prompt_service
         self._watchlist = watchlist_service
+        self._rewards = rewards_service
+
+    async def _with_reward(
+        self, telegram_user_id: int, result: EngineResult
+    ) -> EngineResult:
+        """Дописать "🪙 +N" к ответу, если это ПЕРВОЕ засчитываемое
+        действие пользователя за сегодня (см. specs/016-engagement-hooks.md
+        — единственное, что реально приживается в этом боте, не требует
+        отдельного похода в /ui, а награда за остальное никак не
+        показывалась). `rewards_service is None` — фича не подключена
+        (например, старые тесты собирают движок без него) — тихо
+        пропускаем, тот же принцип опциональности, что у ai_client."""
+        if self._rewards is None:
+            return result
+        status = await self._rewards.claim_today(telegram_user_id)
+        if not status.just_claimed:
+            return result
+        return EngineResult(
+            text=f"{result.text}\n\n🪙 +{status.coins_today} · 🔥 {status.streak}",
+            created_task=result.created_task,
+            watchlist_item=result.watchlist_item,
+        )
 
     async def handle_message(
         self,
@@ -159,7 +183,9 @@ class ConversationEngine:
         if self._pending_prompts is not None:
             journal_reply = await self._try_capture_journal(telegram_user_id, text)
             if journal_reply is not None:
-                return EngineResult(journal_reply)
+                return await self._with_reward(
+                    telegram_user_id, EngineResult(journal_reply)
+                )
 
         if parsed is None:
             parsed = parse_intent(text)
@@ -174,7 +200,9 @@ class ConversationEngine:
                 telegram_user_id, text
             )
             if prompt_reply is not None:
-                return EngineResult(prompt_reply)
+                return await self._with_reward(
+                    telegram_user_id, EngineResult(prompt_reply)
+                )
 
         if (
             parsed.intent is Intent.ADD_TASK
@@ -194,7 +222,17 @@ class ConversationEngine:
                     "если хотел ответить, напиши ещё раз.)"
                 ),
                 created_task=result.created_task,
+                watchlist_item=result.watchlist_item,
             )
+        if result.created_task is not None:
+            # Только ADD_TASK имеет структурный признак успеха здесь.
+            # COMPLETE_TASK/HABIT_DONE/ADD_WATCHLIST_ITEM через свободный
+            # текст награду в этой итерации не получают — у них нет
+            # признака успеха без разбора текста ответа, а гадать по
+            # строке — тот самый хрупкий паттерн, от которого AUDIT.md
+            # (A-4) уже избавился для задач. Кнопочный путь (см.
+            # app/telegram/callbacks.py) уже награждает эти три действия.
+            result = await self._with_reward(telegram_user_id, result)
         return result
 
     async def _try_capture_journal(

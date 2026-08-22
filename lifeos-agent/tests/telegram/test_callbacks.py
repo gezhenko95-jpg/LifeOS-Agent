@@ -4,8 +4,14 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.db.base import Base
+from app.digest.models import Digest
+from app.goals.models import Goal
+from app.habits.models import Habit
 from app.tasks.models import Task
 from app.telegram.callbacks import (
+    _handle_digest_action,
+    _handle_goal_action,
+    _handle_habit_action,
     _handle_task_action,
     _handle_watchlist_action,
     parse_callback,
@@ -138,3 +144,137 @@ def test_parse_goal_action():
 
 def test_parse_goal_noop_has_no_id():
     assert parse_callback("g|noop") == ("g", "noop", "")
+
+
+# --- Награда за "сделал"-действия по кнопкам (specs/016-engagement-hooks.md) ---
+
+
+async def test_task_complete_shows_reward_once_per_day(session):
+    task = await _add_task(session)
+
+    text, _ = await _handle_task_action(session, "c", str(task.id), 1, _context())
+    assert "🪙" in text
+
+    task2 = await _add_task(session)
+    text2, _ = await _handle_task_action(session, "c", str(task2.id), 1, _context())
+    assert "🪙" not in text2  # тот же день, уже награждено
+
+
+async def test_task_complete_missing_task_no_reward(session):
+    text, _ = await _handle_task_action(session, "c", "999999", 1, _context())
+
+    assert "🪙" not in text
+
+
+async def _add_habit(session, **kwargs) -> Habit:
+    habit = Habit(telegram_user_id=1, title="Читать", **kwargs)
+    session.add(habit)
+    await session.commit()
+    await session.refresh(habit)
+    return habit
+
+
+async def test_habit_done_shows_reward(session):
+    habit = await _add_habit(session)
+
+    text, _ = await _handle_habit_action(session, "d", str(habit.id), 1, _context())
+
+    assert "🪙" in text
+
+
+async def test_habit_done_missing_habit_no_reward(session):
+    text, _ = await _handle_habit_action(session, "d", "999999", 1, _context())
+
+    assert "🪙" not in text
+
+
+async def _add_goal(session, **kwargs) -> Goal:
+    kwargs.setdefault("status", "active")
+    kwargs.setdefault("progress", 0)
+    goal = Goal(telegram_user_id=1, title="Испанский", **kwargs)
+    session.add(goal)
+    await session.commit()
+    await session.refresh(goal)
+    return goal
+
+
+async def test_goal_progress_up_shows_reward(session):
+    goal = await _add_goal(session)
+
+    text, _ = await _handle_goal_action(session, "u", str(goal.id), 1, _context())
+
+    assert "🪙" in text
+
+
+async def test_goal_progress_down_no_reward(session):
+    """Откат прогресса назад — не награждается, в отличие от роста."""
+    goal = await _add_goal(session, progress=50)
+
+    text, _ = await _handle_goal_action(session, "p", str(goal.id), 1, _context())
+
+    assert "🪙" not in text
+
+
+async def test_goal_complete_shows_reward(session):
+    goal = await _add_goal(session)
+
+    text, _ = await _handle_goal_action(session, "c", str(goal.id), 1, _context())
+
+    assert "🪙" in text
+
+
+async def test_watchlist_done_shows_reward(session):
+    item = await _add_watchlist_item(session)
+
+    text, _ = await _handle_watchlist_action(session, "d", str(item.id), 1, _context())
+
+    assert "🪙" in text
+
+
+async def _add_digest(session, **kwargs) -> Digest:
+    digest = Digest(telegram_user_id=1, name="ESG", **kwargs)
+    session.add(digest)
+    await session.commit()
+    await session.refresh(digest)
+    return digest
+
+
+def _query_with_message(text: str) -> MagicMock:
+    query = MagicMock()
+    query.message.text = text
+    return query
+
+
+async def test_digest_save_creates_memory_entry_and_reward(session):
+    digest = await _add_digest(session)
+    query = _query_with_message("Сегодня в ESG: важная новость.")
+
+    text, markup = await _handle_digest_action(
+        session, "f", str(digest.id), 1, _context(), query
+    )
+
+    assert "сохранён" in text
+    assert "🪙" in text
+    assert len(markup.inline_keyboard) == 0  # кнопка снята — повторно не нажать
+
+    from sqlalchemy import select
+
+    from app.memory.models import MemoryEntry
+
+    result = await session.execute(select(MemoryEntry))
+    entries = result.scalars().all()
+    assert len(entries) == 1
+    assert entries[0].content == "Сегодня в ESG: важная новость."
+    assert entries[0].source == "digest_save"
+
+
+async def test_digest_save_without_message_text_is_graceful(session):
+    digest = await _add_digest(session)
+    query = _query_with_message("")
+
+    text, markup = await _handle_digest_action(
+        session, "f", str(digest.id), 1, _context(), query
+    )
+
+    assert "Нечего сохранять" in text
+    assert len(markup.inline_keyboard) == 0

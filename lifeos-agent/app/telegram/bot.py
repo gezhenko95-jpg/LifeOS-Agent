@@ -42,7 +42,6 @@ from app.telegram.jobs import (
     send_midday_checkin_job,
     send_monthly_insights_job,
     send_morning_briefing_job,
-    send_morning_reflection_job,
     send_nudges_job,
     send_task_reminders_job,
     send_weekly_digest_job,
@@ -203,23 +202,15 @@ def _register_habit_reminders(application: Application, settings: Settings) -> N
 
 
 def _register_proactive_prompts(application: Application, settings: Settings) -> None:
-    """Утро/день/вечер (см. flows/009-daily-rhythm.md) — три разных job-
-    функции на трёх старых слотах (имена настроек не переименовывали,
-    чтобы не задеть уже настроенный .env): send_morning_reflection_job,
-    send_midday_checkin_job, send_evening_checkin_job."""
+    """День/вечер (см. flows/009-daily-rhythm.md) — send_midday_checkin_job,
+    send_evening_checkin_job (имена настроек не переименовывали, чтобы не
+    задеть уже настроенный .env). Утренний слот (раньше отдельная
+    proactive_prompt_morning) с specs/016-engagement-hooks.md слит внутрь
+    send_morning_briefing_job — см. _register_morning_briefing."""
     if not settings.proactive_prompts_enabled or not settings.owner_telegram_user_id:
         return
 
     local_tz = datetime.now().astimezone().tzinfo
-    application.job_queue.run_daily(
-        send_morning_reflection_job,
-        time=time(
-            hour=settings.proactive_prompt_morning_hour,
-            minute=settings.proactive_prompt_morning_minute,
-            tzinfo=local_tz,
-        ),
-        name="proactive_prompt_morning",
-    )
     application.job_queue.run_daily(
         send_midday_checkin_job,
         time=time(

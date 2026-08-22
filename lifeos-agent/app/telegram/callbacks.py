@@ -14,7 +14,7 @@ from telegram.ext import ContextTypes
 
 from app.ai.client import get_ai_client
 from app.core.config import get_settings
-from app.core.container import build_digest_service
+from app.core.container import build_digest_service, build_rewards_service
 from app.db.session import AsyncSessionLocal
 from app.goals.repository import GoalRepository
 from app.goals.service import GoalService
@@ -109,6 +109,19 @@ _ASK_DIGEST_CHANNEL = (
 )
 
 logger = logging.getLogger(__name__)
+
+
+async def _reward_line(session: AsyncSession, telegram_user_id: int) -> str:
+    """Любое "сделал" действие по кнопке засчитывает сегодняшний визит в
+    rewards — не только отдельный поход в /ui и клик "Забрать" (см.
+    specs/016-engagement-hooks.md: единственное, что реально приживается
+    в этом боте, не требует отдельного "зайти и нажать", а награда за
+    остальное никак не показывалась). "" на повторном за день действии —
+    coins_today не начисляется дважды, показывать нечего."""
+    status = await build_rewards_service(session).claim_today(telegram_user_id)
+    if not status.just_claimed:
+        return ""
+    return f"\n\n🪙 +{status.coins_today} · 🔥 {status.streak}"
 
 
 def parse_callback(data: str) -> tuple[str, str, str] | None:
@@ -242,12 +255,18 @@ async def _handle_task_action(
         )
         return _quick_action_result(task)
 
+    reward = ""
     if action == "c":
-        await service.update_task(telegram_user_id, int(item_id), status="completed")
+        completed = await service.update_task(
+            telegram_user_id, int(item_id), status="completed"
+        )
+        if completed is not None:
+            reward = await _reward_line(session, telegram_user_id)
     elif action == "d":
         await service.delete_task(telegram_user_id, int(item_id))
     tasks = await service.list_active_tasks(telegram_user_id)
-    return build_tasks_message(tasks)
+    text, markup = build_tasks_message(tasks)
+    return text + reward, markup
 
 
 def _quick_action_result(task: Task | None) -> tuple[str, InlineKeyboardMarkup]:
@@ -272,6 +291,7 @@ async def _handle_habit_action(
         return _ASK_HABIT, InlineKeyboardMarkup([])
     if action == "t":
         return build_habit_templates_message()
+    reward = ""
     if action == "a":
         # Здесь в item_id приходит slug шаблона, а не число (см.
         # _NON_NUMERIC_ACTIONS): каталог живёт в коде, id у него нет.
@@ -280,12 +300,15 @@ async def _handle_habit_action(
             return "Такой готовой привычки больше нет.", InlineKeyboardMarkup([])
         await service.create_from_template(telegram_user_id, template)
     if action == "d":
-        await service.mark_done_by_id(telegram_user_id, int(item_id))
+        done = await service.mark_done_by_id(telegram_user_id, int(item_id))
+        if done is not None:
+            reward = await _reward_line(session, telegram_user_id)
     elif action == "x":
         await service.delete_habit(telegram_user_id, int(item_id))
     habits = await service.list_active_habits(telegram_user_id)
     streaks = await service.get_streaks_bulk(telegram_user_id, [h.id for h in habits])
-    return build_habits_message(habits, streaks)
+    text, markup = build_habits_message(habits, streaks)
+    return text + reward, markup
 
 
 async def _handle_goal_action(
@@ -301,6 +324,7 @@ async def _handle_goal_action(
     if action == "n":
         set_pending(context.user_data, PendingInput(GOAL_ADD))
         return _ASK_GOAL, InlineKeyboardMarkup([])
+    reward = ""
     if action in ("u", "p"):
         goals = await service.list_active_goals(telegram_user_id)
         goal = next((g for g in goals if g.id == int(item_id)), None)
@@ -308,12 +332,19 @@ async def _handle_goal_action(
             delta = 10 if action == "u" else -10
             new_progress = max(0, min(100, goal.progress + delta))
             await service.update_progress(telegram_user_id, goal.id, new_progress)
+            # Только рост прогресса — награда за движение вперёд, не за
+            # откат назад (action == "p" его не получает).
+            if action == "u":
+                reward = await _reward_line(session, telegram_user_id)
     elif action == "c":
-        await service.complete_goal(telegram_user_id, int(item_id))
+        completed = await service.complete_goal(telegram_user_id, int(item_id))
+        if completed is not None:
+            reward = await _reward_line(session, telegram_user_id)
     elif action == "x":
         await service.delete_goal(telegram_user_id, int(item_id))
     goals = await service.list_active_goals(telegram_user_id)
-    return build_goals_message(goals)
+    text, markup = build_goals_message(goals)
+    return text + reward, markup
 
 
 async def _handle_watchlist_action(
@@ -329,8 +360,11 @@ async def _handle_watchlist_action(
     if action == "n":
         set_pending(context.user_data, PendingInput(WATCHLIST_ADD))
         return _ASK_WATCHLIST, InlineKeyboardMarkup([])
+    reward = ""
     if action == "d":
-        await service.mark_done(telegram_user_id, int(item_id))
+        done = await service.mark_done(telegram_user_id, int(item_id))
+        if done is not None:
+            reward = await _reward_line(session, telegram_user_id)
     elif action == "x":
         await service.delete_item(telegram_user_id, int(item_id))
     elif action == "r":
@@ -341,7 +375,8 @@ async def _handle_watchlist_action(
         return text, InlineKeyboardMarkup([])
 
     items = await service.list_active_items(telegram_user_id)
-    return build_watchlist_message(items)
+    text, markup = build_watchlist_message(items)
+    return text + reward, markup
 
 
 async def _handle_journal_action(
@@ -416,6 +451,28 @@ async def _handle_digest_action(
     if action == "a":
         set_pending(context.user_data, PendingInput(DIGEST_CHANNEL, digest.id))
         return _ASK_DIGEST_CHANNEL, InlineKeyboardMarkup([])
+
+    if action == "f":
+        # Кнопка приходит от send_digests_job (app/telegram/jobs.py) —
+        # висит под УЖЕ отправленным сообщением дайджеста. Текст поста
+        # не хранится нигде отдельно (build_digest_text сплющивает посты
+        # в одну строку и не сохраняет их), поэтому источник — само
+        # сообщение, на котором висит кнопка, а не повторный запрос к
+        # DigestService (см. specs/016-engagement-hooks.md, "Дайджест:
+        # ⭐ Сохранить" — там же объяснение, почему не кнопка на пост).
+        saved_text = query.message.text if query.message is not None else None
+        if not saved_text:
+            return "Нечего сохранять — сообщение уже пустое.", InlineKeyboardMarkup([])
+        memory_service = MemoryService(MemoryRepository(session))
+        await memory_service.save(
+            telegram_user_id, MemoryType.JOURNAL, saved_text, source="digest_save"
+        )
+        reward = await _reward_line(session, telegram_user_id)
+        # Пустая клавиатура снимает кнопку — повторный тап на тот же
+        # дайджест физически невозможен (не нужен отдельный флаг в БД).
+        return f"⭐ «{digest.name}» сохранён в дневник.{reward}", InlineKeyboardMarkup(
+            []
+        )
 
     if action == "r":
         # Чтение каналов по сети + AI-саммари — это секунды, а сообщение

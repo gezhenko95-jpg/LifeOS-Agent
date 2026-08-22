@@ -84,4 +84,5 @@ def build_engine(
         goal_service=build_goal_service(session),
         pending_prompt_service=build_prompt_service(session),
         watchlist_service=build_watchlist_service(session),
+        rewards_service=build_rewards_service(session),
     )

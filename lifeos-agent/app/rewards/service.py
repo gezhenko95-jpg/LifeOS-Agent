@@ -28,6 +28,13 @@ class RewardsStatus:
     # день "счастливым"), а не только новую сумму всего накопленного.
     coins_today: int
     lucky_today: bool
+    # True, только если ИМЕННО этот вызов claim_today перевёл день из
+    # "не забрано" в "забрано" — в отличие от claimed_today (True и на
+    # повторных вызовах в тот же день). Нужно вызывающему коду из чата/
+    # кнопок (см. app/telegram/callbacks.py::_reward_line,
+    # app/conversation/engine.py), чтобы показать "🪙 +N" один раз за
+    # день, а не при каждом действии (specs/016-engagement-hooks.md).
+    just_claimed: bool = False
 
 
 class RewardsService:
@@ -41,17 +48,23 @@ class RewardsService:
         второй раз)."""
         today = date.today()
         already = await self._repository.has_checkin_on(telegram_user_id, today)
+        just_claimed = False
         if not already:
             try:
                 await self._repository.add_checkin(telegram_user_id, today)
+                just_claimed = True
             except IntegrityError:
                 # Гонка: два почти одновременных клика "Забрать" (двойной
                 # тап, ретрай после таймаута) оба проходят has_checkin_on
                 # как False. UniqueConstraint uq_checkin_day ловит второй
                 # insert — день всё равно уже отмечен первым запросом,
                 # значит вести себя нужно идемпотентно, а не падать 500-й.
+                # just_claimed остаётся False — этот конкретный вызов
+                # монет не начислил, награду за него показывать не нужно.
                 await self._repository.rollback()
-        return await self._status(telegram_user_id, today)
+        status = await self._status(telegram_user_id, today)
+        status.just_claimed = just_claimed
+        return status
 
     async def get_status(self, telegram_user_id: int) -> RewardsStatus:
         return await self._status(telegram_user_id, date.today())

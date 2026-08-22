@@ -72,8 +72,10 @@ class Settings(BaseSettings):
     # работают только если задан openrouter_api_key (без AI ответ
     # пользователя не разобрать) — см. app/telegram/jobs.py.
     proactive_prompts_enabled: bool = True
-    proactive_prompt_morning_hour: int = 10
-    proactive_prompt_morning_minute: int = 30
+    # Утреннего часа здесь больше нет: с specs/016-engagement-hooks.md
+    # утренний рефлексивный вопрос слит в send_morning_briefing_job и
+    # следует за morning_briefing_hour/minute (см. ниже), а не за
+    # отдельным временем.
     proactive_prompt_midday_hour: int = 14
     proactive_prompt_midday_minute: int = 0
     proactive_prompt_evening_hour: int = 19
