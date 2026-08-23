@@ -13,14 +13,19 @@ def repository():
     repo = AsyncMock()
     repo.add.side_effect = lambda entry: entry
     repo.save.side_effect = lambda entry: entry
-    # Реальная фильтрация теперь в БД (см. app/memory/repository.py,
-    # AUDIT.md P-2). Настоящая SQL-версия проверяется отдельно, против
-    # SQLite: tests/memory/test_repository.py.
-    repo.search.side_effect = lambda telegram_user_id, needle, type=None: [
-        entry
-        for entry in repo.list_by_user.return_value
-        if needle.lower() in entry.content.lower()
-    ]
+
+    # Реальная фильтрация (и limit) теперь в БД (см.
+    # app/memory/repository.py, AUDIT.md P-2). Настоящая SQL-версия
+    # проверяется отдельно, против SQLite: tests/memory/test_repository.py.
+    def _search(telegram_user_id, needle, type=None, limit=None):
+        matches = [
+            entry
+            for entry in repo.list_by_user.return_value
+            if needle.lower() in entry.content.lower()
+        ]
+        return matches[:limit] if limit is not None else matches
+
+    repo.search.side_effect = _search
     return repo
 
 
@@ -100,6 +105,18 @@ async def test_delete_nonexistent_returns_none(repository):
     result = await service.delete(1, 999)
 
     assert result is None
+
+
+async def test_search_passes_limit_through_to_repository(repository):
+    repository.list_by_user.return_value = [
+        MemoryEntry(telegram_user_id=1, type="fact", content=f"Работа {i}")
+        for i in range(5)
+    ]
+    service = MemoryService(repository)
+
+    results = await service.search(1, "работа", limit=2)
+
+    assert len(results) == 2
 
 
 async def test_search_is_case_insensitive_substring(repository):

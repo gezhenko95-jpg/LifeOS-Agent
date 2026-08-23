@@ -111,12 +111,15 @@ class MemoryService:
         telegram_user_id: int,
         query: str,
         type: Optional[MemoryType] = None,
+        limit: Optional[int] = None,
     ) -> list[MemoryEntry]:
         """Подстрока в content, регистронезависимо — фильтруется в БД
         (см. app/memory/repository.py::search, AUDIT.md P-2), не тянет
         всю историю пользователя в Python ради нескольких строк."""
         needle = query.strip()
-        return await self._repository.search(telegram_user_id, needle, type=type)
+        return await self._repository.search(
+            telegram_user_id, needle, type=type, limit=limit
+        )
 
     async def semantic_search(
         self,

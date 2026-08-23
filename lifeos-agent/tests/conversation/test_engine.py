@@ -263,7 +263,9 @@ async def test_recall_with_results(task_service, habit_service, memory_service):
     reply = (await engine.handle_message(1, "Напомни про отпуск")).text
 
     assert "Хочу съездить в отпуск в сентябре" in reply
-    memory_service.search.assert_awaited_once_with(1, "отпуск")
+    # limit=5 (_MAX_RECALL_RESULTS) уходит в запрос, а не режется в
+    # Python после фетча — та же оптимизация, что и у search() ниже.
+    memory_service.search.assert_awaited_once_with(1, "отпуск", limit=5)
 
 
 async def test_recall_no_results(task_service, habit_service, memory_service):
@@ -303,7 +305,7 @@ async def test_recall_falls_back_to_semantic_search_when_literal_empty(
     assert "Думаю уволиться и сменить сферу" in reply
     assert "Точных совпадений" in reply
     memory_service.semantic_search.assert_awaited_once_with(
-        1, "смену работы", ai_client
+        1, "смену работы", ai_client, limit=5
     )
 
 

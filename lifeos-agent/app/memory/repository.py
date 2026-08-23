@@ -67,13 +67,21 @@ class MemoryRepository(BaseRepository[MemoryEntry]):
         needle: str,
         type: Optional[MemoryType] = None,
         include_archived: bool = False,
+        limit: Optional[int] = None,
     ) -> list[MemoryEntry]:
         """Подстрока в content, регистронезависимо, в БД (ILIKE) — раньше
         MemoryService.search тянул ВСЕ записи пользователя и фильтровал
         их в Python (см. AUDIT.md, P-2): на каждое "напомни про X" из
         памяти выгружалась целиком вся история, лишь бы найти несколько
         строк. Порядок (created_at desc) как у list_by_user, чтобы
-        поведение не поменялось для вызывающего кода."""
+        поведение не поменялось для вызывающего кода.
+
+        `limit` (добавлено вместе с тем же полем у list_by_user, см.
+        выше) — ILIKE по частому слову ("работа", "дом") легко матчит
+        десятки записей у активного дневника, а ConversationEngine._recall
+        всё равно показывает только первые 5 (_MAX_RECALL_RESULTS). Без
+        LIMIT здесь это тот же полусделанный P-2: фильтрация уже в БД, а
+        объём — всё ещё "вся история, потом обрезать в Python"."""
         query = select(MemoryEntry).where(
             MemoryEntry.telegram_user_id == telegram_user_id,
             MemoryEntry.content.ilike(f"%{escape_like(needle)}%", escape="\\"),
@@ -83,6 +91,8 @@ class MemoryRepository(BaseRepository[MemoryEntry]):
         if not include_archived:
             query = query.where(MemoryEntry.archived.is_(False))
         query = query.order_by(MemoryEntry.created_at.desc())
+        if limit is not None:
+            query = query.limit(limit)
         result = await self._session.execute(query)
         return list(result.scalars().all())
 

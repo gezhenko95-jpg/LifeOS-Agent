@@ -148,6 +148,29 @@ async def test_search_finds_case_insensitive_substring(session):
     assert len(results) == 1
 
 
+async def test_search_respects_limit(session):
+    """specs/020-butler-personas.md — ConversationEngine._recall передаёт
+    _MAX_RECALL_RESULTS в запрос, а не режет список в Python после
+    фетча всех совпадений ILIKE (тот же приём, что у list_by_user)."""
+    session.add_all(
+        [
+            MemoryEntry(
+                telegram_user_id=1,
+                type="fact",
+                content=f"Работа {i}",
+                source="manual",
+            )
+            for i in range(5)
+        ]
+    )
+    await session.commit()
+    repo = MemoryRepository(session)
+
+    results = await repo.search(1, "Работа", limit=2)
+
+    assert len(results) == 2
+
+
 async def test_search_percent_is_treated_literally(session):
     session.add_all(
         [

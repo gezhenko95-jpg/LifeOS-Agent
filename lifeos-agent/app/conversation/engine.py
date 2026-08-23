@@ -552,7 +552,13 @@ class ConversationEngine:
         if not query:
             return "Что напомнить? Например: «напомни, что я говорил про отпуск»."
 
-        entries = await self._memory.search(telegram_user_id, query)
+        # limit уходит В ЗАПРОС (MemoryRepository.search) — раньше ILIKE
+        # по частому слову ("работа", "дом") мог вытянуть десятки строк
+        # ради того, чтобы показать первые 5; сама фильтрация уже была в
+        # БД (AUDIT.md P-2), а объём — ещё нет.
+        entries = await self._memory.search(
+            telegram_user_id, query, limit=_MAX_RECALL_RESULTS
+        )
         header = f"Нашёл по «{query}»:"
 
         if not entries and self._ai_client is not None:
@@ -560,7 +566,7 @@ class ConversationEngine:
             # specs/011-semantic-memory-search.md). Другая вводная фраза —
             # чтобы не выдавать смысловое совпадение за точное.
             entries = await self._memory.semantic_search(
-                telegram_user_id, query, self._ai_client
+                telegram_user_id, query, self._ai_client, limit=_MAX_RECALL_RESULTS
             )
             header = f"Точных совпадений с «{query}» нет, но вот похожее:"
 
@@ -568,7 +574,7 @@ class ConversationEngine:
             return f"🤷 Ничего не нашёл про «{query}»."
 
         lines = [header]
-        lines.extend(f"• {entry.content}" for entry in entries[:_MAX_RECALL_RESULTS])
+        lines.extend(f"• {entry.content}" for entry in entries)
         return "\n".join(lines)
 
     async def _complete_task(self, telegram_user_id: int, title_query: str) -> str:
