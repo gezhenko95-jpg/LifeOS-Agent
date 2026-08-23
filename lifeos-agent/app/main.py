@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api import (
     digest,
+    finance,
     goals,
     habits,
     health,
@@ -69,6 +70,7 @@ app.include_router(goals.router, tags=["goals"], dependencies=_protected)
 app.include_router(watchlist.router, tags=["watchlist"], dependencies=_protected)
 app.include_router(rewards.router, tags=["rewards"], dependencies=_protected)
 app.include_router(digest.router, tags=["digest"], dependencies=_protected)
+app.include_router(finance.router, tags=["finance"], dependencies=_protected)
 
 # Простейший веб-интерфейс — статическая страница, использует REST API выше.
 app.mount("/ui", StaticFiles(directory=_WEB_STATIC_DIR, html=True), name="ui")

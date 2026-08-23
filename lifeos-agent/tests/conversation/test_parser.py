@@ -1,5 +1,9 @@
 from app.conversation.intent import Intent
-from app.conversation.parser import parse_intent
+from app.conversation.parser import (
+    parse_finance_expense,
+    parse_finance_income,
+    parse_intent,
+)
 
 
 def test_add_task_with_date():
@@ -605,3 +609,26 @@ def test_watchlist_trigger_without_finance_keyword_still_works():
     result = parse_intent("хочу посмотреть фильм Дюна")
 
     assert result.intent is Intent.ADD_WATCHLIST_ITEM
+
+
+def test_parse_finance_expense_from_button_no_trigger_word():
+    """Ответ на кнопку "➕ Трата" — без слова "потратил"."""
+    result = parse_finance_expense("500 на такси")
+
+    assert result.intent is Intent.ADD_EXPENSE
+    assert result.amount == 500
+    assert result.finance_category == "transport"
+
+
+def test_parse_finance_expense_no_amount():
+    result = parse_finance_expense("на продукты")
+
+    assert result.intent is Intent.ADD_EXPENSE
+    assert result.amount is None
+
+
+def test_parse_finance_income_from_button_no_trigger_word():
+    result = parse_finance_income("80000")
+
+    assert result.intent is Intent.ADD_INCOME
+    assert result.amount == 80000

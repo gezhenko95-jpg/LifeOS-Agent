@@ -213,6 +213,11 @@
   .status-dot.today { background: var(--today); }
   .status-dot.tomorrow { background: var(--tomorrow); }
   .meta.overdue { color: var(--overdue); }
+  /* Категория сверх нормы (см. app/finance/service.py::CategoryBreakdown.
+     over_budget) — тот же токен, что у просроченных задач, а не новый
+     цвет: "превышено" читается одинаково во всех карточках. */
+  .item-list li.over-budget .item-title { color: var(--overdue); }
+  .item-list li.over-budget .meta { color: var(--overdue); }
   input, select {
     background: var(--card-bg);
     color: var(--text);
@@ -2281,6 +2286,7 @@
     <button type="button" class="tab" data-tab="shelf">Полка</button>
     <button type="button" class="tab" data-tab="calendar">Календарь</button>
     <button type="button" class="tab" data-tab="digest">Дайджесты</button>
+    <button type="button" class="tab" data-tab="finance">Финансы</button>
   </nav>
 
   <!-- Счётчики продублированы ЗНАЧЕНИЕМ, а не узлом: на исходных
@@ -2464,6 +2470,36 @@
   <section class="card" data-domain="weekly">
     <h2 data-icon="chart">Итоги недели</h2>
     <p class="stat-line"><span class="stat-number" id="weeklyTasksCount">—</span> задач выполнено за последние 7 дней</p>
+  </section>
+
+  <section class="card" data-domain="finance">
+    <h2 data-icon="coins">Финансы</h2>
+    <p class="stat-line">Свободно в этом месяце: <span class="stat-number" id="financeFreeMoney">—</span> ₽</p>
+    <p class="stat-line" id="financeTotalsLine"></p>
+    <form class="add-form" id="financeForm">
+      <select id="financeKind">
+        <option value="expense">Трата</option>
+        <option value="income">Доход</option>
+      </select>
+      <input type="number" id="financeAmount" placeholder="Сумма" min="1" required />
+      <select id="financeCategory">
+        <option value="rent">🏠 Аренда/ипотека</option>
+        <option value="utilities">💡 Коммуналка</option>
+        <option value="subscriptions">🔁 Подписки</option>
+        <option value="credit">🏦 Кредит/рассрочка</option>
+        <option value="groceries" selected>🛒 Продукты</option>
+        <option value="transport">🚕 Транспорт</option>
+        <option value="eating_out">🍔 Кафе</option>
+        <option value="health">💊 Здоровье</option>
+        <option value="entertainment">🎉 Развлечения</option>
+        <option value="shopping">🛍 Покупки</option>
+        <option value="other">❓ Другое</option>
+      </select>
+      <input type="text" id="financeNote" placeholder="Заметка (необязательно)" />
+      <button type="submit">Добавить</button>
+    </form>
+    <ul class="item-list" id="financeCategoryList"></ul>
+    <ul class="item-list" id="financeList"></ul>
   </section>
 
   <section class="card" data-domain="shelf">
@@ -2742,6 +2778,7 @@ let lastTasks = [];
 let lastGoals = [];
 let lastWatchlist = [];
 let lastWeeklyCount = 0;
+let lastFinanceSummary = { income_total: 0, mandatory_total: 0, free_money: 0, categories: [] };
 
 // Иконки — свои, в языке знака LifeOS: те же круглые формы, скруглённые
 // концы и одна толщина линии. Эмодзи здесь не годились: у каждой
@@ -3436,6 +3473,91 @@ document.getElementById("goalList").addEventListener("click", async (e) => {
     });
     await loadGoals();
   }
+});
+
+// Доход не делится на категории (см. app/finance/models.py) — поле
+// категории скрывается, когда выбран "Доход", а не просто игнорируется:
+// иначе выглядело бы как баг ("я же выбрал категорию, почему её нет?").
+document.getElementById("financeKind").addEventListener("change", (e) => {
+  document.getElementById("financeCategory").style.display =
+    e.target.value === "income" ? "none" : "";
+});
+
+async function loadFinance() {
+  const id = getUserId();
+  const freeEl = document.getElementById("financeFreeMoney");
+  const totalsEl = document.getElementById("financeTotalsLine");
+  const catList = document.getElementById("financeCategoryList");
+  const list = document.getElementById("financeList");
+  if (!id) {
+    freeEl.textContent = "—";
+    totalsEl.textContent = "";
+    catList.innerHTML = "";
+    list.innerHTML = "";
+    return;
+  }
+  const [summary, transactions] = await Promise.all([
+    api(`/finance/summary?telegram_user_id=${encodeURIComponent(id)}`),
+    api(`/finance/transactions?telegram_user_id=${encodeURIComponent(id)}&limit=10`),
+  ]);
+  lastFinanceSummary = summary;
+
+  freeEl.textContent = summary.free_money.toLocaleString("ru-RU");
+  totalsEl.textContent =
+    `Доход: ${summary.income_total.toLocaleString("ru-RU")} ₽ · ` +
+    `Обязательные: ${summary.mandatory_total.toLocaleString("ru-RU")} ₽`;
+
+  catList.innerHTML = summary.categories.map((c) => `
+    <li${c.over_budget ? ' class="over-budget"' : ""}>
+      <span class="item-title">${c.over_budget ? "⚠️ " : ""}${escapeHtml(c.label)}</span>
+      <span class="meta">${c.spent.toLocaleString("ru-RU")} / ${c.norm.toLocaleString("ru-RU")} ₽</span>
+    </li>
+  `).join("");
+
+  if (!transactions.length) {
+    list.innerHTML = '<li class="empty">Записей пока нет. Добавьте первую трату или доход.</li>';
+    return;
+  }
+  list.innerHTML = transactions.map((t) => {
+    const label = t.kind === "income" ? "доход" : escapeHtml(t.category_label || t.category || "");
+    const icon = t.kind === "income" ? "💰" : "💸";
+    const note = t.note ? ` <span class="meta">${escapeHtml(t.note)}</span>` : "";
+    return `
+    <li>
+      <span class="item-title">${icon} ${t.amount.toLocaleString("ru-RU")} ₽ — ${label}</span>${note}
+      <button class="danger" data-action="delete-finance" data-id="${t.id}">✕</button>
+    </li>
+  `;
+  }).join("");
+}
+
+document.getElementById("financeForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = requireUserId();
+  const kind = document.getElementById("financeKind").value;
+  const amount = Number(document.getElementById("financeAmount").value);
+  const note = document.getElementById("financeNote").value.trim();
+  const body = { telegram_user_id: Number(id), kind, amount, note: note || null };
+  if (kind === "expense") {
+    body.category = document.getElementById("financeCategory").value;
+  }
+  await api("/finance/transactions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  document.getElementById("financeAmount").value = "";
+  document.getElementById("financeNote").value = "";
+  await loadFinance();
+});
+
+document.getElementById("financeList").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button");
+  if (!btn || btn.dataset.action !== "delete-finance") return;
+  await api(`/finance/transactions/${btn.dataset.id}?telegram_user_id=${getUserId()}`, {
+    method: "DELETE",
+  });
+  await loadFinance();
 });
 
 
@@ -4441,13 +4563,14 @@ const TAB_KEY = "lifeos_tab";
 // семи; календарь на ней намеренно отсутствует, он занимал весь верх
 // экрана и ломал композицию.
 const TAB_CARDS = {
-  dash: ["rewards", "tasks", "habits", "goals", "weekly", "shelf", "digest"],
+  dash: ["rewards", "tasks", "habits", "goals", "weekly", "finance", "shelf", "digest"],
   tasks: ["tasks"],
   habits: ["habits"],
   goals: ["goals"],
   shelf: ["shelf"],
   calendar: ["calendar"],
   digest: ["digest"],
+  finance: ["finance"],
 };
 
 function getActiveTab() {
@@ -4505,6 +4628,7 @@ async function loadAll() {
     loadRewards(),
     loadJournal(),
     loadDigests(),
+    loadFinance(),
   ]);
   // Достижения зависят от данных всех карточек разом — считаем после
   // того, как все они точно загрузились, а не по одной.

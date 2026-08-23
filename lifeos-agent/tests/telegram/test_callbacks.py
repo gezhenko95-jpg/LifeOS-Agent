@@ -5,11 +5,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.db.base import Base
 from app.digest.models import Digest
+from app.finance.models import EXPENSE, INCOME, Transaction
 from app.goals.models import Goal
 from app.habits.models import Habit
 from app.tasks.models import Task
 from app.telegram.callbacks import (
     _handle_digest_action,
+    _handle_finance_action,
     _handle_goal_action,
     _handle_habit_action,
     _handle_task_action,
@@ -278,3 +280,82 @@ async def test_digest_save_without_message_text_is_graceful(session):
 
     assert "Нечего сохранять" in text
     assert len(markup.inline_keyboard) == 0
+
+
+# --- Финансы (specs/017-finance.md) ---
+
+
+async def _add_transaction(session, **kwargs) -> Transaction:
+    kwargs.setdefault("telegram_user_id", 1)
+    kwargs.setdefault("kind", EXPENSE)
+    kwargs.setdefault("category", "transport")
+    kwargs.setdefault("amount", 500)
+    transaction = Transaction(**kwargs)
+    session.add(transaction)
+    await session.commit()
+    await session.refresh(transaction)
+    return transaction
+
+
+async def test_finance_menu(session):
+    text, markup = await _handle_finance_action(session, "m", "", 1, _context())
+
+    assert "Финансы" in text
+    callbacks = [b.callback_data for row in markup.inline_keyboard for b in row]
+    assert callbacks == ["f|l", "f|n", "f|i"]
+
+
+async def test_finance_action_n_opens_expense_prompt(session):
+    context = _context()
+
+    text, markup = await _handle_finance_action(session, "n", "", 1, context)
+
+    assert "Сколько и на что" in text
+    from app.telegram.pending_input import FINANCE_EXPENSE_ADD
+
+    assert context.user_data["pending_input"].kind == FINANCE_EXPENSE_ADD
+
+
+async def test_finance_action_i_opens_income_prompt(session):
+    context = _context()
+
+    text, markup = await _handle_finance_action(session, "i", "", 1, context)
+
+    assert "Сколько получили" in text
+    from app.telegram.pending_input import FINANCE_INCOME_ADD
+
+    assert context.user_data["pending_input"].kind == FINANCE_INCOME_ADD
+
+
+async def test_finance_action_l_lists_transactions_and_summary(session):
+    await _add_transaction(session, kind=EXPENSE, category="transport", amount=500)
+    await _add_transaction(session, kind=INCOME, category=None, amount=80000)
+
+    text, markup = await _handle_finance_action(session, "l", "", 1, _context())
+
+    assert "💸 500" in text
+    assert "💰 80 000" in text
+    assert "Доход: 80 000" in text
+
+
+async def test_finance_action_x_deletes_transaction(session):
+    transaction = await _add_transaction(session)
+
+    text, markup = await _handle_finance_action(
+        session, "x", str(transaction.id), 1, _context()
+    )
+
+    callbacks = [b.callback_data for row in markup.inline_keyboard for b in row]
+    assert f"f|x|{transaction.id}" not in callbacks
+    assert "🪙" not in text  # удаление не награждается
+
+
+async def test_finance_action_x_wrong_owner_does_not_delete(session):
+    transaction = await _add_transaction(session, telegram_user_id=2)
+
+    await _handle_finance_action(session, "x", str(transaction.id), 1, _context())
+
+    from sqlalchemy import select
+
+    result = await session.execute(select(Transaction))
+    assert len(result.scalars().all()) == 1  # чужая транзакция никуда не делась

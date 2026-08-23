@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
+from app.core.ownership import owned_or_none
 from app.finance.models import (
     CATEGORIES,
     CATEGORY_NORM_PERCENT,
@@ -92,6 +93,22 @@ class FinanceService:
         self, telegram_user_id: int, since: datetime
     ) -> list[Transaction]:
         return await self._repository.list_since(telegram_user_id, since)
+
+    async def list_recent_transactions(
+        self, telegram_user_id: int, limit: int = 10
+    ) -> list[Transaction]:
+        return await self._repository.list_recent(telegram_user_id, limit)
+
+    async def delete_transaction(
+        self, telegram_user_id: int, transaction_id: int
+    ) -> Optional[Transaction]:
+        transaction = owned_or_none(
+            await self._repository.get_by_id(transaction_id), telegram_user_id
+        )
+        if transaction is None:
+            return None
+        await self._repository.delete(transaction)
+        return transaction
 
     async def build_period_summary(
         self, telegram_user_id: int, since: datetime

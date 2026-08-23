@@ -76,3 +76,33 @@ async def test_add_income_has_no_category(session):
     )
 
     assert transaction.category is None
+
+
+async def test_list_recent_orders_newest_first(session):
+    repo = FinanceRepository(session)
+    older = await _add(session, occurred_at=NOW - timedelta(days=2))
+    newer = await _add(session, occurred_at=NOW - timedelta(hours=1))
+
+    result = await repo.list_recent(1)
+
+    assert result == [newer, older]
+
+
+async def test_list_recent_respects_limit(session):
+    repo = FinanceRepository(session)
+    for i in range(5):
+        await _add(session, occurred_at=NOW - timedelta(hours=i))
+
+    result = await repo.list_recent(1, limit=3)
+
+    assert len(result) == 3
+
+
+async def test_list_recent_filters_by_user(session):
+    repo = FinanceRepository(session)
+    await _add(session, telegram_user_id=2)
+    mine = await _add(session, telegram_user_id=1)
+
+    result = await repo.list_recent(1)
+
+    assert result == [mine]

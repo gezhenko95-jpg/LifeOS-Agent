@@ -37,7 +37,7 @@ _section_screen): заголовок, строка-подсказка, ряд д
 callback_data — компактный формат "{домен}|{действие}|{id}".
 
 Домены: t — задачи, h — привычки, g — цели, j — дневник, w — полка,
-d — дайджесты. Действия одинаковы во всех доменах:
+d — дайджесты, f — финансы. Действия одинаковы во всех доменах:
   {домен}|m — экран раздела
   {домен}|l — открыть список
   {домен}|n — добавить (бот ждёт следующее сообщение, см. pending_input.py)
@@ -56,6 +56,8 @@ d — дайджесты. Действия одинаковы во всех до
   d|s|{id} / d|r|{id} / d|a|{id} — дайджест: открыть / прислать новое /
     добавить канал
   d|x|{channel_id} — убрать канал (id КАНАЛА, не дайджеста)
+  f|i — финансы: добавить ДОХОД (два вида "добавить" — f|n, как везде,
+    для траты, и f|i для дохода); f|x|{id} — удалить транзакцию
 
 Действия без id ("w|m", "j|l", …) — намеренно двухчастные: в
 callback_data Telegram даёт 64 БАЙТА, и имя дайджеста туда класть нельзя
@@ -73,6 +75,8 @@ from telegram import (
 )
 
 from app.digest.models import Digest, DigestChannel
+from app.finance.models import CATEGORIES, EXPENSE, Transaction
+from app.finance.service import FinanceSummary
 from app.goals.models import Goal
 from app.habits.models import Habit
 from app.habits.templates import HABIT_TEMPLATES
@@ -100,6 +104,7 @@ MENU_JOURNAL = "📝 Дневник"
 MENU_INSIGHTS = "📊 Инсайты"
 MENU_WATCHLIST = "🎬 Посмотреть"
 MENU_DIGEST = "📰 Дайджест"
+MENU_FINANCE = "💰 Финансы"
 MENU_SITE = "🌐 Сайт"
 MENU_HELP = "❓ Помощь"
 
@@ -186,8 +191,9 @@ def build_main_menu() -> ReplyKeyboardMarkup:
         [KeyboardButton(MENU_TASKS)],
         [KeyboardButton(MENU_HABITS), KeyboardButton(MENU_GOALS)],
         [KeyboardButton(MENU_JOURNAL), KeyboardButton(MENU_WATCHLIST)],
-        [KeyboardButton(MENU_DIGEST), KeyboardButton(MENU_INSIGHTS)],
-        [KeyboardButton(MENU_SITE), KeyboardButton(MENU_HELP)],
+        [KeyboardButton(MENU_DIGEST), KeyboardButton(MENU_FINANCE)],
+        [KeyboardButton(MENU_INSIGHTS), KeyboardButton(MENU_SITE)],
+        [KeyboardButton(MENU_HELP)],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -390,6 +396,64 @@ def build_goals_message(goals: list[Goal]) -> tuple[str, InlineKeyboardMarkup]:
     return "\n".join(lines), InlineKeyboardMarkup(rows)
 
 
+def _money(amount: int) -> str:
+    """1234567 -> "1 234 567" — разряды пробелом, как в build_finance_report
+    (app/scheduler/finance_report.py) — тот же вид числа в двух местах."""
+    return f"{amount:,}".replace(",", " ")
+
+
+def build_finance_message(
+    transactions: list[Transaction], summary: FinanceSummary
+) -> tuple[str, InlineKeyboardMarkup]:
+    """У финансов, в отличие от остальных доменов, ДВЕ кнопки "добавить"
+    (трата/доход, см. app/telegram/pending_input.py) — своя строка кнопок
+    внизу вместо общего _open_and_add."""
+    lines = ["💰 <b>Финансы</b>", ""]
+    lines.append(f"Доход: {_money(summary.income_total)} ₽")
+    lines.append(f"Обязательные платежи: {_money(summary.mandatory_total)} ₽")
+    lines.append(f"Свободно: {_money(summary.free_money)} ₽")
+
+    if summary.categories:
+        lines.append("")
+        for category in summary.categories:
+            prefix = "⚠️ " if category.over_budget else ""
+            lines.append(
+                f"{prefix}{_esc(category.label)}: {_money(category.spent)} / "
+                f"{_money(category.norm)} ₽ нормы"
+            )
+
+    add_row = [
+        InlineKeyboardButton("➕ Трата", callback_data="f|n"),
+        InlineKeyboardButton("➕ Доход", callback_data="f|i"),
+    ]
+
+    if not transactions:
+        lines.append("")
+        lines.append(_DIVIDER)
+        lines.append("Записей пока нет. Напишите «потратил 500 на такси».")
+        return "\n".join(lines), InlineKeyboardMarkup([add_row, _back_to_section("f")])
+
+    shown = transactions[:_MAX_ITEMS]
+    lines.append("")
+    lines.append(_DIVIDER)
+    lines.append("Последние:")
+    for index, transaction in enumerate(shown, start=1):
+        if transaction.kind == EXPENSE:
+            label = CATEGORIES.get(
+                transaction.category or "", transaction.category or ""
+            )
+            lines.append(
+                f"<b>{index}</b>  💸 {_money(transaction.amount)} ₽ — {_esc(label)}"
+            )
+        else:
+            lines.append(f"<b>{index}</b>  💰 {_money(transaction.amount)} ₽ — доход")
+
+    rows = _numbered_action_rows(shown, "f|x", "🗑")
+    rows.append(add_row)
+    rows.append(_back_to_section("f"))
+    return "\n".join(lines), InlineKeyboardMarkup(rows)
+
+
 # --- Экраны разделов (второй уровень меню) --------------------------------
 
 
@@ -447,6 +511,20 @@ def build_goals_menu() -> tuple[str, InlineKeyboardMarkup]:
         "🎯 <b>Цели</b>",
         "Посмотреть прогресс или поставить новую цель?",
         [_open_and_add("g", "🎯 Список")],
+    )
+
+
+def build_finance_menu() -> tuple[str, InlineKeyboardMarkup]:
+    return _section_screen(
+        "💰 <b>Финансы</b>",
+        "Посмотреть траты за месяц или добавить новую запись?",
+        [
+            [
+                InlineKeyboardButton("📋 Список", callback_data="f|l"),
+                InlineKeyboardButton("➕ Трата", callback_data="f|n"),
+                InlineKeyboardButton("➕ Доход", callback_data="f|i"),
+            ]
+        ],
     )
 
 

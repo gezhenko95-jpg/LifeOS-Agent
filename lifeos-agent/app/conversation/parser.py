@@ -281,6 +281,32 @@ def parse_add_task(text: str) -> ParsedIntent:
     )
 
 
+def parse_finance_expense(text: str) -> ParsedIntent:
+    """Как parse_add_task, но для ответа на кнопку "➕ Трата"
+    (specs/017-finance.md): пользователь уже нажал кнопку, слова-триггера
+    ("потратил"...) в ответе может не быть вообще — весь текст сразу
+    разбирается на сумму и категорию, без остального waterfall
+    parse_intent."""
+    stripped = text.strip()
+    amount, remaining = extract_amount(stripped)
+    category = _match_finance_category(remaining.lower())
+    return ParsedIntent(
+        intent=Intent.ADD_EXPENSE,
+        amount=amount,
+        finance_category=category,
+        title=remaining or None,
+    )
+
+
+def parse_finance_income(text: str) -> ParsedIntent:
+    """Как parse_finance_expense, для кнопки "➕ Доход"."""
+    stripped = text.strip()
+    amount, remaining = extract_amount(stripped)
+    return ParsedIntent(
+        intent=Intent.ADD_INCOME, amount=amount, title=remaining or None
+    )
+
+
 def _contains_any(lowered: str, keywords: tuple[str, ...]) -> Optional[str]:
     """Первое совпавшее ключевое слово ЦЕЛИКОМ (границы слова, не любая
     подстрока) — «отмени» матчит «отмени встречу», но не «отменить»

@@ -1,10 +1,13 @@
 from datetime import datetime
 
+from app.finance.models import EXPENSE, INCOME, Transaction
+from app.finance.service import CategoryBreakdown, FinanceSummary
 from app.goals.models import Goal
 from app.habits.models import Habit
 from app.tasks.models import Task
 from app.telegram.keyboards import (
     MENU_DIGEST,
+    MENU_FINANCE,
     MENU_GOALS,
     MENU_HABITS,
     MENU_HELP,
@@ -13,6 +16,8 @@ from app.telegram.keyboards import (
     MENU_SITE,
     MENU_TASKS,
     MENU_WATCHLIST,
+    build_finance_menu,
+    build_finance_message,
     build_goals_message,
     build_habits_message,
     build_main_menu,
@@ -52,6 +57,23 @@ def _item(id_, title="Дюна", media_type="movie") -> WatchlistItem:
 
 def _callback_data(markup) -> list[str]:
     return [b.callback_data for row in markup.inline_keyboard for b in row]
+
+
+def _transaction(id_, kind=EXPENSE, category="transport", amount=500) -> Transaction:
+    return Transaction(
+        id=id_,
+        telegram_user_id=1,
+        kind=kind,
+        category=category if kind == EXPENSE else None,
+        amount=amount,
+    )
+
+
+def _summary(**kwargs) -> FinanceSummary:
+    kwargs.setdefault("income_total", 0)
+    kwargs.setdefault("mandatory_total", 0)
+    kwargs.setdefault("free_money", 0)
+    return FinanceSummary(**kwargs)
 
 
 # --- Задачи ---------------------------------------------------------------
@@ -216,6 +238,74 @@ def test_goals_message_shows_average_progress():
     assert "50%" in text
 
 
+# --- Финансы ----------------------------------------------------------
+
+
+def test_finance_menu_has_two_add_buttons():
+    _, markup = build_finance_menu()
+
+    assert _callback_data(markup) == ["f|l", "f|n", "f|i"]
+
+
+def test_finance_message_empty_shows_hint():
+    text, markup = build_finance_message([], _summary())
+
+    assert "Записей пока нет" in text
+    assert _callback_data(markup) == ["f|n", "f|i", "f|m"]
+
+
+def test_finance_message_shows_summary_totals():
+    summary = _summary(income_total=80000, mandatory_total=45000, free_money=35000)
+
+    text, _ = build_finance_message([], summary)
+
+    assert "80 000" in text
+    assert "45 000" in text
+    assert "35 000" in text
+
+
+def test_finance_message_shows_category_breakdown():
+    summary = _summary(
+        categories=[
+            CategoryBreakdown(
+                category="groceries", label="🛒 Продукты", spent=2000, norm=3000
+            )
+        ]
+    )
+
+    text, _ = build_finance_message([], summary)
+
+    assert "🛒 Продукты: 2 000 / 3 000 ₽ нормы" in text
+    assert "⚠️" not in text
+
+
+def test_finance_message_flags_over_budget_category():
+    summary = _summary(
+        categories=[
+            CategoryBreakdown(
+                category="eating_out", label="🍔 Кафе", spent=9000, norm=1500
+            )
+        ]
+    )
+
+    text, _ = build_finance_message([], summary)
+
+    assert "⚠️ 🍔 Кафе" in text
+
+
+def test_finance_message_lists_expense_and_income_transactions():
+    transactions = [
+        _transaction(1, kind=EXPENSE, category="transport", amount=500),
+        _transaction(2, kind=INCOME, amount=80000),
+    ]
+
+    text, markup = build_finance_message(transactions, _summary())
+
+    assert "💸 500 ₽ — 🚕 Транспорт" in text
+    assert "💰 80 000 ₽ — доход" in text
+    assert _callback_data(markup) == ["f|x|1", "f|x|2", "f|n", "f|i", "f|m"]
+
+
 # --- Меню и watchlist -----------------------------------------------------
 
 
@@ -227,8 +317,9 @@ def test_main_menu_has_expected_buttons_in_rows():
         [MENU_TASKS],
         [MENU_HABITS, MENU_GOALS],
         [MENU_JOURNAL, MENU_WATCHLIST],
-        [MENU_DIGEST, MENU_INSIGHTS],
-        [MENU_SITE, MENU_HELP],
+        [MENU_DIGEST, MENU_FINANCE],
+        [MENU_INSIGHTS, MENU_SITE],
+        [MENU_HELP],
     ]
 
 

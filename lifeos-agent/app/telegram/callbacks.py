@@ -3,7 +3,7 @@
 """
 
 import logging
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from html import escape
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +14,11 @@ from telegram.ext import ContextTypes
 
 from app.ai.client import get_ai_client
 from app.core.config import get_settings
-from app.core.container import build_digest_service, build_rewards_service
+from app.core.container import (
+    build_digest_service,
+    build_finance_service,
+    build_rewards_service,
+)
 from app.db.session import AsyncSessionLocal
 from app.goals.repository import GoalRepository
 from app.goals.service import GoalService
@@ -32,6 +36,8 @@ from app.telegram.handlers import JOURNAL_PROMPT
 from app.telegram.keyboards import (
     build_digest_detail_message,
     build_digest_menu_message,
+    build_finance_menu,
+    build_finance_message,
     build_goals_menu,
     build_goals_message,
     build_habit_templates_message,
@@ -49,6 +55,8 @@ from app.telegram.keyboards import (
 from app.telegram.pending_input import (
     DIGEST_CHANNEL,
     DIGEST_NEW,
+    FINANCE_EXPENSE_ADD,
+    FINANCE_INCOME_ADD,
     GOAL_ADD,
     HABIT_ADD,
     JOURNAL_SEARCH,
@@ -64,15 +72,25 @@ from app.watchlist.service import WatchlistService
 # явного времени (не импортируем оттуда приватную константу).
 _DEFAULT_HOUR = 9
 
+
+def _current_month_start() -> datetime:
+    """Тот же расчёт периода, что и в app/scheduler/finance_report.py —
+    экран «Список» и еженедельный отчёт не должны расходиться в
+    определении «этого месяца»."""
+    now = datetime.now(timezone.utc)
+    return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
 # Кнопки без id: действуют на раздел целиком, а не на сущность (см.
 # app/telegram/keyboards.py, где перечислен весь формат callback_data).
-_SECTION_DOMAINS = ("t", "h", "g", "j", "w", "d")
+_SECTION_DOMAINS = ("t", "h", "g", "j", "w", "d", "f")
 _IDLESS_ACTIONS = {
     # Общие для всех разделов: экран раздела / список / добавить.
     *((domain, action) for domain in _SECTION_DOMAINS for action in ("m", "l", "n")),
     ("w", "r"),  # порекомендуй — действует на весь список
     ("j", "f"),  # поиск по теме
     ("h", "t"),  # каталог готовых привычек
+    ("f", "i"),  # финансы: добавить ДОХОД — второй "add" без своего id
 }
 
 # Действия, у которых третья часть callback_data — НЕ число. Пока такое
@@ -107,6 +125,11 @@ _ASK_DIGEST_CHANNEL = (
     "➕ <b>Какой канал добавить?</b>\n\n"
     "Имя публичного канала — «durov», «@durov» или ссылка t.me/durov."
 )
+_ASK_FINANCE_EXPENSE = (
+    "💸 <b>Сколько и на что?</b>\n\nНапишите сумму и, если хотите, категорию — "
+    "«500 такси» или просто «500»."
+)
+_ASK_FINANCE_INCOME = "💰 <b>Сколько получили?</b>\n\nПросто сумма — «80000»."
 
 logger = logging.getLogger(__name__)
 
@@ -208,6 +231,10 @@ async def handle_callback_query(
         elif domain == "d":
             text, markup = await _handle_digest_action(
                 session, action, item_id, telegram_user_id, context, query
+            )
+        elif domain == "f":
+            text, markup = await _handle_finance_action(
+                session, action, item_id, telegram_user_id, context
             )
         else:
             return
@@ -377,6 +404,38 @@ async def _handle_watchlist_action(
     items = await service.list_active_items(telegram_user_id)
     text, markup = build_watchlist_message(items)
     return text + reward, markup
+
+
+async def _handle_finance_action(
+    session: AsyncSession,
+    action: str,
+    item_id: str,
+    telegram_user_id: int,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> tuple[str, InlineKeyboardMarkup]:
+    """У финансов два "add" (см. keyboards.py::build_finance_menu) —
+    "n" (трата, как везде) и "i" (доход). "x" — удалить транзакцию, без
+    награды (удаление нигде в проекте не награждается, см.
+    specs/016-engagement-hooks.md). Любое другое действие ("l" и
+    default) — показать список за текущий месяц с итогами."""
+    service = build_finance_service(session)
+
+    if action == "m":
+        return build_finance_menu()
+    if action == "n":
+        set_pending(context.user_data, PendingInput(FINANCE_EXPENSE_ADD))
+        return _ASK_FINANCE_EXPENSE, InlineKeyboardMarkup([])
+    if action == "i":
+        set_pending(context.user_data, PendingInput(FINANCE_INCOME_ADD))
+        return _ASK_FINANCE_INCOME, InlineKeyboardMarkup([])
+    if action == "x":
+        await service.delete_transaction(telegram_user_id, int(item_id))
+
+    transactions = await service.list_recent_transactions(telegram_user_id)
+    summary = await service.build_period_summary(
+        telegram_user_id, _current_month_start()
+    )
+    return build_finance_message(transactions, summary)
 
 
 async def _handle_journal_action(

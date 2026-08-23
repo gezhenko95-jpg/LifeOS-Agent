@@ -34,6 +34,11 @@ WATCHLIST_ADD = "watchlist_add"
 JOURNAL_SEARCH = "journal_search"
 DIGEST_NEW = "digest_new"
 DIGEST_CHANNEL = "digest_channel"
+# У финансов два вида "добавить" (трата/доход), а не один — своя кнопка
+# на каждый, поэтому два разных pending, не один FINANCE_ADD с полем
+# kind (см. app/telegram/keyboards.py::build_finance_menu).
+FINANCE_EXPENSE_ADD = "finance_expense_add"
+FINANCE_INCOME_ADD = "finance_income_add"
 
 _KEY = "pending_input"
 

@@ -19,7 +19,12 @@ from telegram.ext import ContextTypes
 
 from app.ai.client import AIServiceError, get_ai_client
 from app.conversation.intent import Intent, ParsedIntent
-from app.conversation.parser import parse_add_task, parse_intent
+from app.conversation.parser import (
+    parse_add_task,
+    parse_finance_expense,
+    parse_finance_income,
+    parse_intent,
+)
 from app.core.config import get_settings
 from app.core.container import build_digest_service, build_engine
 from app.db.session import AsyncSessionLocal
@@ -39,6 +44,7 @@ from app.tasks.repository import TaskRepository
 from app.tasks.service import TaskService
 from app.telegram.keyboards import (
     MENU_DIGEST,
+    MENU_FINANCE,
     MENU_GOALS,
     MENU_HABITS,
     MENU_HELP,
@@ -49,6 +55,7 @@ from app.telegram.keyboards import (
     MENU_WATCHLIST,
     build_digest_detail_message,
     build_digest_menu_message,
+    build_finance_menu,
     build_goals_menu,
     build_goals_message,
     build_habits_menu,
@@ -67,6 +74,8 @@ from app.telegram.keyboards import (
 from app.telegram.pending_input import (
     DIGEST_CHANNEL,
     DIGEST_NEW,
+    FINANCE_EXPENSE_ADD,
+    FINANCE_INCOME_ADD,
     GOAL_ADD,
     HABIT_ADD,
     JOURNAL_SEARCH,
@@ -109,6 +118,7 @@ _MENU_SECTIONS = {
     MENU_GOALS: build_goals_menu,
     MENU_JOURNAL: build_journal_menu,
     MENU_WATCHLIST: build_watchlist_menu,
+    MENU_FINANCE: build_finance_menu,
 }
 
 # Кнопки-утилиты: своего домена и списка у них нет, экран из одного
@@ -360,6 +370,16 @@ async def _consume_pending_input(
     if pending.kind == DIGEST_CHANNEL and pending.digest_id is not None:
         await _add_digest_channel_from_text(
             update, context, telegram_user_id, pending.digest_id, text
+        )
+        return True
+    if pending.kind == FINANCE_EXPENSE_ADD:
+        await _reply_via_engine(
+            update, context, text, parsed=parse_finance_expense(text)
+        )
+        return True
+    if pending.kind == FINANCE_INCOME_ADD:
+        await _reply_via_engine(
+            update, context, text, parsed=parse_finance_income(text)
         )
         return True
     return False

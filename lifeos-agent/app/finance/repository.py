@@ -10,7 +10,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import desc, select
 
 from app.core.repository import BaseRepository
 from app.finance.models import Transaction
@@ -33,6 +33,21 @@ class FinanceRepository(BaseRepository[Transaction]):
                 Transaction.occurred_at >= since,
             )
             .order_by(Transaction.occurred_at)
+        )
+        result = await self._session.execute(query)
+        return list(result.scalars().all())
+
+    async def list_recent(
+        self, telegram_user_id: int, limit: int = 10
+    ) -> list[Transaction]:
+        """Последние `limit` транзакций пользователя, новые сверху — для
+        экрана «Список» в боте и карточки на /ui (не привязано к периоду,
+        в отличие от list_since)."""
+        query = (
+            select(Transaction)
+            .where(Transaction.telegram_user_id == telegram_user_id)
+            .order_by(desc(Transaction.occurred_at))
+            .limit(limit)
         )
         result = await self._session.execute(query)
         return list(result.scalars().all())

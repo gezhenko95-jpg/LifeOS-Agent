@@ -148,3 +148,44 @@ async def test_build_period_summary_empty_period(repository):
     assert summary.mandatory_total == 0
     assert summary.free_money == 0
     assert summary.categories == []
+
+
+async def test_delete_transaction_owned(repository):
+    transaction = _transaction(id=5)
+    repository.get_by_id.return_value = transaction
+    service = FinanceService(repository)
+
+    result = await service.delete_transaction(1, 5)
+
+    assert result is transaction
+    repository.delete.assert_awaited_once_with(transaction)
+
+
+async def test_delete_transaction_wrong_owner_returns_none(repository):
+    transaction = _transaction(id=5, telegram_user_id=2)
+    repository.get_by_id.return_value = transaction
+    service = FinanceService(repository)
+
+    result = await service.delete_transaction(1, 5)
+
+    assert result is None
+    repository.delete.assert_not_awaited()
+
+
+async def test_delete_transaction_missing_returns_none(repository):
+    repository.get_by_id.return_value = None
+    service = FinanceService(repository)
+
+    result = await service.delete_transaction(1, 999)
+
+    assert result is None
+
+
+async def test_list_recent_transactions_delegates_to_repository(repository):
+    repository.list_recent.return_value = [_transaction()]
+    service = FinanceService(repository)
+
+    result = await service.list_recent_transactions(1, limit=5)
+
+    assert len(result) == 1
+    repository.list_recent.assert_awaited_once_with(1, 5)
