@@ -226,6 +226,14 @@ def test_habits_message_without_streak_invites_to_start():
     assert "начать" in text
 
 
+def test_habits_message_caps_at_max_items_but_says_so():
+    habits = [_habit(i) for i in range(1, 15)]
+    text, markup = build_habits_message(habits, {})
+
+    assert len(_callback_data(markup)) == 21  # 10 × 2 действия + «Назад»
+    assert "ещё 4" in text
+
+
 # --- Цели -----------------------------------------------------------------
 
 
@@ -255,6 +263,13 @@ def test_goals_message_shows_average_progress():
     text, _ = build_goals_message([_goal(1, progress=40), _goal(2, progress=60)])
 
     assert "50%" in text
+
+
+def test_goals_message_caps_at_max_items_but_says_so():
+    goals = [_goal(i) for i in range(1, 15)]
+    text, _ = build_goals_message(goals)
+
+    assert "ещё 4" in text
 
 
 # --- Финансы ----------------------------------------------------------
@@ -325,6 +340,16 @@ def test_finance_message_lists_expense_and_income_transactions():
     assert _callback_data(markup) == ["f|x|1", "f|x|2", "f|n", "f|i", "f|m"]
 
 
+def test_finance_message_caps_at_max_items_but_says_so():
+    """Раньше здесь вообще не было общего числа транзакций в сводке —
+    расхождение между «Последние» (10) и реальным количеством было не
+    видно совсем, не только необъяснённым."""
+    transactions = [_transaction(i) for i in range(1, 15)]
+    text, _ = build_finance_message(transactions, _summary())
+
+    assert "ещё 4" in text
+
+
 # --- Люди / личный CRM ------------------------------------------------
 
 
@@ -373,6 +398,13 @@ def test_contacts_message_hides_birthday_when_not_set():
     assert "🎂" not in text
 
 
+def test_contacts_message_caps_at_max_items_but_says_so():
+    contacts = [_contact(i, f"Контакт{i}") for i in range(1, 15)]
+    text, _ = build_contacts_message(contacts)
+
+    assert "ещё 4" in text
+
+
 # --- Настроение -------------------------------------------------------
 
 
@@ -416,6 +448,13 @@ def test_mood_message_shows_score_and_emoji():
 
     assert "🙂" in text
     assert "4/5" in text
+
+
+def test_mood_message_caps_at_max_items_but_says_so():
+    entries = [_mood_entry(i) for i in range(1, 15)]
+    text, _ = build_mood_message(entries)
+
+    assert "ещё 4" in text
 
 
 # --- Меню и watchlist -----------------------------------------------------
@@ -462,11 +501,12 @@ def test_watchlist_message_shows_media_emoji():
     assert "🎬" in text and "📖" in text
 
 
-def test_watchlist_message_caps_at_max_items():
-    _, markup = build_watchlist_message([_item(i, f"Ф{i}") for i in range(1, 15)])
+def test_watchlist_message_caps_at_max_items_but_says_so():
+    text, markup = build_watchlist_message([_item(i, f"Ф{i}") for i in range(1, 15)])
 
     # 10 записей × 2 действия + «Порекомендуй», «Добавить» и «Назад»
     assert len(_callback_data(markup)) == 23
+    assert "ещё 4" in text
 
 
 def test_open_site_keyboard_has_url_button():

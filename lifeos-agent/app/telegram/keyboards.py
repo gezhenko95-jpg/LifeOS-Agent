@@ -247,11 +247,11 @@ def _build_tasks_summary(tasks: list[Task], shown_count: int) -> str:
             f"⚠️ {overdue} "
             f"{_plural(overdue, 'просрочена', 'просрочены', 'просрочено')}"
         )
-    hidden = len(tasks) - shown_count
-    if hidden:
+    note = _hidden_note(len(tasks), shown_count)
+    if note:
         # Раньше «лишние» задачи просто не показывались, и пользователь
         # считал, что их нет.
-        parts.append(f"ещё {hidden} не поместилось")
+        parts.append(note)
     return " · ".join(parts)
 
 
@@ -261,6 +261,20 @@ def _plural(count: int, one: str, few: str, many: str) -> str:
     if 2 <= count % 10 <= 4 and not 12 <= count % 100 <= 14:
         return few
     return many
+
+
+def _hidden_note(total: int, shown_count: int) -> str:
+    """«ещё N не поместилось», если список обрезан до _MAX_ITEMS, иначе
+    пустая строка. БЕЗ разделителя — вызывающий код сам решает, как
+    приклеить (обычно « · »). Раньше этим было отмечено только у задач
+    (см. использование ниже) — привычки/полка/цели/люди/настроение молча
+    показывали ИСТИННОЕ общее число в сводке, но выводили только первые
+    _MAX_ITEMS с кнопками, без объяснения расхождения: пользователь видел
+    «12 привычек», считал 10 строк выше и не понимал, куда делись
+    остальные две. У финансов расхождения не было видно вообще — там
+    итоговая сводка не показывала общее число транзакций."""
+    hidden = total - shown_count
+    return f"ещё {hidden} не поместилось" if hidden > 0 else ""
 
 
 def build_task_quick_actions_keyboard(task: Task) -> InlineKeyboardMarkup | None:
@@ -313,9 +327,11 @@ def build_habits_message(
 
     lines.append(_DIVIDER)
     best = max(streaks.values(), default=0)
+    hidden_note = _hidden_note(len(habits), len(shown))
     lines.append(
         f"{len(habits)} {_plural(len(habits), 'привычка', 'привычки', 'привычек')}"
         + (f" · рекорд серии 🔥 {best}" if best else "")
+        + (f" · {hidden_note}" if hidden_note else "")
     )
 
     rows = _numbered_action_rows(shown, "h|d", "✅")
@@ -352,7 +368,10 @@ def build_watchlist_message(
         lines.append(f"<b>{index}</b>  {emoji} {_esc(item.title)}")
     lines.append("")
     lines.append(_DIVIDER)
-    lines.append(f"{len(items)} в списке")
+    hidden_note = _hidden_note(len(items), len(shown))
+    lines.append(
+        f"{len(items)} в списке" + (f" · {hidden_note}" if hidden_note else "")
+    )
 
     rows = _numbered_action_rows(shown, "w|d", "✅")
     rows += _numbered_action_rows(shown, "w|x", "🗑")
@@ -399,9 +418,10 @@ def build_goals_message(goals: list[Goal]) -> tuple[str, InlineKeyboardMarkup]:
 
     lines.append(_DIVIDER)
     average = round(sum(g.progress for g in goals) / len(goals))
+    hidden_note = _hidden_note(len(goals), len(shown))
     lines.append(
         f"{len(goals)} {_plural(len(goals), 'цель', 'цели', 'целей')} "
-        f"· средний прогресс {average}%"
+        f"· средний прогресс {average}%" + (f" · {hidden_note}" if hidden_note else "")
     )
     rows.append(_back_to_section("g"))
     return "\n".join(lines), InlineKeyboardMarkup(rows)
@@ -447,7 +467,8 @@ def build_finance_message(
     shown = transactions[:_MAX_ITEMS]
     lines.append("")
     lines.append(_DIVIDER)
-    lines.append("Последние:")
+    hidden_note = _hidden_note(len(transactions), len(shown))
+    lines.append(f"Последние{f' ({hidden_note})' if hidden_note else ''}:")
     for index, transaction in enumerate(shown, start=1):
         if transaction.kind == EXPENSE:
             label = CATEGORIES.get(
@@ -509,8 +530,10 @@ def build_contacts_message(
         lines.append("")
 
     lines.append(_DIVIDER)
+    hidden_note = _hidden_note(len(contacts), len(shown))
     lines.append(
         f"{len(contacts)} {_plural(len(contacts), 'контакт', 'контакта', 'контактов')}"
+        + (f" · {hidden_note}" if hidden_note else "")
     )
 
     rows = _numbered_action_rows(shown, "c|d", "👋")
@@ -560,8 +583,10 @@ def build_mood_message(entries: list[MoodEntry]) -> tuple[str, InlineKeyboardMar
         )
 
     lines.append(_DIVIDER)
+    hidden_note = _hidden_note(len(entries), len(shown))
     lines.append(
         f"{len(entries)} {_plural(len(entries), 'запись', 'записи', 'записей')}"
+        + (f" · {hidden_note}" if hidden_note else "")
     )
 
     rows = _numbered_action_rows(shown, "m|x", "🗑")
