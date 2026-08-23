@@ -39,6 +39,7 @@ DIGEST_CHANNEL = "digest_channel"
 # kind (см. app/telegram/keyboards.py::build_finance_menu).
 FINANCE_EXPENSE_ADD = "finance_expense_add"
 FINANCE_INCOME_ADD = "finance_income_add"
+CONTACT_ADD = "contact_add"
 
 _KEY = "pending_input"
 

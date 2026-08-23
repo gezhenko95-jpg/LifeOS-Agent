@@ -37,7 +37,8 @@ _section_screen): заголовок, строка-подсказка, ряд д
 callback_data — компактный формат "{домен}|{действие}|{id}".
 
 Домены: t — задачи, h — привычки, g — цели, j — дневник, w — полка,
-d — дайджесты, f — финансы. Действия одинаковы во всех доменах:
+d — дайджесты, f — финансы, c — контакты (личный CRM), m — настроение.
+Действия одинаковы во всех доменах:
   {домен}|m — экран раздела
   {домен}|l — открыть список
   {домен}|n — добавить (бот ждёт следующее сообщение, см. pending_input.py)
@@ -58,6 +59,10 @@ d — дайджесты, f — финансы. Действия одинако�
   d|x|{channel_id} — убрать канал (id КАНАЛА, не дайджеста)
   f|i — финансы: добавить ДОХОД (два вида "добавить" — f|n, как везде,
     для траты, и f|i для дохода); f|x|{id} — удалить транзакцию
+  c|d|{id} / c|x|{id} — контакт: отметить «написал(а)» / удалить
+  m|s|{score} — настроение: записать оценку 1-5 (используется и под
+    вечерним дневниковым вопросом, и в разделе «Настроение»); m|x|{id} —
+    удалить запись
 
 Действия без id ("w|m", "j|l", …) — намеренно двухчастные: в
 callback_data Telegram даёт 64 БАЙТА, и имя дайджеста туда класть нельзя
@@ -65,6 +70,7 @@ callback_data Telegram даёт 64 БАЙТА, и имя дайджеста ту
 её числовой id (см. app/telegram/callbacks.py::parse_callback).
 """
 
+from datetime import datetime, timezone
 from html import escape
 
 from telegram import (
@@ -74,6 +80,7 @@ from telegram import (
     ReplyKeyboardMarkup,
 )
 
+from app.crm.models import Contact
 from app.digest.models import Digest, DigestChannel
 from app.finance.models import CATEGORIES, EXPENSE, Transaction
 from app.finance.service import FinanceSummary
@@ -81,6 +88,7 @@ from app.goals.models import Goal
 from app.habits.models import Habit
 from app.habits.templates import HABIT_TEMPLATES
 from app.memory.models import MemoryEntry
+from app.mood.models import MAX_SCORE, MIN_SCORE, SCORE_EMOJI, MoodEntry
 from app.tasks.formatting import (
     count_overdue,
     format_due_human,
@@ -105,6 +113,8 @@ MENU_INSIGHTS = "📊 Инсайты"
 MENU_WATCHLIST = "🎬 Посмотреть"
 MENU_DIGEST = "📰 Дайджест"
 MENU_FINANCE = "💰 Финансы"
+MENU_CONTACTS = "📇 Люди"
+MENU_MOOD = "😊 Настроение"
 MENU_SITE = "🌐 Сайт"
 MENU_HELP = "❓ Помощь"
 
@@ -192,6 +202,7 @@ def build_main_menu() -> ReplyKeyboardMarkup:
         [KeyboardButton(MENU_HABITS), KeyboardButton(MENU_GOALS)],
         [KeyboardButton(MENU_JOURNAL), KeyboardButton(MENU_WATCHLIST)],
         [KeyboardButton(MENU_DIGEST), KeyboardButton(MENU_FINANCE)],
+        [KeyboardButton(MENU_CONTACTS), KeyboardButton(MENU_MOOD)],
         [KeyboardButton(MENU_INSIGHTS), KeyboardButton(MENU_SITE)],
         [KeyboardButton(MENU_HELP)],
     ]
@@ -454,6 +465,110 @@ def build_finance_message(
     return "\n".join(lines), InlineKeyboardMarkup(rows)
 
 
+_MONTHS_GENITIVE = (
+    "января", "февраля", "марта", "апреля", "мая", "июня",
+    "июля", "августа", "сентября", "октября", "ноября", "декабря",
+)  # fmt: skip
+
+
+def build_contacts_message(
+    contacts: list[Contact],
+) -> tuple[str, InlineKeyboardMarkup]:
+    """Давние контакты сверху (порядок уже задан репозиторием, см.
+    ContactRepository.list_by_user) — список читается как "с кем
+    написать в первую очередь"."""
+    if not contacts:
+        return (
+            "📇 <b>Люди</b>\n\nПока никого. Добавьте того, кому иногда "
+            "стоит написать первым.",
+            InlineKeyboardMarkup([]),
+        )
+
+    now = datetime.now(timezone.utc)
+    shown = contacts[:_MAX_ITEMS]
+    lines = ["📇 <b>Люди</b>", ""]
+    for index, contact in enumerate(shown, start=1):
+        last_contact_at = contact.last_contact_at
+        if last_contact_at.tzinfo is None:
+            last_contact_at = last_contact_at.replace(tzinfo=timezone.utc)
+        days_since = (now - last_contact_at).days
+        overdue = "⚠️ " if days_since >= 30 else ""
+        since_line = (
+            "сегодня"
+            if days_since <= 0
+            else (f"{days_since} {_plural(days_since, 'день', 'дня', 'дней')} назад")
+        )
+        lines.append(f"<b>{index}</b>  {overdue}{_esc(contact.name)}")
+        detail = f"      Писал(а): {since_line}"
+        if contact.birthday_month and contact.birthday_day:
+            detail += (
+                f" · 🎂 {contact.birthday_day} "
+                f"{_MONTHS_GENITIVE[contact.birthday_month - 1]}"
+            )
+        lines.append(detail)
+        lines.append("")
+
+    lines.append(_DIVIDER)
+    lines.append(
+        f"{len(contacts)} {_plural(len(contacts), 'контакт', 'контакта', 'контактов')}"
+    )
+
+    rows = _numbered_action_rows(shown, "c|d", "👋")
+    rows += _numbered_action_rows(shown, "c|x", "🗑")
+    rows.append(_back_to_section("c"))
+    return "\n".join(lines), InlineKeyboardMarkup(rows)
+
+
+def build_mood_prompt_keyboard() -> InlineKeyboardMarkup:
+    """5 кнопок-эмодзи под вечерним дневниковым вопросом
+    (specs/019-mood-tracker.md) — та же клавиатура переиспользуется в
+    build_mood_menu ниже."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(SCORE_EMOJI[score], callback_data=f"m|s|{score}")
+                for score in range(MIN_SCORE, MAX_SCORE + 1)
+            ]
+        ]
+    )
+
+
+def build_mood_menu() -> tuple[str, InlineKeyboardMarkup]:
+    """В отличие от остальных разделов — без «➕ Добавить»: сама оценка
+    настроения и есть единственное действие, отдельная кнопка-приглашение
+    была бы лишним щелчком (тот же довод, что у кнопок-утилит без
+    домена)."""
+    rows = list(build_mood_prompt_keyboard().inline_keyboard)
+    rows.append([InlineKeyboardButton("📋 История", callback_data="m|l")])
+    return _section_screen("😊 <b>Настроение</b>", "Как сейчас?", rows)
+
+
+def build_mood_message(entries: list[MoodEntry]) -> tuple[str, InlineKeyboardMarkup]:
+    if not entries:
+        return (
+            "😊 <b>Настроение</b>\n\nЗаписей пока нет.",
+            InlineKeyboardMarkup([_back_to_section("m")]),
+        )
+
+    shown = entries[:_MAX_ITEMS]
+    lines = ["😊 <b>Настроение</b>", ""]
+    for index, entry in enumerate(shown, start=1):
+        when = entry.logged_at.strftime("%d.%m %H:%M")
+        lines.append(
+            f"<b>{index}</b>  {SCORE_EMOJI.get(entry.score, '')} "
+            f"{entry.score}/5 — {when}"
+        )
+
+    lines.append(_DIVIDER)
+    lines.append(
+        f"{len(entries)} {_plural(len(entries), 'запись', 'записи', 'записей')}"
+    )
+
+    rows = _numbered_action_rows(shown, "m|x", "🗑")
+    rows.append(_back_to_section("m"))
+    return "\n".join(lines), InlineKeyboardMarkup(rows)
+
+
 # --- Экраны разделов (второй уровень меню) --------------------------------
 
 
@@ -525,6 +640,14 @@ def build_finance_menu() -> tuple[str, InlineKeyboardMarkup]:
                 InlineKeyboardButton("➕ Доход", callback_data="f|i"),
             ]
         ],
+    )
+
+
+def build_contacts_menu() -> tuple[str, InlineKeyboardMarkup]:
+    return _section_screen(
+        "📇 <b>Люди</b>",
+        "Кому давно не писал(а), или новый человек?",
+        [_open_and_add("c", "📋 Список")],
     )
 
 

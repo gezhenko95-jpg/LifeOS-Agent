@@ -1,11 +1,14 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
+from app.crm.models import Contact
 from app.finance.models import EXPENSE, INCOME, Transaction
 from app.finance.service import CategoryBreakdown, FinanceSummary
 from app.goals.models import Goal
 from app.habits.models import Habit
+from app.mood.models import MoodEntry
 from app.tasks.models import Task
 from app.telegram.keyboards import (
+    MENU_CONTACTS,
     MENU_DIGEST,
     MENU_FINANCE,
     MENU_GOALS,
@@ -13,14 +16,20 @@ from app.telegram.keyboards import (
     MENU_HELP,
     MENU_INSIGHTS,
     MENU_JOURNAL,
+    MENU_MOOD,
     MENU_SITE,
     MENU_TASKS,
     MENU_WATCHLIST,
+    build_contacts_menu,
+    build_contacts_message,
     build_finance_menu,
     build_finance_message,
     build_goals_message,
     build_habits_message,
     build_main_menu,
+    build_mood_menu,
+    build_mood_message,
+    build_mood_prompt_keyboard,
     build_open_site_keyboard,
     build_task_confirmation_message,
     build_task_quick_actions_keyboard,
@@ -74,6 +83,16 @@ def _summary(**kwargs) -> FinanceSummary:
     kwargs.setdefault("mandatory_total", 0)
     kwargs.setdefault("free_money", 0)
     return FinanceSummary(**kwargs)
+
+
+def _contact(id_, name="Аня", last_contact_at=None, **kwargs) -> Contact:
+    return Contact(
+        id=id_,
+        telegram_user_id=1,
+        name=name,
+        last_contact_at=last_contact_at or datetime.now(timezone.utc),
+        **kwargs,
+    )
 
 
 # --- Задачи ---------------------------------------------------------------
@@ -306,6 +325,99 @@ def test_finance_message_lists_expense_and_income_transactions():
     assert _callback_data(markup) == ["f|x|1", "f|x|2", "f|n", "f|i", "f|m"]
 
 
+# --- Люди / личный CRM ------------------------------------------------
+
+
+def test_contacts_menu_has_open_and_add_buttons():
+    _, markup = build_contacts_menu()
+
+    assert _callback_data(markup) == ["c|l", "c|n"]
+
+
+def test_contacts_message_empty_shows_hint():
+    text, markup = build_contacts_message([])
+
+    assert "Пока никого" in text
+    assert _callback_data(markup) == []
+
+
+def test_contacts_message_orders_stale_first_and_flags_overdue():
+    stale = _contact(
+        1, "Стас", last_contact_at=datetime.now(timezone.utc) - timedelta(days=31)
+    )
+    recent = _contact(
+        2, "Рита", last_contact_at=datetime.now(timezone.utc) - timedelta(days=1)
+    )
+
+    text, markup = build_contacts_message([stale, recent])
+
+    assert text.index("Стас") < text.index("Рита")
+    assert "⚠️ Стас" in text
+    assert "⚠️ Рита" not in text
+    assert _callback_data(markup) == ["c|d|1", "c|d|2", "c|x|1", "c|x|2", "c|m"]
+
+
+def test_contacts_message_shows_birthday_when_set():
+    contact = _contact(1, "Петя", birthday_month=9, birthday_day=14)
+
+    text, _ = build_contacts_message([contact])
+
+    assert "🎂 14 сентября" in text
+
+
+def test_contacts_message_hides_birthday_when_not_set():
+    contact = _contact(1, "Аня")
+
+    text, _ = build_contacts_message([contact])
+
+    assert "🎂" not in text
+
+
+# --- Настроение -------------------------------------------------------
+
+
+def _mood_entry(id_, score=3, logged_at=None) -> MoodEntry:
+    return MoodEntry(
+        id=id_,
+        telegram_user_id=1,
+        score=score,
+        logged_at=logged_at or datetime.now(timezone.utc),
+    )
+
+
+def test_mood_prompt_keyboard_has_five_scores():
+    markup = build_mood_prompt_keyboard()
+
+    assert _callback_data(markup) == ["m|s|1", "m|s|2", "m|s|3", "m|s|4", "m|s|5"]
+
+
+def test_mood_menu_has_scores_and_history_button():
+    _, markup = build_mood_menu()
+
+    assert _callback_data(markup) == [
+        "m|s|1",
+        "m|s|2",
+        "m|s|3",
+        "m|s|4",
+        "m|s|5",
+        "m|l",
+    ]
+
+
+def test_mood_message_empty_shows_hint():
+    text, markup = build_mood_message([])
+
+    assert "Записей пока нет" in text
+    assert _callback_data(markup) == ["m|m"]
+
+
+def test_mood_message_shows_score_and_emoji():
+    text, _ = build_mood_message([_mood_entry(1, score=4)])
+
+    assert "🙂" in text
+    assert "4/5" in text
+
+
 # --- Меню и watchlist -----------------------------------------------------
 
 
@@ -318,6 +430,7 @@ def test_main_menu_has_expected_buttons_in_rows():
         [MENU_HABITS, MENU_GOALS],
         [MENU_JOURNAL, MENU_WATCHLIST],
         [MENU_DIGEST, MENU_FINANCE],
+        [MENU_CONTACTS, MENU_MOOD],
         [MENU_INSIGHTS, MENU_SITE],
         [MENU_HELP],
     ]

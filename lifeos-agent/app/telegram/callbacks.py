@@ -15,8 +15,10 @@ from telegram.ext import ContextTypes
 from app.ai.client import get_ai_client
 from app.core.config import get_settings
 from app.core.container import (
+    build_contact_service,
     build_digest_service,
     build_finance_service,
+    build_mood_service,
     build_rewards_service,
 )
 from app.db.session import AsyncSessionLocal
@@ -28,12 +30,15 @@ from app.habits.templates import get_template
 from app.memory.models import MemoryType
 from app.memory.repository import MemoryRepository
 from app.memory.service import MemoryService
+from app.mood.models import SCORE_EMOJI
 from app.proactive.repository import PendingPromptRepository
 from app.tasks.models import Task
 from app.tasks.repository import TaskRepository
 from app.tasks.service import TaskService
 from app.telegram.handlers import JOURNAL_PROMPT
 from app.telegram.keyboards import (
+    build_contacts_menu,
+    build_contacts_message,
     build_digest_detail_message,
     build_digest_menu_message,
     build_finance_menu,
@@ -46,6 +51,8 @@ from app.telegram.keyboards import (
     build_journal_entries_message,
     build_journal_entry_message,
     build_journal_menu,
+    build_mood_menu,
+    build_mood_message,
     build_task_confirmation_message,
     build_tasks_menu,
     build_tasks_message,
@@ -53,6 +60,7 @@ from app.telegram.keyboards import (
     build_watchlist_message,
 )
 from app.telegram.pending_input import (
+    CONTACT_ADD,
     DIGEST_CHANNEL,
     DIGEST_NEW,
     FINANCE_EXPENSE_ADD,
@@ -83,7 +91,7 @@ def _current_month_start() -> datetime:
 
 # Кнопки без id: действуют на раздел целиком, а не на сущность (см.
 # app/telegram/keyboards.py, где перечислен весь формат callback_data).
-_SECTION_DOMAINS = ("t", "h", "g", "j", "w", "d", "f")
+_SECTION_DOMAINS = ("t", "h", "g", "j", "w", "d", "f", "c", "m")
 _IDLESS_ACTIONS = {
     # Общие для всех разделов: экран раздела / список / добавить.
     *((domain, action) for domain in _SECTION_DOMAINS for action in ("m", "l", "n")),
@@ -130,6 +138,9 @@ _ASK_FINANCE_EXPENSE = (
     "«500 такси» или просто «500»."
 )
 _ASK_FINANCE_INCOME = "💰 <b>Сколько получили?</b>\n\nПросто сумма — «80000»."
+_ASK_CONTACT = (
+    "📇 <b>Кого добавляем?</b>\n\nИмя, и если хотите — день рождения: " "«Аня 14.09»."
+)
 
 logger = logging.getLogger(__name__)
 
@@ -235,6 +246,14 @@ async def handle_callback_query(
         elif domain == "f":
             text, markup = await _handle_finance_action(
                 session, action, item_id, telegram_user_id, context
+            )
+        elif domain == "c":
+            text, markup = await _handle_contact_action(
+                session, action, item_id, telegram_user_id, context
+            )
+        elif domain == "m":
+            text, markup = await _handle_mood_action(
+                session, action, item_id, telegram_user_id, query
             )
         else:
             return
@@ -436,6 +455,78 @@ async def _handle_finance_action(
         telegram_user_id, _current_month_start()
     )
     return build_finance_message(transactions, summary)
+
+
+async def _handle_contact_action(
+    session: AsyncSession,
+    action: str,
+    item_id: str,
+    telegram_user_id: int,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> tuple[str, InlineKeyboardMarkup]:
+    """ "d" — отметить «написал(а)» (награда, как отметка привычки —
+    "сделал"-действие, см. specs/016-engagement-hooks.md), "x" — удалить
+    (без награды, тот же принцип, что у f|x). Любое другое действие
+    ("l" и default) — список."""
+    service = build_contact_service(session)
+
+    if action == "m":
+        return build_contacts_menu()
+    if action == "n":
+        set_pending(context.user_data, PendingInput(CONTACT_ADD))
+        return _ASK_CONTACT, InlineKeyboardMarkup([])
+
+    reward = ""
+    if action == "d":
+        contact = await service.mark_contacted(telegram_user_id, int(item_id))
+        if contact is not None:
+            reward = await _reward_line(session, telegram_user_id)
+    elif action == "x":
+        await service.delete_contact(telegram_user_id, int(item_id))
+
+    contacts = await service.list_contacts(telegram_user_id)
+    text, markup = build_contacts_message(contacts)
+    return text + reward, markup
+
+
+async def _handle_mood_action(
+    session: AsyncSession,
+    action: str,
+    item_id: str,
+    telegram_user_id: int,
+    query: CallbackQuery,
+) -> tuple[str, InlineKeyboardMarkup]:
+    """ "s" — записать оценку 1-5 (item_id — сама оценка, не id сущности,
+    см. app/telegram/keyboards.py::build_mood_prompt_keyboard). Кнопки
+    этого действия висят под ДВУМЯ разными сообщениями (вечерний
+    дневниковый вопрос и экран «Настроение»): дописываем подтверждение к
+    тому сообщению, на котором сейчас висит кнопка (query.message.text),
+    тот же приём, что у d|f (сохранить дайджест), а не строим общий
+    build_mood_menu заново — так дневниковый вопрос выше остаётся на
+    месте. "x" — удалить запись (без награды, тот же принцип, что у
+    остальных удалений)."""
+    service = build_mood_service(session)
+
+    if action == "m":
+        return build_mood_menu()
+    if action == "s":
+        score = int(item_id)
+        try:
+            await service.log_mood(telegram_user_id, score)
+        except ValueError:
+            return "Не понял оценку.", InlineKeyboardMarkup([])
+        reward = await _reward_line(session, telegram_user_id)
+        base_text = query.message.text if query.message is not None else ""
+        emoji = SCORE_EMOJI.get(score, "")
+        return (
+            f"{base_text}\n\n✅ Настроение: {emoji} ({score}/5).{reward}",
+            InlineKeyboardMarkup([]),
+        )
+    if action == "x":
+        await service.delete_entry(telegram_user_id, int(item_id))
+
+    entries = await service.list_recent(telegram_user_id)
+    return build_mood_message(entries)
 
 
 async def _handle_journal_action(

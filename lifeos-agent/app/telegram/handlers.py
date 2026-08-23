@@ -18,6 +18,7 @@ from telegram.error import TelegramError
 from telegram.ext import ContextTypes
 
 from app.ai.client import AIServiceError, get_ai_client
+from app.conversation.birthday_parser import extract_birthday
 from app.conversation.intent import Intent, ParsedIntent
 from app.conversation.parser import (
     parse_add_task,
@@ -26,7 +27,7 @@ from app.conversation.parser import (
     parse_intent,
 )
 from app.core.config import get_settings
-from app.core.container import build_digest_service, build_engine
+from app.core.container import build_contact_service, build_digest_service, build_engine
 from app.db.session import AsyncSessionLocal
 from app.digest.scraper import ChannelScrapeError
 from app.drive.client import get_drive_client
@@ -43,6 +44,7 @@ from app.memory.service import MemoryService
 from app.tasks.repository import TaskRepository
 from app.tasks.service import TaskService
 from app.telegram.keyboards import (
+    MENU_CONTACTS,
     MENU_DIGEST,
     MENU_FINANCE,
     MENU_GOALS,
@@ -50,9 +52,11 @@ from app.telegram.keyboards import (
     MENU_HELP,
     MENU_INSIGHTS,
     MENU_JOURNAL,
+    MENU_MOOD,
     MENU_SITE,
     MENU_TASKS,
     MENU_WATCHLIST,
+    build_contacts_menu,
     build_digest_detail_message,
     build_digest_menu_message,
     build_finance_menu,
@@ -63,6 +67,7 @@ from app.telegram.keyboards import (
     build_journal_entries_message,
     build_journal_menu,
     build_main_menu,
+    build_mood_menu,
     build_open_site_keyboard,
     build_task_quick_actions_keyboard,
     build_tasks_menu,
@@ -72,6 +77,7 @@ from app.telegram.keyboards import (
     schedule_label,
 )
 from app.telegram.pending_input import (
+    CONTACT_ADD,
     DIGEST_CHANNEL,
     DIGEST_NEW,
     FINANCE_EXPENSE_ADD,
@@ -119,6 +125,8 @@ _MENU_SECTIONS = {
     MENU_JOURNAL: build_journal_menu,
     MENU_WATCHLIST: build_watchlist_menu,
     MENU_FINANCE: build_finance_menu,
+    MENU_CONTACTS: build_contacts_menu,
+    MENU_MOOD: build_mood_menu,
 }
 
 # Кнопки-утилиты: своего домена и списка у них нет, экран из одного
@@ -382,6 +390,9 @@ async def _consume_pending_input(
             update, context, text, parsed=parse_finance_income(text)
         )
         return True
+    if pending.kind == CONTACT_ADD:
+        await _create_contact_from_text(update, telegram_user_id, text)
+        return True
     return False
 
 
@@ -423,6 +434,40 @@ async def _create_goal_from_text(
             return
 
     await update.message.reply_text(f"🎯 Новая цель: «{goal.title}»")
+
+
+async def _create_contact_from_text(
+    update: Update, telegram_user_id: int, text: str
+) -> None:
+    """«➕ Добавить» в «📇 Люди» — имя обязательно, дата рождения
+    («дд.мм», без года, см. birthday_parser.py) — необязательный кусок
+    того же сообщения в любом месте текста. Остаток после вырезанной
+    даты становится именем целиком, без разбора триггерных слов (кнопка
+    уже сказала, что это контакт, см. _create_habit_from_text — тот же
+    приём)."""
+    if update.message is None:
+        return
+
+    month, day, name = extract_birthday(text.strip())
+
+    async with AsyncSessionLocal() as session:
+        service = build_contact_service(session)
+        try:
+            contact = await service.add_contact(
+                telegram_user_id, name, birthday_month=month, birthday_day=day
+            )
+        except ValueError as exc:
+            await update.message.reply_text(str(exc))
+            return
+
+    birthday_note = (
+        f" · 🎂 {contact.birthday_day:02d}.{contact.birthday_month:02d}"
+        if contact.birthday_month and contact.birthday_day
+        else ""
+    )
+    await update.message.reply_text(
+        f"📇 Новый контакт: «{contact.name}»{birthday_note}"
+    )
 
 
 async def _add_watchlist_item_from_text(

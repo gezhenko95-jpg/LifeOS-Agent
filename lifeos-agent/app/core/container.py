@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.client import AIClient
 from app.conversation.engine import ConversationEngine
+from app.crm.repository import ContactRepository
+from app.crm.service import ContactService
 from app.digest.repository import DigestRepository
 from app.digest.scraper import get_channel_scraper
 from app.digest.service import DigestService
@@ -25,6 +27,8 @@ from app.habits.repository import HabitRepository
 from app.habits.service import HabitService
 from app.memory.repository import MemoryRepository
 from app.memory.service import MemoryService
+from app.mood.repository import MoodRepository
+from app.mood.service import MoodService
 from app.proactive.repository import PendingPromptRepository
 from app.proactive.service import PendingPromptService
 from app.rewards.repository import RewardsRepository
@@ -61,6 +65,14 @@ def build_rewards_service(session: AsyncSession) -> RewardsService:
 
 def build_finance_service(session: AsyncSession) -> FinanceService:
     return FinanceService(FinanceRepository(session))
+
+
+def build_contact_service(session: AsyncSession) -> ContactService:
+    return ContactService(ContactRepository(session))
+
+
+def build_mood_service(session: AsyncSession) -> MoodService:
+    return MoodService(MoodRepository(session))
 
 
 def build_digest_service(session: AsyncSession) -> DigestService:

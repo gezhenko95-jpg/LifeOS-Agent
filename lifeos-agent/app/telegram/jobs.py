@@ -14,8 +14,10 @@ from telegram.ext import ContextTypes
 from app.ai.client import get_ai_client
 from app.core.config import get_settings
 from app.core.container import (
+    build_contact_service,
     build_digest_service,
     build_finance_service,
+    build_mood_service,
     build_prompt_service,
 )
 from app.db.session import AsyncSessionLocal
@@ -28,6 +30,7 @@ from app.insights.formatting import build_insights_text
 from app.insights.service import InsightsService
 from app.memory.repository import MemoryRepository
 from app.memory.service import MemoryService
+from app.mood.service import MoodService
 from app.proactive.repository import PendingPromptRepository
 from app.scheduler.briefing import build_morning_briefing
 from app.scheduler.charts import gather_chart_data, render_chart
@@ -38,7 +41,7 @@ from app.scheduler.nudges import build_nudges
 from app.scheduler.weekly_digest import build_weekly_digest
 from app.tasks.repository import TaskRepository
 from app.tasks.service import TaskService
-from app.telegram.keyboards import build_habits_message
+from app.telegram.keyboards import build_habits_message, build_mood_prompt_keyboard
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +111,13 @@ async def send_evening_reflection_job(context: ContextTypes.DEFAULT_TYPE) -> Non
     """Вечерний слот 21:00 (см. flows/009-daily-rhythm.md) — глубокий
     AI-вопрос для дневника (заменяет прежний статичный текст с просьбой
     напечатать "дневник: ..."). Открывает category="journal" — ответ
-    ловится ConversationEngine._try_capture_journal без префикса."""
+    ловится ConversationEngine._try_capture_journal без префикса.
+
+    Под тем же сообщением — 5 кнопок настроения (specs/019-mood-tracker.md):
+    отдельного push-слота под них не заводим (specs/016-engagement-hooks.md
+    — лишний слот без действия хуже, чем отсутствие метрики), тап
+    обрабатывается в app/telegram/callbacks.py::_handle_mood_action и
+    редактирует ЭТО ЖЕ сообщение, не мешая дневниковому pending выше."""
     settings = get_settings()
     telegram_user_id = settings.owner_telegram_user_id
     if not telegram_user_id:
@@ -123,7 +132,11 @@ async def send_evening_reflection_job(context: ContextTypes.DEFAULT_TYPE) -> Non
             telegram_user_id, "journal", question
         )
 
-    await context.bot.send_message(chat_id=telegram_user_id, text=question)
+    await context.bot.send_message(
+        chat_id=telegram_user_id,
+        text=question,
+        reply_markup=build_mood_prompt_keyboard(),
+    )
 
 
 async def send_midday_checkin_job(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -216,7 +229,9 @@ async def send_weekly_digest_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             GoalService(GoalRepository(session)),
             ai_client=get_ai_client(settings),
         )
-        chart = await _try_build_chart(telegram_user_id, task_service, habit_service)
+        chart = await _try_build_chart(
+            telegram_user_id, task_service, habit_service, build_mood_service(session)
+        )
 
     await _send_text_or_photo(context, telegram_user_id, text, chart)
 
@@ -292,14 +307,17 @@ async def send_digests_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def _try_build_chart(
-    telegram_user_id: int, task_service: TaskService, habit_service: HabitService
+    telegram_user_id: int,
+    task_service: TaskService,
+    habit_service: HabitService,
+    mood_service: MoodService | None = None,
 ):
     """Картинка — бонус, а не критичная часть сообщения; сбой рендера
     (например, из-за шрифтов) не должен срывать отправку текста (тот же
     принцип, что и у AI-инсайтов везде в проекте)."""
     try:
         chart_data = await gather_chart_data(
-            telegram_user_id, task_service, habit_service
+            telegram_user_id, task_service, habit_service, mood_service
         )
         return render_chart(chart_data)
     except Exception:
@@ -363,8 +381,8 @@ async def send_monthly_insights_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def send_nudges_job(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Нэджи по целям/привычкам (см. app/scheduler/nudges.py). Если
-    нечего сказать — build_nudges вернёт пустой список и ничего не
+    """Нэджи по целям/привычкам/контактам (см. app/scheduler/nudges.py).
+    Если нечего сказать — build_nudges вернёт пустой список и ничего не
     отправляется (как send_task_reminders_job, когда нечего напомнить)."""
     settings = get_settings()
     telegram_user_id = settings.owner_telegram_user_id
@@ -376,6 +394,7 @@ async def send_nudges_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             telegram_user_id,
             GoalService(GoalRepository(session)),
             HabitService(HabitRepository(session)),
+            build_contact_service(session),
         )
 
     if not lines:

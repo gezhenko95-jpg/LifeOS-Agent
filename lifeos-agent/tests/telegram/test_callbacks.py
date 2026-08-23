@@ -3,17 +3,21 @@ from unittest.mock import MagicMock
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.crm.models import Contact
 from app.db.base import Base
 from app.digest.models import Digest
 from app.finance.models import EXPENSE, INCOME, Transaction
 from app.goals.models import Goal
 from app.habits.models import Habit
+from app.mood.models import MoodEntry
 from app.tasks.models import Task
 from app.telegram.callbacks import (
+    _handle_contact_action,
     _handle_digest_action,
     _handle_finance_action,
     _handle_goal_action,
     _handle_habit_action,
+    _handle_mood_action,
     _handle_task_action,
     _handle_watchlist_action,
     parse_callback,
@@ -359,3 +363,147 @@ async def test_finance_action_x_wrong_owner_does_not_delete(session):
 
     result = await session.execute(select(Transaction))
     assert len(result.scalars().all()) == 1  # чужая транзакция никуда не делась
+
+
+# --- Люди / личный CRM (specs/018-personal-crm.md) ---
+
+
+async def _add_contact(session, **kwargs) -> Contact:
+    kwargs.setdefault("telegram_user_id", 1)
+    kwargs.setdefault("name", "Аня")
+    contact = Contact(**kwargs)
+    session.add(contact)
+    await session.commit()
+    await session.refresh(contact)
+    return contact
+
+
+async def test_contacts_menu(session):
+    text, markup = await _handle_contact_action(session, "m", "", 1, _context())
+
+    assert "Люди" in text
+    callbacks = [b.callback_data for row in markup.inline_keyboard for b in row]
+    assert callbacks == ["c|l", "c|n"]
+
+
+async def test_contact_action_n_opens_add_prompt(session):
+    context = _context()
+
+    text, markup = await _handle_contact_action(session, "n", "", 1, context)
+
+    assert "Кого добавляем" in text
+    from app.telegram.pending_input import CONTACT_ADD
+
+    assert context.user_data["pending_input"].kind == CONTACT_ADD
+
+
+async def test_contact_action_l_lists_contacts(session):
+    await _add_contact(session, name="Аня")
+
+    text, markup = await _handle_contact_action(session, "l", "", 1, _context())
+
+    assert "Аня" in text
+
+
+async def test_contact_action_d_marks_contacted_and_rewards(session):
+    from datetime import datetime, timedelta, timezone
+
+    contact = await _add_contact(
+        session, last_contact_at=datetime.now(timezone.utc) - timedelta(days=40)
+    )
+
+    text, markup = await _handle_contact_action(
+        session, "d", str(contact.id), 1, _context()
+    )
+
+    assert "🪙" in text  # "написал(а)" — сделал-действие, награждается
+
+
+async def test_contact_action_x_deletes_contact_without_reward(session):
+    contact = await _add_contact(session)
+
+    text, markup = await _handle_contact_action(
+        session, "x", str(contact.id), 1, _context()
+    )
+
+    callbacks = [b.callback_data for row in markup.inline_keyboard for b in row]
+    assert f"c|x|{contact.id}" not in callbacks
+    assert "🪙" not in text  # удаление не награждается
+
+
+async def test_contact_action_x_wrong_owner_does_not_delete(session):
+    from sqlalchemy import select
+
+    contact = await _add_contact(session, telegram_user_id=2)
+
+    await _handle_contact_action(session, "x", str(contact.id), 1, _context())
+
+    result = await session.execute(select(Contact))
+    assert len(result.scalars().all()) == 1  # чужой контакт никуда не делся
+
+
+# --- Настроение (specs/019-mood-tracker.md) ----------------------------
+
+
+def _query(text: str = "Как прошёл день?") -> MagicMock:
+    query = MagicMock()
+    query.message.text = text
+    return query
+
+
+async def _add_mood(session, **kwargs) -> MoodEntry:
+    kwargs.setdefault("telegram_user_id", 1)
+    kwargs.setdefault("score", 3)
+    entry = MoodEntry(**kwargs)
+    session.add(entry)
+    await session.commit()
+    await session.refresh(entry)
+    return entry
+
+
+async def test_mood_menu(session):
+    text, markup = await _handle_mood_action(session, "m", "", 1, _query())
+
+    assert "Настроение" in text
+    callbacks = [b.callback_data for row in markup.inline_keyboard for b in row]
+    assert callbacks == ["m|s|1", "m|s|2", "m|s|3", "m|s|4", "m|s|5", "m|l"]
+
+
+async def test_mood_action_s_logs_score_and_appends_to_original_text(session):
+    text, markup = await _handle_mood_action(
+        session, "s", "4", 1, _query("Как прошёл день?")
+    )
+
+    assert text.startswith("Как прошёл день?")
+    assert "4/5" in text
+    assert "🪙" in text  # награда — "сделал"-действие
+    assert len(markup.inline_keyboard) == 0  # кнопка снята, повторный тап невозможен
+
+
+async def test_mood_action_l_lists_entries(session):
+    await _add_mood(session, score=5)
+
+    text, markup = await _handle_mood_action(session, "l", "", 1, _query())
+
+    assert "5/5" in text
+
+
+async def test_mood_action_x_deletes_entry_without_reward(session):
+    entry = await _add_mood(session)
+
+    text, markup = await _handle_mood_action(session, "x", str(entry.id), 1, _query())
+
+    callbacks = [b.callback_data for row in markup.inline_keyboard for b in row]
+    assert f"m|x|{entry.id}" not in callbacks
+    assert "🪙" not in text
+
+
+async def test_mood_action_x_wrong_owner_does_not_delete(session):
+    from sqlalchemy import select
+
+    entry = await _add_mood(session, telegram_user_id=2)
+
+    await _handle_mood_action(session, "x", str(entry.id), 1, _query())
+
+    result = await session.execute(select(MoodEntry))
+    assert len(result.scalars().all()) == 1  # чужая запись никуда не делась
