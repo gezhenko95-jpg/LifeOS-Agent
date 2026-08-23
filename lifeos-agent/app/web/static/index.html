@@ -343,13 +343,18 @@
     gap: 18px;
   }
   /* Ряд 1: визит 3 (на два ряда) | задачи 5 | привычки 4
-     Ряд 2: визит          | цели 3 | итоги 3 | полка 3
-     Ряд 3: дайджесты 12 */
+     Ряд 2: визит          | цели 3 | итоги 3 | финансы 3 | полка 3
+     Ряд 3: дайджесты 12
+     (data-domain="finance" — без своего правила span молча схлопывался
+     в 1 колонку из 12, см. specs/017-finance.md — добавлен в ту же
+     группу, что goals/weekly/shelf, раз уже стоит с ними в одном ряду
+     в HTML) */
   .grid > [data-domain="rewards"] { grid-column: span 3; grid-row: span 2; }
   .grid > [data-domain="tasks"] { grid-column: span 5; }
   .grid > [data-domain="habits"] { grid-column: span 4; }
   .grid > [data-domain="goals"],
   .grid > [data-domain="weekly"],
+  .grid > [data-domain="finance"],
   .grid > [data-domain="shelf"] { grid-column: span 3; }
   .grid > [data-domain="digest"],
   .grid > [data-domain="calendar"] { grid-column: span 12; }
@@ -363,6 +368,7 @@
     .grid > [data-domain="habits"],
     .grid > [data-domain="goals"],
     .grid > [data-domain="weekly"],
+    .grid > [data-domain="finance"],
     .grid > [data-domain="shelf"] { grid-column: span 6; }
   }
   @media (max-width: 760px) {
