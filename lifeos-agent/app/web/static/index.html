@@ -1212,23 +1212,49 @@
   :root[data-skin="pixel"] button.danger { background: var(--card-bg); color: #111; }
   :root[data-skin="pixel"] .rewards-number,
   :root[data-skin="pixel"] .weekly-number { font-family: var(--font-display); }
-  /* Пустые состояния — пунктирная рамка, как в макете. Слот под
-     иллюстрацию (padding-top + background-image на 4 файла из
-     002-skin-illustration-prompts.md, СКИН 4, плюс motivation.png на
-     карточке визита) НЕ подключаем сейчас: проверено агент-браузером —
-     background-image на несуществующий файл действительно ничего не
-     рисует, НО padding-top под картинку остаётся и открывает пустую
-     дыру над текстом «Пока нет задач» уже сегодня, с текущим CSS без
-     единой картинки. Разметка и картинки должны прийти ОДНИМ изменением
-     (так, как это в итоге сделали для groovy), а не порознь. Когда
-     появятся 11 PNG в skins/pixel/ — добавить сюда те же четыре
-     #id .empty { background-image: url(...) } правила, что у groovy
-     (строки выше, блок [data-skin="groovy"] .empty), с padding-top
-     ~148px под 128px иллюстрацию, и background-image на
-     [data-domain="rewards"] с motivation.png. */
+  /* Пустые состояния — пунктирная рамка, как в макете, плюс иллюстрация
+     сверху (те же 4 файла + финансы, добавленные 23.08 после генерации
+     30 картинок — designs/002-skin-illustration-prompts.md, СКИН 4 и
+     «ДОПОЛНЕНИЕ 2»). Картинки и padding-top под них пришли одним
+     изменением, как и планировалось в этом комментарии раньше. */
   :root[data-skin="pixel"] .empty {
     border: 2px dashed var(--border);
     padding: 22px 12px;
+  }
+  :root[data-skin="pixel"] #taskList .empty,
+  :root[data-skin="pixel"] #habitList .empty,
+  :root[data-skin="pixel"] #goalList .empty,
+  :root[data-skin="pixel"] #financeList .empty {
+    padding-top: 132px;
+    background-repeat: no-repeat;
+    background-position: top center;
+    background-size: auto 120px;
+  }
+  :root[data-skin="pixel"] #taskList .empty { background-image: url("skins/pixel/empty-tasks.png"); }
+  :root[data-skin="pixel"] #habitList .empty { background-image: url("skins/pixel/empty-habits.png"); }
+  :root[data-skin="pixel"] #goalList .empty { background-image: url("skins/pixel/empty-goals.png"); }
+  :root[data-skin="pixel"] #financeList .empty { background-image: url("skins/pixel/empty-finance.png"); }
+  :root[data-skin="pixel"] #shelfMovieToWatch .empty {
+    padding-top: 112px;
+    background: url("skins/pixel/empty-shelf.png") no-repeat top center / auto 100px;
+  }
+  :root[data-skin="pixel"] .rewards-card { padding-bottom: 96px; }
+  :root[data-skin="pixel"] [data-domain="rewards"] {
+    background-color: var(--card-bg);
+    background-image: url("skins/pixel/motivation.png");
+    background-repeat: no-repeat;
+    background-position: left 24px bottom 10px;
+    background-size: auto 80px;
+  }
+  /* Компактный угловой герой — у финансовой карточки форма занимает
+     почти всё место, большая фоновая картинка легла бы поверх неё
+     (тот же довод, что у groovy/japan выше). */
+  :root[data-skin="pixel"] [data-domain="finance"] {
+    background-color: var(--card-bg);
+    background-image: url("skins/pixel/hero-finance.png");
+    background-repeat: no-repeat;
+    background-position: right 6px top 4px;
+    background-size: auto 56px;
   }
   /* Чипы достижений: квадратные, с жёсткой рамкой. */
   :root[data-skin="pixel"] .achievements li { border-radius: 0; border-width: 2px; }
@@ -1238,20 +1264,30 @@
   :root[data-skin="pixel"] .progress-bar,
   :root[data-skin="pixel"] .progress-bar > span { border-radius: 0; }
   :root[data-skin="pixel"] .toast { border-radius: 0; border-width: 2px; box-shadow: 4px 4px 0 #111; }
-  /* logo.png ЕЩЁ НЕ подключаем через .brand::before (тот приём, что у
-     groovy): пустой url() на несуществующий файл не рисует ничего, но
-     сам псевдоэлемент занял бы 148×42px пустого места в шапке ДО того,
-     как файл появится — визуальная регрессия прямо сейчас. Когда logo.png
-     будет в skins/pixel/, добавить .brand::before по образцу groovy
-     (см. блок [data-skin="groovy"] .brand::before выше) — тогда же
-     скрыть .brand-mark и увести текст в visually-hidden.
+  /* Лого — тот же приём, что у groovy/japan. */
+  :root[data-skin="pixel"] .brand-mark { display: none; }
+  :root[data-skin="pixel"] .brand::before {
+    content: "";
+    width: 148px;
+    height: 42px;
+    flex: none;
+    background: url("skins/pixel/logo.png") no-repeat center / contain;
+  }
+  :root[data-skin="pixel"] .brand span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 
-     Пиксель-арт нельзя масштабировать сглаживанием — обязателен на
-     КАЖДОМ слоте с иллюстрацией скина, не только на .brand-mark:
-     пустые состояния и карточка визита из правил выше. */
-  :root[data-skin="pixel"] .brand-mark,
+  /* Пиксель-арт нельзя масштабировать сглаживанием — обязателен на
+     КАЖДОМ слоте с иллюстрацией скина. */
   :root[data-skin="pixel"] .empty,
-  :root[data-skin="pixel"] [data-domain="rewards"] {
+  :root[data-skin="pixel"] [data-domain="rewards"],
+  :root[data-skin="pixel"] [data-domain="finance"],
+  :root[data-skin="pixel"] .brand::before {
     image-rendering: pixelated;
   }
 
@@ -1630,6 +1666,25 @@
     background-position: right -10px bottom -6px;
     background-size: auto 140px;
   }
+  /* Финансы (specs/018/019 добавили карточку позже основного набора,
+     designs/002 «ДОПОЛНЕНИЕ 2») — тот же приём: список пуст → картинка
+     из общего правила `.empty` выше, сама карточка ВСЕГДА несёт героя
+     фоном, как у weekly. */
+  :root[data-skin="groovy"] #financeList .empty {
+    background-image: url("skins/groovy/empty-finance.png");
+  }
+  /* Карточка финансов, в отличие от weekly, никогда не бывает
+     визуально пустой — форма + два списка занимают её целиком, поэтому
+     герой ЗДЕСЬ — не большая фоновая картинка через всю карточку (та
+     легла бы поверх формы), а компактный угловой акцент за заголовком,
+     тот же масштаб, что у декора уровня 2 ниже. */
+  :root[data-skin="groovy"] [data-domain="finance"] {
+    background-color: var(--card-bg);
+    background-image: url("skins/groovy/hero-finance.png");
+    background-repeat: no-repeat;
+    background-position: right 6px top 4px;
+    background-size: auto 64px;
+  }
   /* Два слоя: ракета справа и полоса земли по низу. Холм именно
      полосой, а не угловым спрайтом: у файла непрозрачные края (51%
      периметра), вырезанным по контуру он не был и в углу выглядел
@@ -1957,6 +2012,19 @@
     padding-top: 112px;
     background: url("skins/japan/empty-shelf.png") no-repeat top center / auto 100px;
   }
+  :root[data-skin="japan"] #financeList .empty {
+    padding-top: 132px;
+    background: url("skins/japan/empty-finance.png") no-repeat top center / auto 120px;
+  }
+  /* Компактный угловой герой, не через всю карточку — у финансов форма
+     занимает почти всё место, тот же довод, что у груви. */
+  :root[data-skin="japan"] [data-domain="finance"] {
+    background-color: var(--card-bg);
+    background-image: url("skins/japan/hero-finance.png");
+    background-repeat: no-repeat;
+    background-position: right 6px top 4px;
+    background-size: auto 60px;
+  }
 
   /* Лого здесь — квадратный герб (1.5:1), а не длинный леттеринг как у
      груви, поэтому и бокс другой формы. */
@@ -2006,15 +2074,12 @@
      может, если card-bg и text заданы вместе, одним блоком, а не по
      частям.
 
-     Картинок (11 штук, см. 002 «СКИН 3: graffiti») пока нет —
-     генератора изображений в этой сессии нет (Nano Banana не
-     подключён, у impeccable generate-image.mjs нет OPENAI_API_KEY).
-     CSS готов принять их без правок: те же имена файлов и слоты, что
-     у groovy/pixel (#taskList .empty, [data-domain="rewards"] и т.д.),
-     добавляются тем же паттерном, когда картинки появятся — сейчас
-     сознательно НЕ подключены, чтобы не открыть пустую дыру под
-     иллюстрацию раньше самой иллюстрации (см. соседний блок pixel,
-     тот же урок). */
+     Картинки (11 + 2 финансовых, см. 002 «СКИН 3: graffiti» и
+     «ДОПОЛНЕНИЕ 2») сгенерированы и подключены 23.08 — тот же паттерн,
+     что у groovy/pixel (#taskList .empty, [data-domain="rewards"] и
+     т.д.), см. правила ниже. Проверено на реальном card-bg (#17131d):
+     прозрачность настоящая, halftone-точки и контуры читаются на тёмном
+     фоне без потери контраста. */
   :root[data-skin="graffiti"] {
     /* Асфальт, не чистый чёрный — на нём стены-карточки читаются
        отдельным слоем. */
@@ -2219,9 +2284,7 @@
     color: var(--text);
   }
 
-  /* Пустые состояния — пока без картинки (см. блок с объяснением выше
-     и в блоке pixel): просто читаемый текст на тёмной карточке, никакой
-     дыры под будущую иллюстрацию, пока файла нет. */
+  /* Пустые состояния — текст на тёмной карточке + иллюстрация сверху. */
   :root[data-skin="graffiti"] .empty,
   :root[data-skin="graffiti"] ul.item-list li.empty {
     color: var(--muted);
@@ -2233,12 +2296,46 @@
     background-color: transparent;
     margin-bottom: 0;
   }
+  :root[data-skin="graffiti"] #taskList .empty,
+  :root[data-skin="graffiti"] #habitList .empty,
+  :root[data-skin="graffiti"] #goalList .empty,
+  :root[data-skin="graffiti"] #financeList .empty {
+    padding-top: 132px;
+    background-repeat: no-repeat;
+    background-position: top center;
+    background-size: auto 120px;
+  }
+  :root[data-skin="graffiti"] #taskList .empty { background-image: url("skins/graffiti/empty-tasks.png"); }
+  :root[data-skin="graffiti"] #habitList .empty { background-image: url("skins/graffiti/empty-habits.png"); }
+  :root[data-skin="graffiti"] #goalList .empty { background-image: url("skins/graffiti/empty-goals.png"); }
+  :root[data-skin="graffiti"] #financeList .empty { background-image: url("skins/graffiti/empty-finance.png"); }
+  :root[data-skin="graffiti"] #shelfMovieToWatch .empty {
+    padding-top: 112px;
+    background: url("skins/graffiti/empty-shelf.png") no-repeat top center / auto 100px;
+  }
+  :root[data-skin="graffiti"] .rewards-card { padding-bottom: 100px; }
+  :root[data-skin="graffiti"] [data-domain="rewards"] {
+    background-image: url("skins/graffiti/motivation.png");
+    background-repeat: no-repeat;
+    background-position: left 24px bottom 8px;
+    background-size: auto 84px;
+  }
+  /* Компактный угловой герой — форма финансов занимает почти всю
+     карточку, большая фоновая картинка легла бы поверх неё (тот же
+     довод, что у остальных трёх скинов). */
+  :root[data-skin="graffiti"] [data-domain="finance"] {
+    background-image: url("skins/graffiti/hero-finance.png");
+    background-repeat: no-repeat;
+    background-position: right 6px top 4px;
+    background-size: auto 64px;
+  }
 
-  /* Лого — тот же приём, что у groovy/japan, подключить, когда появится
-     skins/graffiti/logo.png (см. комментарий в начале блока). До тех
-     пор .brand-mark (кольцо) остаётся видимым — свой текстовый логотип
-     подключать одним изменением вместе с файлом, не раньше (тот же
-     довод про пустое место, что у pixel). */
+  /* Лого-леттеринг — граффити-тег вместо кольца, тот же приём, что у
+     groovy/japan. У graffiti.logo.png был текст «LIFEOS TRACKER» вместо
+     одного слова «LIFEOS» (нарушение промпта из designs/002) — файл
+     удалён из skins/graffiti/ до перегенерации, поэтому здесь ещё
+     кольцо .brand-mark, не картинка. Когда придёт чистый logo.png —
+     включить тем же .brand::before блоком, что у groovy/japan/pixel. */
 
   @media (prefers-reduced-motion: reduce) {
     :root[data-skin="graffiti"] .card { transition: none; }
