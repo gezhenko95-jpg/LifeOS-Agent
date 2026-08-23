@@ -78,9 +78,14 @@ class MemoryService:
         return entry
 
     async def list_entries(
-        self, telegram_user_id: int, type: Optional[MemoryType] = None
+        self,
+        telegram_user_id: int,
+        type: Optional[MemoryType] = None,
+        limit: Optional[int] = None,
     ) -> list[MemoryEntry]:
-        return await self._repository.list_by_user(telegram_user_id, type=type)
+        return await self._repository.list_by_user(
+            telegram_user_id, type=type, limit=limit
+        )
 
     async def get_entry(
         self, telegram_user_id: int, entry_id: int

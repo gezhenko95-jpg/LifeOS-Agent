@@ -24,6 +24,7 @@ class MemoryRepository(BaseRepository[MemoryEntry]):
         telegram_user_id: int,
         type: Optional[MemoryType] = None,
         include_archived: bool = False,
+        limit: Optional[int] = None,
     ) -> list[MemoryEntry]:
         query = select(MemoryEntry).where(
             MemoryEntry.telegram_user_id == telegram_user_id
@@ -33,6 +34,17 @@ class MemoryRepository(BaseRepository[MemoryEntry]):
         if not include_archived:
             query = query.where(MemoryEntry.archived.is_(False))
         query = query.order_by(MemoryEntry.created_at.desc())
+        if limit is not None:
+            # Без limit — вся таблица пользователя вытягивается в Python
+            # ради нескольких строк (тот же паттерн P-2 из AUDIT.md,
+            # который уже чинили для search() ниже). Добавлено ради
+            # ConversationEngine._gather_chat_context
+            # (specs/020-butler-personas.md): она читает контекст на
+            # КАЖДОЕ разговорное сообщение, а не по запросу раз в день,
+            # как остальные вызовы этого метода — без LIMIT в БД это
+            # растущая со временем использования стоимость на самом
+            # частом пути, который эта же фича и должна оживить.
+            query = query.limit(limit)
         result = await self._session.execute(query)
         return list(result.scalars().all())
 

@@ -230,3 +230,37 @@ async def test_search_ignores_other_users_entries(session):
     results = await repo.search(1, "москве")
 
     assert results == []
+
+
+async def test_list_by_user_respects_limit(session):
+    """specs/020-butler-personas.md — ConversationEngine._gather_chat_context
+    вызывает это на каждое разговорное сообщение, LIMIT должен уходить
+    в запрос, а не резать список в Python после фетча всей таблицы."""
+    for i in range(5):
+        await _add(session, created_at=NOW - timedelta(minutes=i))
+
+    repository = MemoryRepository(session)
+    entries = await repository.list_by_user(1, limit=3)
+
+    assert len(entries) == 3
+
+
+async def test_list_by_user_without_limit_returns_everything(session):
+    for i in range(5):
+        await _add(session, created_at=NOW - timedelta(minutes=i))
+
+    repository = MemoryRepository(session)
+    entries = await repository.list_by_user(1)
+
+    assert len(entries) == 5
+
+
+async def test_list_by_user_limit_keeps_newest_first(session):
+    older = await _add(session, created_at=NOW - timedelta(days=2))
+    newer = await _add(session, created_at=NOW - timedelta(hours=1))
+
+    repository = MemoryRepository(session)
+    entries = await repository.list_by_user(1, limit=1)
+
+    assert entries == [newer]
+    assert older not in entries

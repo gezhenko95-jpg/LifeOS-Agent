@@ -449,15 +449,22 @@ class ConversationEngine:
         """Ограниченное окно контекста для разговорного ответа —
         последние записи памяти, БЕЗ семантического поиска/эмбеддингов
         (см. спеку, «Что НЕ входит»: держит стоимость AI-вызова
-        постоянной, не растущей со временем использования)."""
-        entries = await self._memory.list_entries(telegram_user_id)
+        постоянной, не растущей со временем использования).
+
+        `limit` уходит В ЗАПРОС (MemoryRepository.list_by_user), а не
+        обрезается в Python после фетча — этот путь вызывается на КАЖДОЕ
+        разговорное сообщение (в отличие от остальных вызовов
+        list_entries, которые бьют по запросу раз в день), без LIMIT в
+        БД тянуло бы всю таблицу памяти пользователя на каждое случайное
+        «привет» — цена росла бы вместе с историей использования, ровно
+        то, чего фича должна была избежать (см. AUDIT.md, P-2 — тот же
+        паттерн уже чинили для MemoryService.search)."""
+        entries = await self._memory.list_entries(
+            telegram_user_id, limit=_MAX_CHAT_CONTEXT_ITEMS
+        )
         if not entries:
             return ""
-        # list_entries уже сортирует новые сверху (MemoryRepository.
-        # list_by_user, order_by created_at.desc()) — первые N и есть
-        # самые свежие, не последние.
-        recent = entries[:_MAX_CHAT_CONTEXT_ITEMS]
-        return "\n".join(f"- {entry.content}" for entry in recent)
+        return "\n".join(f"- {entry.content}" for entry in entries)
 
     async def _add_expense(self, telegram_user_id: int, parsed: ParsedIntent) -> str:
         """specs/017-finance.md. `finance_service is None` — фича не

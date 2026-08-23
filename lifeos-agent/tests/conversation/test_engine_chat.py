@@ -139,6 +139,31 @@ async def test_chat_context_uses_recent_memory_entries(
     assert "работает над курсом" in system_content
 
 
+async def test_chat_context_asks_repository_for_limited_window(
+    task_service, habit_service, memory_service, assistant_service
+):
+    """Оптимизация: limit должен уходить В ЗАПРОС (см.
+    MemoryRepository.list_by_user), а не резать список в Python после
+    фетча всей таблицы — этот путь бьёт по БД на каждое разговорное
+    сообщение, не по расписанию раз в день, как остальные вызовы
+    list_entries."""
+    memory_service.list_entries.return_value = []
+    ai_client = AsyncMock()
+    ai_client.complete.return_value = "Ответ."
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        ai_client=ai_client,
+        assistant_service=assistant_service,
+    )
+
+    await engine.handle_message(1, "как дела?")
+
+    # 10 = engine.py::_MAX_CHAT_CONTEXT_ITEMS.
+    memory_service.list_entries.assert_awaited_once_with(1, limit=10)
+
+
 async def test_chat_uses_active_persona_voice(
     task_service, habit_service, memory_service, assistant_service
 ):
