@@ -13,6 +13,8 @@ AUDIT.md, A-3) — правка сигнатуры конструктора тр
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.client import AIClient
+from app.assistant.repository import AssistantRepository
+from app.assistant.service import AssistantService
 from app.conversation.engine import ConversationEngine
 from app.crm.repository import ContactRepository
 from app.crm.service import ContactService
@@ -75,6 +77,10 @@ def build_mood_service(session: AsyncSession) -> MoodService:
     return MoodService(MoodRepository(session))
 
 
+def build_assistant_service(session: AsyncSession) -> AssistantService:
+    return AssistantService(AssistantRepository(session))
+
+
 def build_digest_service(session: AsyncSession) -> DigestService:
     """Скрейпер отдаётся фабрикой, а не создаётся здесь: внутри — один
     httpx.AsyncClient на процесс (keep-alive, см. app/digest/scraper.py),
@@ -104,4 +110,5 @@ def build_engine(
         watchlist_service=build_watchlist_service(session),
         rewards_service=build_rewards_service(session),
         finance_service=build_finance_service(session),
+        assistant_service=build_assistant_service(session),
     )

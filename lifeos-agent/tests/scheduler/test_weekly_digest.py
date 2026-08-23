@@ -140,3 +140,25 @@ async def test_ai_insight_error_is_swallowed():
 
     assert "💡" not in text
     assert "ни одна задача не была отмечена" in text
+
+
+async def test_ai_insight_uses_active_persona_voice():
+    """specs/020-butler-personas.md."""
+    from app.assistant.personas import Persona
+
+    task_service = AsyncMock()
+    task_service.count_tasks_completed_since.return_value = 0
+    ai_client = AsyncMock()
+    ai_client.complete.return_value = "Хороший темп."
+
+    await build_weekly_digest(
+        1,
+        task_service,
+        _empty_habit_service(),
+        _empty_goal_service(),
+        ai_client=ai_client,
+        persona=Persona.DIRECTOR,
+    )
+
+    messages = ai_client.complete.call_args.args[0]
+    assert "директор" in messages[0]["content"].lower()

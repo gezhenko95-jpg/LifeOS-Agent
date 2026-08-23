@@ -89,6 +89,7 @@ async def test_morning_briefing_appends_reflection_question(no_db, monkeypatch):
     prompt_service = AsyncMock()
     prompt_service.pick_morning_reflection.return_value = "Что тебе снилось?"
     monkeypatch.setattr(jobs, "build_prompt_service", lambda session: prompt_service)
+    monkeypatch.setattr(jobs, "build_assistant_service", lambda session: AsyncMock())
 
     context = _context()
     await jobs.send_morning_briefing_job(context)
@@ -117,6 +118,7 @@ async def test_send_finance_report_job_sends_report(no_db, monkeypatch):
         jobs, "build_finance_report", AsyncMock(return_value="Финансы за август")
     )
     monkeypatch.setattr(jobs, "build_finance_service", lambda session: AsyncMock())
+    monkeypatch.setattr(jobs, "build_assistant_service", lambda session: AsyncMock())
 
     context = _context()
     await jobs.send_finance_report_job(context)

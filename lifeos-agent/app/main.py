@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api import (
+    assistant,
     crm,
     digest,
     finance,
@@ -75,6 +76,7 @@ app.include_router(digest.router, tags=["digest"], dependencies=_protected)
 app.include_router(finance.router, tags=["finance"], dependencies=_protected)
 app.include_router(crm.router, tags=["crm"], dependencies=_protected)
 app.include_router(mood.router, tags=["mood"], dependencies=_protected)
+app.include_router(assistant.router, tags=["assistant"], dependencies=_protected)
 
 # Простейший веб-интерфейс — статическая страница, использует REST API выше.
 app.mount("/ui", StaticFiles(directory=_WEB_STATIC_DIR, html=True), name="ui")

@@ -17,6 +17,7 @@ from datetime import date
 from html import escape
 
 from app.ai.client import AIClient, AIServiceError
+from app.assistant.personas import DEFAULT_PERSONA, Persona, build_insight_prompt
 from app.goals.models import Goal
 from app.goals.service import GoalService
 from app.habits.models import Habit
@@ -56,13 +57,19 @@ _WEEKDAYS_NOMINATIVE = (
     "воскресенье",
 )
 
-_INSIGHT_SYSTEM_PROMPT = (
-    "Ты — личный ассистент пользователя. Ниже черновик его утреннего "
-    "брифинга (задачи, привычки, цели). Добавь ОДНО короткое (не более "
-    "20 слов) персональное наблюдение или совет на русском языке — по "
-    "существу, без предисловий, без кавычек и без markdown. Верни только "
-    "текст этой фразы, ничего больше."
+_INSIGHT_TASK_INSTRUCTION = (
+    "Ниже черновик утреннего брифинга пользователя (задачи, привычки, "
+    "цели). Добавь персональное наблюдение или практичный совет — "
+    "2-4 предложения (примерно до 70 слов), по существу и конкретно, не "
+    "короткая острота. На русском языке, без предисловий, без кавычек и "
+    "без markdown. Верни только текст этой вставки, ничего больше."
 )
+
+
+def _insight_system_prompt(persona: Persona) -> str:
+    # Персонаж-слой (specs/020-butler-personas.md) — единая точка сборки,
+    # см. app/assistant/personas.py::build_insight_prompt.
+    return build_insight_prompt(persona, _INSIGHT_TASK_INSTRUCTION)
 
 
 def _esc(text: str) -> str:
@@ -207,10 +214,13 @@ def _format_goals_and_projects_section(
     return "\n".join(lines)
 
 
-async def _generate_insight(ai_client: AIClient, briefing_text: str) -> str | None:
-    """Одна короткая AI-фраза по уже собранному брифингу, либо None при сбое."""
+async def _generate_insight(
+    ai_client: AIClient, briefing_text: str, persona: Persona
+) -> str | None:
+    """Практичная AI-вставка голосом персонажа по уже собранному
+    брифингу, либо None при сбое."""
     messages = [
-        {"role": "system", "content": _INSIGHT_SYSTEM_PROMPT},
+        {"role": "system", "content": _insight_system_prompt(persona)},
         {"role": "user", "content": briefing_text},
     ]
     try:
@@ -230,6 +240,7 @@ async def build_morning_briefing(
     habit_service: HabitService,
     goal_service: GoalService,
     ai_client: AIClient | None = None,
+    persona: Persona = DEFAULT_PERSONA,
 ) -> str:
     tasks = await task_service.list_active_tasks(telegram_user_id)
     habits = await habit_service.list_active_habits(telegram_user_id)
@@ -253,7 +264,7 @@ async def build_morning_briefing(
     text = "\n".join(parts)
 
     if ai_client is not None:
-        insight = await _generate_insight(ai_client, text)
+        insight = await _generate_insight(ai_client, text, persona)
         if insight:
             text = f"{text}\n\n{_DIVIDER}\n💡 <i>{_esc(insight)}</i>"
 

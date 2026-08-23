@@ -159,6 +159,38 @@ _WATCHLIST_TRIGGERS: tuple[tuple[str, str], ...] = (
     ("посмотреть", "other"),
     ("прочитать", "book"),
 )
+# Реплика собеседнику, не задача (specs/020-butler-personas.md) —
+# самый низкий приоритет во всём waterfall, проверяется единственный
+# раз, прямо перед дефолтным ADD_TASK: если сообщение дошло досюда, все
+# более конкретные intent'ы (HELP/LIST/RECALL/COMPLETE/DELETE/финансы/
+# дневник/полка) уже не совпали. "?" в конце — самый надёжный дешёвый
+# сигнал вопроса; список открывающих слов — частые реплики, которые не
+# бывают заголовком задачи. Осознанный компромисс (как и у остальных
+# rule-based триггеров, ADR-004): задача, чей заголовок оканчивается на
+# "?" (редкость), тоже уйдёт в CHAT — не страшно, ConversationEngine
+# откатывается на создание задачи, если AI недоступен/не ответил.
+_CHAT_OPENERS = (
+    "привет",
+    "здравствуй",
+    "здорово",
+    "доброе утро",
+    "добрый день",
+    "добрый вечер",
+    "спасибо",
+    "спс",
+    "как дела",
+    "как ты",
+    "что думаешь",
+    "что скажешь",
+)
+
+
+def _looks_like_chat(stripped: str, lowered: str) -> bool:
+    if not stripped:
+        return False
+    if stripped.endswith("?"):
+        return True
+    return any(lowered.startswith(opener) for opener in _CHAT_OPENERS)
 
 
 def parse_intent(text: str) -> ParsedIntent:
@@ -252,6 +284,9 @@ def parse_intent(text: str) -> ParsedIntent:
             title=_remove_keyword(stripped, keyword),
             media_type=media_type,
         )
+
+    if _looks_like_chat(stripped, lowered):
+        return ParsedIntent(intent=Intent.CHAT, title=stripped)
 
     return parse_add_task(stripped)
 

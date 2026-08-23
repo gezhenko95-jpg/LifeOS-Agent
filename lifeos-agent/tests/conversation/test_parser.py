@@ -632,3 +632,39 @@ def test_parse_finance_income_from_button_no_trigger_word():
 
     assert result.intent is Intent.ADD_INCOME
     assert result.amount == 80000
+
+
+# --- Intent.CHAT (specs/020-butler-personas.md) -----------------------
+
+
+def test_question_mark_is_chat():
+    result = parse_intent("Как думаешь, стоит ли мне сменить работу?")
+
+    assert result.intent is Intent.CHAT
+    assert result.title == "Как думаешь, стоит ли мне сменить работу?"
+
+
+def test_greeting_is_chat():
+    result = parse_intent("Привет! Как сам?")
+
+    assert result.intent is Intent.CHAT
+
+
+def test_thanks_is_chat():
+    result = parse_intent("Спасибо, очень помогло")
+
+    assert result.intent is Intent.CHAT
+
+
+def test_plain_task_title_is_not_chat():
+    result = parse_intent("Купить молоко")
+
+    assert result.intent is Intent.ADD_TASK
+
+
+def test_more_specific_intent_wins_over_chat_even_with_question_mark():
+    """COMPLETE_TASK проверяется раньше CHAT в waterfall — command-слово
+    в начале сильнее вопросительного знака в конце."""
+    result = parse_intent("выполнил отчёт?")
+
+    assert result.intent is Intent.COMPLETE_TASK

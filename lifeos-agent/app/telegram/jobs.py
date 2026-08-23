@@ -14,6 +14,7 @@ from telegram.ext import ContextTypes
 from app.ai.client import get_ai_client
 from app.core.config import get_settings
 from app.core.container import (
+    build_assistant_service,
     build_contact_service,
     build_digest_service,
     build_finance_service,
@@ -87,6 +88,7 @@ async def send_morning_briefing_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         memory_service = MemoryService(MemoryRepository(session))
         habit_service = HabitService(HabitRepository(session))
         goal_service = GoalService(GoalRepository(session))
+        persona = await build_assistant_service(session).get_persona(telegram_user_id)
         text = await build_morning_briefing(
             telegram_user_id,
             task_service,
@@ -94,6 +96,7 @@ async def send_morning_briefing_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             habit_service,
             goal_service,
             ai_client=ai_client,
+            persona=persona,
         )
         chart = await _try_build_chart(telegram_user_id, task_service, habit_service)
 
@@ -127,7 +130,10 @@ async def send_evening_reflection_job(context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     async with AsyncSessionLocal() as session:
-        question = await build_evening_reflection_prompt(get_ai_client(settings))
+        persona = await build_assistant_service(session).get_persona(telegram_user_id)
+        question = await build_evening_reflection_prompt(
+            get_ai_client(settings), persona=persona
+        )
         await PendingPromptRepository(session).upsert(
             telegram_user_id, "journal", question
         )
@@ -222,12 +228,14 @@ async def send_weekly_digest_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     async with AsyncSessionLocal() as session:
         task_service = TaskService(TaskRepository(session))
         habit_service = HabitService(HabitRepository(session))
+        persona = await build_assistant_service(session).get_persona(telegram_user_id)
         text = await build_weekly_digest(
             telegram_user_id,
             task_service,
             habit_service,
             GoalService(GoalRepository(session)),
             ai_client=get_ai_client(settings),
+            persona=persona,
         )
         chart = await _try_build_chart(
             telegram_user_id, task_service, habit_service, build_mood_service(session)
@@ -250,8 +258,12 @@ async def send_finance_report_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 
     async with AsyncSessionLocal() as session:
         finance_service = build_finance_service(session)
+        persona = await build_assistant_service(session).get_persona(telegram_user_id)
         text = await build_finance_report(
-            telegram_user_id, finance_service, ai_client=get_ai_client(settings)
+            telegram_user_id,
+            finance_service,
+            ai_client=get_ai_client(settings),
+            persona=persona,
         )
 
     await context.bot.send_message(

@@ -4,21 +4,27 @@ Conversation Engine.
 Связывает разбор намерения с Tasks/Habits/Goals/Memory Service. Основной
 путь — rule-based parser.py (быстро, бесплатно, предсказуемо).
 
-Два AI-фолбэка для ADD_TASK-подобного (нераспознанного правилами) текста,
-в порядке проверки:
+Три AI-места, в порядке проверки:
 1. Если есть открытый проактивный вопрос (pending_prompt_service, см.
    specs/006-proactive-engagement.md) — попытка понять text как ответ на
    него (_try_answer_pending_prompt).
 2. Если ADD_TASK с пустым title — попытка через AI Service разобрать
    намерение целиком (ai_fallback.py, см. specs/003-conversation.md).
-Оба — тихий fallback: любая ошибка AI не показывается пользователю.
+3. Если parser.py распознал Intent.CHAT (реплика собеседнику, не
+   задача) — разговорный ответ голосом активного персонажа
+   (chat_reply.py, см. specs/020-butler-personas.md).
+Все три — тихий fallback: любая ошибка AI не показывается пользователю,
+CHAT без доступного AI откатывается на создание задачи (прежнее
+поведение до этой фичи).
 """
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from app.ai.client import AIClient
+from app.assistant.service import AssistantService
 from app.conversation.ai_fallback import parse_intent_with_ai
+from app.conversation.chat_reply import generate_chat_reply
 from app.conversation.intent import Intent, ParsedIntent
 from app.conversation.parser import parse_intent
 from app.finance.models import CATEGORIES, EXPENSE, INCOME
@@ -82,6 +88,9 @@ _HELP_TEXT = (
     "в этом месяце\n"
     "• иногда я сам спрашиваю о целях/привычках/проектах или прошу "
     "дневник — просто ответьте текстом, и я запомню это как надо\n"
+    "• просто поговорить — задайте вопрос или напишите «привет», отвечу "
+    "по существу, не только списком команд (характер можно сменить на "
+    "сайте, /ui)\n"
     "• всё это есть в меню снизу и работает одинаково: любая кнопка "
     "раздела открывает экран с «Список» и «➕ Добавить» — дальше только "
     "нажатия, команды помнить не нужно\n"
@@ -93,6 +102,10 @@ _HELP_TEXT = (
 )
 
 _MAX_RECALL_RESULTS = 5
+# Окно контекста для разговорного ответа (specs/020-butler-personas.md)
+# — фиксированное число последних записей, не "вся история", чтобы
+# промпт (и его цена) не росли бесконечно с месяцами использования.
+_MAX_CHAT_CONTEXT_ITEMS = 10
 _STREAK_MILESTONES = {7, 30, 100}
 # Если AI не смог связать ответ с открытым вопросом, а вопрос был задан
 # недавно — пользователю стоит подсказать, что ответ "потерялся", а не
@@ -141,6 +154,7 @@ class ConversationEngine:
         watchlist_service: WatchlistService | None = None,
         rewards_service: RewardsService | None = None,
         finance_service: FinanceService | None = None,
+        assistant_service: AssistantService | None = None,
     ) -> None:
         self._tasks = task_service
         self._habits = habit_service
@@ -151,6 +165,7 @@ class ConversationEngine:
         self._watchlist = watchlist_service
         self._rewards = rewards_service
         self._finance = finance_service
+        self._assistant = assistant_service
 
     async def _with_reward(
         self, telegram_user_id: int, result: EngineResult
@@ -404,8 +419,45 @@ class ConversationEngine:
             return EngineResult(await self._add_expense(telegram_user_id, parsed))
         if parsed.intent is Intent.ADD_INCOME:
             return EngineResult(await self._add_income(telegram_user_id, parsed))
+        if parsed.intent is Intent.CHAT:
+            return await self._chat_reply(telegram_user_id, parsed.title or "")
         text, task = await self._add_task(telegram_user_id, parsed)
         return EngineResult(text, task)
+
+    async def _chat_reply(self, telegram_user_id: int, text: str) -> EngineResult:
+        """specs/020-butler-personas.md. Если AI или персонаж не
+        подключены (см. app/core/container.py), либо генерация не
+        удалась — сообщение не теряется молча, а обрабатывается как и
+        раньше до этой фичи: становится задачей (тот же принцип
+        опциональности/тихого отката, что у остальных AI-мест
+        проекта)."""
+        if self._ai_client is not None and self._assistant is not None:
+            persona = await self._assistant.get_persona(telegram_user_id)
+            context = await self._gather_chat_context(telegram_user_id)
+            reply = await generate_chat_reply(
+                text, persona, self._ai_client, context=context
+            )
+            if reply is not None:
+                return EngineResult(reply)
+
+        text_result, task = await self._add_task(
+            telegram_user_id, ParsedIntent(intent=Intent.ADD_TASK, title=text)
+        )
+        return EngineResult(text_result, task)
+
+    async def _gather_chat_context(self, telegram_user_id: int) -> str:
+        """Ограниченное окно контекста для разговорного ответа —
+        последние записи памяти, БЕЗ семантического поиска/эмбеддингов
+        (см. спеку, «Что НЕ входит»: держит стоимость AI-вызова
+        постоянной, не растущей со временем использования)."""
+        entries = await self._memory.list_entries(telegram_user_id)
+        if not entries:
+            return ""
+        # list_entries уже сортирует новые сверху (MemoryRepository.
+        # list_by_user, order_by created_at.desc()) — первые N и есть
+        # самые свежие, не последние.
+        recent = entries[:_MAX_CHAT_CONTEXT_ITEMS]
+        return "\n".join(f"- {entry.content}" for entry in recent)
 
     async def _add_expense(self, telegram_user_id: int, parsed: ParsedIntent) -> str:
         """specs/017-finance.md. `finance_service is None` — фича не

@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from html import escape
 
 from app.ai.client import AIClient, AIServiceError
+from app.assistant.personas import DEFAULT_PERSONA, Persona, build_insight_prompt
 from app.goals.service import GoalService
 from app.habits.service import HabitService
 from app.tasks.service import TaskService
@@ -31,13 +32,17 @@ def _esc(text: str) -> str:
     return escape(str(text), quote=False)
 
 
-_INSIGHT_SYSTEM_PROMPT = (
-    "Ты — личный ассистент пользователя. Ниже черновик его еженедельного "
-    "дайджеста (что сделано за неделю, привычки, цели). Добавь ОДНО "
-    "короткое (не более 25 слов) наблюдение или вопрос на подумать на "
-    "русском языке — по существу, без предисловий, без кавычек и без "
-    "markdown. Верни только текст этой фразы, ничего больше."
+_INSIGHT_TASK_INSTRUCTION = (
+    "Ниже черновик еженедельного дайджеста пользователя (что сделано за "
+    "неделю, привычки, цели). Добавь наблюдение или вопрос на подумать — "
+    "2-4 предложения (примерно до 70 слов), по существу и конкретно, не "
+    "короткая острота. На русском языке, без предисловий, без кавычек и "
+    "без markdown. Верни только текст этой вставки, ничего больше."
 )
+
+
+def _insight_system_prompt(persona: Persona) -> str:
+    return build_insight_prompt(persona, _INSIGHT_TASK_INSTRUCTION)
 
 
 async def _format_tasks_section(
@@ -90,9 +95,11 @@ async def _format_goals_section(
     return "\n".join(lines)
 
 
-async def _generate_insight(ai_client: AIClient, digest_text: str) -> str | None:
+async def _generate_insight(
+    ai_client: AIClient, digest_text: str, persona: Persona
+) -> str | None:
     messages = [
-        {"role": "system", "content": _INSIGHT_SYSTEM_PROMPT},
+        {"role": "system", "content": _insight_system_prompt(persona)},
         {"role": "user", "content": digest_text},
     ]
     try:
@@ -111,6 +118,7 @@ async def build_weekly_digest(
     habit_service: HabitService,
     goal_service: GoalService,
     ai_client: AIClient | None = None,
+    persona: Persona = DEFAULT_PERSONA,
 ) -> str:
     since = datetime.now(timezone.utc) - _WEEK
 
@@ -128,7 +136,7 @@ async def build_weekly_digest(
     text = "\n".join(parts)
 
     if ai_client is not None:
-        insight = await _generate_insight(ai_client, text)
+        insight = await _generate_insight(ai_client, text, persona)
         if insight:
             text = f"{text}\n\n💡 {_esc(insight)}"
 

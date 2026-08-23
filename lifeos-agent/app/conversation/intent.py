@@ -27,6 +27,11 @@ class Intent(str, Enum):
     ADD_EXPENSE = "add_expense"
     ADD_INCOME = "add_income"
     HELP = "help"
+    # Реплика собеседнику, не задача — см. parser.py::_looks_like_chat и
+    # specs/020-butler-personas.md. Ниже по приоритету, чем всё
+    # остальное (в самом конце waterfall в parse_intent), поэтому не
+    # перехватывает ничего из уже распознаваемых команд.
+    CHAT = "chat"
 
 
 @dataclass

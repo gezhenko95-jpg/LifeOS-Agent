@@ -111,3 +111,24 @@ async def test_no_ai_client_no_insight():
     text = await build_finance_report(1, _finance_service(summary), now=NOW)
 
     assert "💡" not in text
+
+
+async def test_ai_insight_uses_active_persona_voice():
+    """specs/020-butler-personas.md — персонаж влияет на system-промпт
+    AI-вставки в финансовом отчёте."""
+    from app.assistant.personas import Persona
+
+    summary = FinanceSummary(income_total=1000, mandatory_total=0, free_money=1000)
+    ai_client = AsyncMock()
+    ai_client.complete.return_value = "Держись плана."
+
+    await build_finance_report(
+        1,
+        _finance_service(summary),
+        ai_client=ai_client,
+        now=NOW,
+        persona=Persona.FINANCIER,
+    )
+
+    messages = ai_client.complete.call_args.args[0]
+    assert "cfo" in messages[0]["content"].lower()

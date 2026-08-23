@@ -305,3 +305,29 @@ async def test_ai_insight_empty_response_is_ignored():
     )
 
     assert "💡" not in text
+
+
+async def test_ai_insight_uses_active_persona_voice():
+    """specs/020-butler-personas.md."""
+    from app.assistant.personas import Persona
+
+    task_service = AsyncMock()
+    task_service.list_active_tasks.return_value = []
+    memory_service = AsyncMock()
+    memory_service.list_entries.return_value = []
+
+    ai_client = AsyncMock()
+    ai_client.complete.return_value = "Начни с малого."
+
+    await build_morning_briefing(
+        1,
+        task_service,
+        memory_service,
+        _empty_habit_service(),
+        _empty_goal_service(),
+        ai_client=ai_client,
+        persona=Persona.TRAINER,
+    )
+
+    messages = ai_client.complete.call_args.args[0]
+    assert "тренер" in messages[0]["content"].lower()

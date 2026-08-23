@@ -36,3 +36,16 @@ async def test_falls_back_to_bank_on_empty_ai_response():
     question = await build_evening_reflection_prompt(ai_client)
 
     assert question in EVENING_JOURNAL_PROMPTS
+
+
+async def test_ai_question_uses_active_persona_voice():
+    """specs/020-butler-personas.md."""
+    from app.assistant.personas import Persona
+
+    ai_client = AsyncMock()
+    ai_client.complete.return_value = "Что сегодня было самым сложным?"
+
+    await build_evening_reflection_prompt(ai_client, persona=Persona.DIRECTOR)
+
+    messages = ai_client.complete.call_args.args[0]
+    assert "директор" in messages[0]["content"].lower()

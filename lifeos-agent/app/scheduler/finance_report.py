@@ -14,18 +14,23 @@ from datetime import datetime, timezone
 from html import escape
 
 from app.ai.client import AIClient, AIServiceError
+from app.assistant.personas import DEFAULT_PERSONA, Persona, build_insight_prompt
 from app.finance.service import FinanceService
 
 logger = logging.getLogger(__name__)
 
-_INSIGHT_SYSTEM_PROMPT = (
-    "Ты — личный ассистент пользователя. Ниже черновик его финансового "
-    "отчёта за месяц (доход, обязательные платежи, траты по категориям "
-    "против нормы). Добавь ОДНО короткое (не более 25 слов) наблюдение "
-    "или совет на русском языке — по существу, без предисловий, без "
-    "кавычек и без markdown. Верни только текст этой фразы, ничего "
-    "больше."
+_INSIGHT_TASK_INSTRUCTION = (
+    "Ниже черновик финансового отчёта пользователя за месяц (доход, "
+    "обязательные платежи, траты по категориям против нормы). Добавь "
+    "наблюдение или совет — 2-4 предложения (примерно до 70 слов), по "
+    "существу и конкретно, не короткая острота. На русском языке, без "
+    "предисловий, без кавычек и без markdown. Верни только текст этой "
+    "вставки, ничего больше."
 )
+
+
+def _insight_system_prompt(persona: Persona) -> str:
+    return build_insight_prompt(persona, _INSIGHT_TASK_INSTRUCTION)
 
 
 def _esc(text: str) -> str:
@@ -58,9 +63,11 @@ def _month_label(now: datetime) -> str:
     return months[now.month - 1]
 
 
-async def _generate_insight(ai_client: AIClient, report_text: str) -> str | None:
+async def _generate_insight(
+    ai_client: AIClient, report_text: str, persona: Persona
+) -> str | None:
     messages = [
-        {"role": "system", "content": _INSIGHT_SYSTEM_PROMPT},
+        {"role": "system", "content": _insight_system_prompt(persona)},
         {"role": "user", "content": report_text},
     ]
     try:
@@ -78,6 +85,7 @@ async def build_finance_report(
     finance_service: FinanceService,
     ai_client: AIClient | None = None,
     now: datetime | None = None,
+    persona: Persona = DEFAULT_PERSONA,
 ) -> str:
     now = now or datetime.now(timezone.utc)
     since = _month_start(now)
@@ -104,7 +112,7 @@ async def build_finance_report(
     text = "\n".join(parts)
 
     if ai_client is not None:
-        insight = await _generate_insight(ai_client, text)
+        insight = await _generate_insight(ai_client, text, persona)
         if insight:
             text = f"{text}\n\n💡 {_esc(insight)}"
 
