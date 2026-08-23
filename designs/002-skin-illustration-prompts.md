@@ -4,7 +4,13 @@
 цвет. Скин меняет характер: шрифт, форму рамок, тени — это CSS, — плюс
 набор картинок, которые CSS нарисовать не может. Этот файл про картинки.
 
-Скины: `groovy`, `japan`, `graffiti`, `pixel`.
+**Статус на 23.08:** `groovy` (24/24) и базовый набор `japan` (11/11)
+уже сгенерированы и лежат в `app/web/static/skins/` — в этом файле их
+больше нет, смотреть в `HANDOFF.md`/git-истории, если нужны их промпты.
+Ниже — только то, что реально осталось: **graffiti** (11 картинок),
+**pixel** (11 картинок), **финансы** (8 картинок — по 2 на каждый из
+четырёх скинов, включая уже готовые groovy и japan, у которых этой пары
+пока нет). Итого 30 генераций.
 
 ---
 
@@ -16,10 +22,8 @@
 | Иконки интерфейса (16 глифов) | **Рисуются в коде как SVG** | Живут на 12–16px, растр там разваливается в кашу |
 | Волны, радуги, подтёки, рамки | **CSS-градиенты и псевдоэлементы** | Резче, легче, красятся темой |
 
-Про иконки отдельно: нынешний набор потому и нечитаемый, что глифы
-рисовались под 24px, а показываются на 12. Генератор эту проблему не
-решает, а усугубляет — он не умеет в пиксельную сетку. Свой набор под
-каждый скин (16 × 4 = 64 глифа) делается правкой кода, не этим файлом.
+Про иконки отдельно: свой набор под скин делается правкой кода
+(`app/web/static/index.html`, `PIXEL_GRID`/`ICON_LINE`), не этим файлом.
 
 ---
 
@@ -35,9 +39,13 @@
 3. **Один скин за раз, целиком.** Не «по одной картинке из каждого» —
    иначе наборы расползутся по манере.
 4. **Стилевой блок копируется дословно.** Не пересказывать своими
-   словами: от этого генератор и плывёт от картинки к картинке.
-5. **Начинать с того скина, которым реально будете пользоваться.**
-   Одиннадцать картинок × четыре скина — это 44 генерации.
+   словами: от этого генератор и плывёт от картинки к картинке. Ниже
+   каждый промпт уже собран целиком — копировать блок в тройных кавычках
+   от начала до конца, ничего не дописывать и не сокращать.
+5. **Порядок: graffiti → pixel → финансы**, или в любом другом — они не
+   зависят друг от друга, но внутри одного скина промпты лучше
+   генерировать подряд, не перемежая с другим скином (тот же довод, что
+   и в правиле 3).
 
 ---
 
@@ -48,34 +56,35 @@
 | Параметр | Значение |
 |---|---|
 | Формат | PNG-24 с альфа-каналом, потом прогнать через `pngquant` |
-| Пустые состояния (шаги 1–4) | 640×400 |
-| Мотивация (шаг 5) | 512×512 |
-| Аватар (шаг 6) | 256×256 |
-| Лого (шаг 7) | 720×200 |
-| Бейджи (шаги 8–11) | 128×128 |
+| Пустые состояния | 640×400 |
+| Мотивация | 512×512 |
+| Аватар | 256×256 |
+| Лого | 720×200 |
+| Бейджи | 128×128 |
+| Финансовые (пустое состояние + герой) | 640×400 |
 | Вес одного файла | ≤ 40 КБ |
-| Вес скина целиком | ≤ 250 КБ |
+| Вес скина целиком | ≤ 250 КБ (у groovy с декором вышло ~450 КБ — это верхняя граница, не ориентир) |
 
-**Вес — не придирка.** `index.html` уже 115 КБ, пиксельный шрифт ещё 30,
-и всё грузится с нашего сервера в Нидерландах: внешние CDN из России не
-работают (проверено дважды, см. `HANDOFF.md`), разложить по чужим
-хостингам нельзя. Отсюда правило в коде: **ассеты скина грузятся лениво**,
-только когда скин выбран. Человек на стандартном скине не должен
-скачивать граффити.
+**Вес — не придирка.** Всё грузится с нашего сервера в Нидерландах:
+внешние CDN из России не работают (проверено дважды, см. `HANDOFF.md`),
+разложить по чужим хостингам нельзя. Отсюда правило в коде: **ассеты
+скина грузятся лениво**, только когда скин выбран. Сжатие — `pngquant`,
+начинать с тех же параметров, что дали groovy: палитра 200, масштаб 1.0.
 
 ---
 
-# СКИН 1: `groovy` (ретро-груви)
+# GRAFFITI — 11 промптов
 
-Одиннадцать шагов. Каждый промпт — целиком готовый, копировать от начала
-до конца, ничего не дописывать.
+Уличный стиль. Единственный скин, переопределяющий **режим**, а не
+только акцент — карточки чёрные, текст светлый (см. примечание в конце
+раздела). Складывать в `app/web/static/skins/graffiti/`.
 
 ### Шаг 1 — `empty-tasks.png` (640×400)
 
 ```
-1970s retro groovy illustration. Thick uniform rounded outlines, bubbly organic shapes. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Small four-pointed sparkles scattered around the subject.
+Street graffiti and urban stencil art. Rough spray-paint texture with visible overspray and paint drips running downward. High-contrast palette: electric violet, hot magenta, safety orange, acid yellow. Halftone dot shading. Torn paper and stencil-cut edges. Bold marker outlines, raw and deliberately imperfect, white chalk-like highlights.
 
-Subject: a clipboard with a checklist.
+Subject: a clipboard with a checklist, checkmarks drawn as rough marker strokes.
 
 Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject.
 ```
@@ -83,9 +92,9 @@ Flat vector illustration, no photographic texture. Transparent background — no
 ### Шаг 2 — `empty-habits.png` (640×400)
 
 ```
-1970s retro groovy illustration. Thick uniform rounded outlines, bubbly organic shapes. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Small four-pointed sparkles scattered around the subject.
+Street graffiti and urban stencil art. Rough spray-paint texture with visible overspray and paint drips running downward. High-contrast palette: electric violet, hot magenta, safety orange, acid yellow. Halftone dot shading. Torn paper and stencil-cut edges. Bold marker outlines, raw and deliberately imperfect, white chalk-like highlights.
 
-Subject: a rainbow arc between two smiling clouds.
+Subject: a spray paint can with a burst of paint mist.
 
 Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject.
 ```
@@ -93,9 +102,9 @@ Flat vector illustration, no photographic texture. Transparent background — no
 ### Шаг 3 — `empty-goals.png` (640×400)
 
 ```
-1970s retro groovy illustration. Thick uniform rounded outlines, bubbly organic shapes. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Small four-pointed sparkles scattered around the subject.
+Street graffiti and urban stencil art. Rough spray-paint texture with visible overspray and paint drips running downward. High-contrast palette: electric violet, hot magenta, safety orange, acid yellow. Halftone dot shading. Torn paper and stencil-cut edges. Bold marker outlines, raw and deliberately imperfect, white chalk-like highlights.
 
-Subject: a mountain peak with a flag planted on top.
+Subject: a target with two arrows in it, paint dripping from the rings.
 
 Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject.
 ```
@@ -103,7 +112,7 @@ Flat vector illustration, no photographic texture. Transparent background — no
 ### Шаг 4 — `empty-shelf.png` (640×400)
 
 ```
-1970s retro groovy illustration. Thick uniform rounded outlines, bubbly organic shapes. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Small four-pointed sparkles scattered around the subject.
+Street graffiti and urban stencil art. Rough spray-paint texture with visible overspray and paint drips running downward. High-contrast palette: electric violet, hot magenta, safety orange, acid yellow. Halftone dot shading. Torn paper and stencil-cut edges. Bold marker outlines, raw and deliberately imperfect, white chalk-like highlights.
 
 Subject: an open book beside a film strip.
 
@@ -113,9 +122,9 @@ Flat vector illustration, no photographic texture. Transparent background — no
 ### Шаг 5 — `motivation.png` (512×512)
 
 ```
-1970s retro groovy illustration. Thick uniform rounded outlines, bubbly organic shapes. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Small four-pointed sparkles scattered around the subject.
+Street graffiti and urban stencil art. Rough spray-paint texture with visible overspray and paint drips running downward. High-contrast palette: electric violet, hot magenta, safety orange, acid yellow. Halftone dot shading. Torn paper and stencil-cut edges. Bold marker outlines, raw and deliberately imperfect, white chalk-like highlights.
 
-Subject: a smiling flower character wearing sunglasses, making a peace sign with one leaf hand.
+Subject: a classical marble bust with a spray-painted stripe across the eyes.
 
 Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject.
 ```
@@ -123,9 +132,9 @@ Flat vector illustration, no photographic texture. Transparent background — no
 ### Шаг 6 — `avatar.png` (256×256)
 
 ```
-1970s retro groovy illustration. Thick uniform rounded outlines, bubbly organic shapes. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive.
+Street graffiti and urban stencil art. Rough spray-paint texture with visible overspray and paint drips running downward. High-contrast palette: electric violet, hot magenta, safety orange, acid yellow. Halftone dot shading. Torn paper and stencil-cut edges. Bold marker outlines, raw and deliberately imperfect, white chalk-like highlights.
 
-Subject: a friendly character portrait, head and shoulders, facing forward, with wavy hair and round glasses.
+Subject: a person in a hood, face in shadow, portrait, head and shoulders, facing forward.
 
 Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject.
 ```
@@ -137,9 +146,9 @@ Flat vector illustration, no photographic texture. Transparent background — no
 буквах даже на латинице.
 
 ```
-1970s retro groovy display lettering. Thick uniform rounded outlines, bubbly organic letterforms, letters bulging and touching each other. Palette: coral red, sunset orange, golden yellow, periwinkle blue. Flat fills. Small four-pointed sparkles around the word.
+Street graffiti and urban stencil art. Rough spray-paint texture with visible overspray and paint drips running downward. High-contrast palette: electric violet, hot magenta, safety orange, acid yellow. Halftone dot shading. Torn paper and stencil-cut edges. Bold marker outlines, raw and deliberately imperfect, white chalk-like highlights.
 
-Subject: the single word LIFEOS, spelled exactly L-I-F-E-O-S, as one horizontal lettering lockup.
+Subject: the single word LIFEOS, spelled exactly L-I-F-E-O-S, as one horizontal graffiti tag with paint drips.
 
 Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow. No other text besides the word LIFEOS. Centered, even margins.
 ```
@@ -147,7 +156,132 @@ Flat vector illustration, no photographic texture. Transparent background — no
 ### Шаг 8 — `badge-100.png` (128×128)
 
 ```
-1970s retro groovy illustration. Thick uniform rounded outlines, bubbly organic shapes. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills. Cheerful, slightly naive.
+Street graffiti and urban stencil art. Rough spray-paint texture with visible overspray and paint drips running downward. High-contrast palette: electric violet, hot magenta, safety orange, acid yellow. Halftone dot shading. Torn paper and stencil-cut edges. Bold marker outlines, raw and deliberately imperfect, white chalk-like highlights.
+
+Subject: a single gemstone outlined in marker.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject. Icon-like, readable at small size.
+```
+
+### Шаг 9 — `badge-300.png` (128×128)
+
+```
+Street graffiti and urban stencil art. Rough spray-paint texture with visible overspray and paint drips running downward. High-contrast palette: electric violet, hot magenta, safety orange, acid yellow. Halftone dot shading. Torn paper and stencil-cut edges. Bold marker outlines, raw and deliberately imperfect, white chalk-like highlights.
+
+Subject: a larger gemstone with a halftone shading pattern.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject. Icon-like, readable at small size.
+```
+
+### Шаг 10 — `badge-600.png` (128×128)
+
+```
+Street graffiti and urban stencil art. Rough spray-paint texture with visible overspray and paint drips running downward. High-contrast palette: electric violet, hot magenta, safety orange, acid yellow. Halftone dot shading. Torn paper and stencil-cut edges. Bold marker outlines, raw and deliberately imperfect, white chalk-like highlights.
+
+Subject: a five-point crown drawn as a marker doodle.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject. Icon-like, readable at small size.
+```
+
+### Шаг 11 — `badge-1000.png` (128×128)
+
+```
+Street graffiti and urban stencil art. Rough spray-paint texture with visible overspray and paint drips running downward. High-contrast palette: electric violet, hot magenta, safety orange, acid yellow. Halftone dot shading. Torn paper and stencil-cut edges. Bold marker outlines, raw and deliberately imperfect, white chalk-like highlights.
+
+Subject: a trophy cup with paint dripping down it.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject. Icon-like, readable at small size.
+```
+
+> **Про граффити отдельно:** карточки этого скина чёрные, текст светлый
+> — в CSS ему нужны собственные `--card-bg` и `--text`, и проверять его
+> надо и в светлом, и в тёмном режиме браузера. Иначе у половины
+> пользователей будет светлый текст на светлой карточке.
+
+---
+
+# PIXEL — 11 промптов
+
+Пиксель-арт на строгой сетке 32×32. Складывать в
+`app/web/static/skins/pixel/`.
+
+### Шаг 1 — `empty-tasks.png` (640×400)
+
+```
+Pixel art on a strict 32x32 pixel grid. Hard aliased edges, no anti-aliasing whatsoever. Limited palette: black outlines, cream white, acid lime green, electric violet. Chunky two-pixel-wide outlines. NES-era video game sprite aesthetic. Every edge snaps to the pixel grid.
+
+Subject: a clipboard with a checklist.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject.
+```
+
+### Шаг 2 — `empty-habits.png` (640×400)
+
+```
+Pixel art on a strict 32x32 pixel grid. Hard aliased edges, no anti-aliasing whatsoever. Limited palette: black outlines, cream white, acid lime green, electric violet. Chunky two-pixel-wide outlines. NES-era video game sprite aesthetic. Every edge snaps to the pixel grid.
+
+Subject: a rainbow arc between two smiling clouds.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject.
+```
+
+### Шаг 3 — `empty-goals.png` (640×400)
+
+```
+Pixel art on a strict 32x32 pixel grid. Hard aliased edges, no anti-aliasing whatsoever. Limited palette: black outlines, cream white, acid lime green, electric violet. Chunky two-pixel-wide outlines. NES-era video game sprite aesthetic. Every edge snaps to the pixel grid.
+
+Subject: a mountain peak with a flag planted on top.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject.
+```
+
+### Шаг 4 — `empty-shelf.png` (640×400)
+
+```
+Pixel art on a strict 32x32 pixel grid. Hard aliased edges, no anti-aliasing whatsoever. Limited palette: black outlines, cream white, acid lime green, electric violet. Chunky two-pixel-wide outlines. NES-era video game sprite aesthetic. Every edge snaps to the pixel grid.
+
+Subject: an open book beside a film strip.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject.
+```
+
+### Шаг 5 — `motivation.png` (512×512)
+
+```
+Pixel art on a strict 32x32 pixel grid. Hard aliased edges, no anti-aliasing whatsoever. Limited palette: black outlines, cream white, acid lime green, electric violet. Chunky two-pixel-wide outlines. NES-era video game sprite aesthetic. Every edge snaps to the pixel grid.
+
+Subject: a capital letter L as a chunky isometric block.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject.
+```
+
+### Шаг 6 — `avatar.png` (256×256)
+
+```
+Pixel art on a strict 32x32 pixel grid. Hard aliased edges, no anti-aliasing whatsoever. Limited palette: black outlines, cream white, acid lime green, electric violet. Chunky two-pixel-wide outlines. NES-era video game sprite aesthetic. Every edge snaps to the pixel grid.
+
+Subject: a skull sprite, front view.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject.
+```
+
+### Шаг 7 — `logo.png` (720×200)
+
+Единственный шаг, где текст в картинке разрешён. Генерировать 3–4 раза и
+выбирать вариант, где `LIFEOS` написано без ошибок.
+
+```
+Pixel art on a strict 32x32 pixel grid. Hard aliased edges, no anti-aliasing whatsoever. Limited palette: black outlines, cream white, acid lime green, electric violet. Chunky two-pixel-wide outlines. NES-era video game sprite aesthetic. Every edge snaps to the pixel grid.
+
+Subject: the single word LIFEOS, spelled exactly L-I-F-E-O-S, in blocky pixel letterforms.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow. No other text besides the word LIFEOS. Centered, even margins.
+```
+
+### Шаг 8 — `badge-100.png` (128×128)
+
+```
+Pixel art on a strict 32x32 pixel grid. Hard aliased edges, no anti-aliasing whatsoever. Limited palette: black outlines, cream white, acid lime green, electric violet. Chunky two-pixel-wide outlines. NES-era video game sprite aesthetic. Every edge snaps to the pixel grid.
 
 Subject: a single small gemstone, simple faceting.
 
@@ -156,108 +290,33 @@ Flat vector illustration, no photographic texture. Transparent background — no
 
 ### Шаг 9 — `badge-300.png` (128×128)
 
-То же, что шаг 8, но `Subject: a larger gemstone with more facets, radiating
-sparkle lines.`
+```
+Pixel art on a strict 32x32 pixel grid. Hard aliased edges, no anti-aliasing whatsoever. Limited palette: black outlines, cream white, acid lime green, electric violet. Chunky two-pixel-wide outlines. NES-era video game sprite aesthetic. Every edge snaps to the pixel grid.
+
+Subject: a larger gemstone with more facets, radiating sparkle lines.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject. Icon-like, readable at small size.
+```
 
 ### Шаг 10 — `badge-600.png` (128×128)
 
-То же, что шаг 8, но `Subject: a crown with three points.`
+```
+Pixel art on a strict 32x32 pixel grid. Hard aliased edges, no anti-aliasing whatsoever. Limited palette: black outlines, cream white, acid lime green, electric violet. Chunky two-pixel-wide outlines. NES-era video game sprite aesthetic. Every edge snaps to the pixel grid.
+
+Subject: a crown with three points.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject. Icon-like, readable at small size.
+```
 
 ### Шаг 11 — `badge-1000.png` (128×128)
 
-То же, что шаг 8, но `Subject: a trophy cup with two handles.`
-
-> **Про груви отдельно:** цветные волны и радуга во всю ширину карточки
-> из референса — **не генерировать**. Это CSS-градиент в псевдоэлементе:
-> резче, легче и красится темой.
-
----
-
-# СКИН 2: `japan` (японская гравюра)
-
-Те же одиннадцать шагов, те же имена файлов и размеры. Меняется первый
-абзац промпта и сюжеты. Копировать целиком.
-
-**Стилевой блок (первый абзац каждого промпта):**
-
-```
-Japanese woodblock print, ukiyo-e engraving style. Two-color risograph printing: deep indigo blue and vermilion red only. Fine parallel hatching for shading, visible woodgrain texture, slight misregistration between the two color plates. Bold confident linework, flat areas of color, no gradients. Weathered, aged linework.
-```
-
-**Техблок (последний абзац каждого промпта):** тот же, что у груви.
-
-| Шаг | Файл | Subject |
-|---|---|---|
-| 1 | `empty-tasks.png` | `a clipboard with a checklist, beside a bamboo stalk` |
-| 2 | `empty-habits.png` | `a crane bird in flight, wings spread` |
-| 3 | `empty-goals.png` | `a coiling dragon among stylized clouds` |
-| 4 | `empty-shelf.png` | `an open book beside a folding fan` |
-| 5 | `motivation.png` | `Mount Fuji with stylized wave clouds at its base` |
-| 6 | `avatar.png` | `a samurai warrior portrait, head and shoulders, facing forward` |
-| 7 | `logo.png` | `the single word LIFEOS, spelled exactly L-I-F-E-O-S, as one horizontal lettering lockup in carved woodblock letterforms` |
-| 8 | `badge-100.png` | `a single cherry blossom` |
-| 9 | `badge-300.png` | `a folding fan, open` |
-| 10 | `badge-600.png` | `a samurai helmet, front view` |
-| 11 | `badge-1000.png` | `Mount Fuji, simplified to an icon` |
-
-> **Про печати-ханко:** красные квадратные печати из референса (整理,
-> 継続, 分析) — это **иероглифы внутри картинки**, то есть текст. Модели
-> регулярно рисуют несуществующие или неуместные кандзи, и проверить это
-> без знания языка нельзя. Если печати нужны — генерировать пустую рамку
-> печати, а иероглиф ставить отдельным выверенным SVG.
-
----
-
-# СКИН 3: `graffiti` (уличный)
-
-**Стилевой блок:**
-
-```
-Street graffiti and urban stencil art. Rough spray-paint texture with visible overspray and paint drips running downward. High-contrast palette: electric violet, hot magenta, safety orange, acid yellow. Halftone dot shading. Torn paper and stencil-cut edges. Bold marker outlines, raw and deliberately imperfect, white chalk-like highlights.
-```
-
-**Техблок:** тот же.
-
-| Шаг | Файл | Subject |
-|---|---|---|
-| 1 | `empty-tasks.png` | `a clipboard with a checklist, checkmarks drawn as rough marker strokes` |
-| 2 | `empty-habits.png` | `a spray paint can with a burst of paint mist` |
-| 3 | `empty-goals.png` | `a target with two arrows in it, paint dripping from the rings` |
-| 4 | `empty-shelf.png` | `an open book beside a film strip` |
-| 5 | `motivation.png` | `a classical marble bust with a spray-painted stripe across the eyes` |
-| 6 | `avatar.png` | `a person in a hood, face in shadow, portrait, head and shoulders, facing forward` |
-| 7 | `logo.png` | `the single word LIFEOS, spelled exactly L-I-F-E-O-S, as one horizontal graffiti tag with paint drips` |
-| 8 | `badge-100.png` | `a single gemstone outlined in marker` |
-| 9 | `badge-300.png` | `a larger gemstone with a halftone shading pattern` |
-| 10 | `badge-600.png` | `a five-point crown drawn as a marker doodle` |
-| 11 | `badge-1000.png` | `a trophy cup with paint dripping down it` |
-
-> **Про граффити отдельно:** это единственный скин, который
-> переопределяет **режим**, а не только акцент — карточки чёрные, текст
-> светлый. В CSS ему нужны собственные `--card-bg` и `--text`, и
-> проверять его надо и в светлом, и в тёмном режиме браузера. Иначе у
-> половины пользователей будет светлый текст на светлой карточке.
-
----
-
-# СКИН 4: `pixel` (уже в проде)
-
-CSS у этого скина готов, картинок нет. Если решите добавить —
-те же одиннадцать шагов.
-
-**Стилевой блок:**
-
 ```
 Pixel art on a strict 32x32 pixel grid. Hard aliased edges, no anti-aliasing whatsoever. Limited palette: black outlines, cream white, acid lime green, electric violet. Chunky two-pixel-wide outlines. NES-era video game sprite aesthetic. Every edge snaps to the pixel grid.
+
+Subject: a trophy cup with two handles.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject. Icon-like, readable at small size.
 ```
-
-Сюжеты — те же, что у груви (шаги 1–4, 8–11), плюс:
-
-| Шаг | Файл | Subject |
-|---|---|---|
-| 5 | `motivation.png` | `a capital letter L as a chunky isometric block` |
-| 6 | `avatar.png` | `a skull sprite, front view` |
-| 7 | `logo.png` | `the single word LIFEOS, spelled exactly L-I-F-E-O-S, in blocky pixel letterforms` |
 
 > **Про пиксель отдельно:** пиксель-арт нельзя масштабировать
 > сглаживанием. При показе обязателен `image-rendering: pixelated`,
@@ -265,27 +324,28 @@ Pixel art on a strict 32x32 pixel grid. Hard aliased edges, no anti-aliasing wha
 
 ---
 
-# ДОПОЛНЕНИЕ 2: домен «Финансы» (появился 23.08, после всех прошлых списков)
+# ФИНАНСЫ — 8 промптов (все четыре скина)
 
 Ни у одного скина нет картинки под финансовую карточку — домена не
-существовало, когда писались списки выше. Два сюжета на каждый скин:
-пустое состояние (список транзакций пуст) и «герой» карточки — крупная
-картинка сверху, как `hero-progress`/`hero-weekly`/`hero-quick` у груви.
+существовало, когда генерировались остальные наборы. Два сюжета на
+каждый скин: пустое состояние (список транзакций пуст) и «герой»
+карточки — крупная картинка сверху, как `hero-progress`/`hero-weekly`/
+`hero-quick` у groovy.
 
-**Слот под них в CSS/разметке ещё не сделан** — то же правило, что и
-везде в проекте: картинка и разметка входят одним изменением. Как
-картинки будут готовы, пришлите их — подключу и слот, и файлы разом.
+**Слот под них в CSS/разметке ещё не сделан** — картинка и разметка
+входят одним изменением. Как картинки будут готовы, подключить и слот,
+и файлы разом.
 
 | Файл | Размер | Куда | Показывается |
 |---|---|---|---|
 | `empty-finance.png` | 640×400 | `skins/<skin>/` | список транзакций пуст |
 | `hero-finance.png` | 640×400 | `skins/<skin>/` | шапка карточки «Финансы» |
 
-## Груви
+## Groovy
 
-Стилевой блок — **тот же, что у дополнения 1** (с чёрным контуром,
-шаги 12–24 выше), не базовый: финансовая карточка того же поколения
-дизайн-системы 003, что и остальные, ей нужен тот же контур.
+Стилевой блок — с чёрным контуром внутри самой картинки (та же версия,
+что у декора/героев groovy), не базовый: финансовая карточка того же
+поколения дизайн-системы 003, что и остальные, ей нужен тот же контур.
 
 ```
 1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
@@ -303,9 +363,7 @@ Subject: a rising staircase of stacked coins with a small sprouting plant on the
 Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject.
 ```
 
-## Японская гравюра
-
-Базовый стилевой блок скина (тот же, что в основном разделе):
+## Japan
 
 ```
 Japanese woodblock print, ukiyo-e engraving style. Two-color risograph printing: deep indigo blue and vermilion red only. Fine parallel hatching for shading, visible woodgrain texture, slight misregistration between the two color plates. Bold confident linework, flat areas of color, no gradients. Weathered, aged linework.
@@ -323,7 +381,7 @@ Subject: a rising staircase of stacked coins with a small sprouting plant on the
 Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject.
 ```
 
-## Граффити
+## Graffiti
 
 ```
 Street graffiti and urban stencil art. Rough spray-paint texture with visible overspray and paint drips running downward. High-contrast palette: electric violet, hot magenta, safety orange, acid yellow. Halftone dot shading. Torn paper and stencil-cut edges. Bold marker outlines, raw and deliberately imperfect, white chalk-like highlights.
@@ -341,7 +399,7 @@ Subject: a rising staircase of stacked coins with a small sprouting plant on the
 Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject.
 ```
 
-## Пиксель
+## Pixel
 
 ```
 Pixel art on a strict 32x32 pixel grid. Hard aliased edges, no anti-aliasing whatsoever. Limited palette: black outlines, cream white, acid lime green, electric violet. Chunky two-pixel-wide outlines. NES-era video game sprite aesthetic. Every edge snaps to the pixel grid.
@@ -365,200 +423,13 @@ Flat vector illustration, no photographic texture. Transparent background — no
 
 1. Фон **действительно** прозрачный, а не белый. Открыть на тёмной
    подложке и посмотреть.
-2. Внутри нет букв и цифр (кроме шага 7).
+2. Внутри нет букв и цифр (кроме шага «лого»).
 3. Читается в реальном размере — открыть уменьшенным до 320×200, а не
    любоваться в полный рост.
 4. Вес после `pngquant` в рамках таблицы.
-5. Лежит в одном наборе с остальными десятью картинками **этого же**
-   скина.
+5. Лежит в одном наборе с остальными картинками **этого же** скина —
+   манера не должна плыть от промпта к промпту.
 
 Пятый пункт проваливается чаще остальных: генератор плывёт по манере от
 запроса к запросу. Лечится тем, что стилевой блок копируется дословно.
 Если картинка выбилась — перегенерировать её, а не подгонять соседние.
-
----
-
-# ДОПОЛНЕНИЕ: декор и герои под дизайн-систему 003
-
-Одиннадцати картинок из основной части не хватает: по
-`designs/003-groovy-design-system.md` иллюстрация нужна **в каждой**
-карточке, а не только в пустом состоянии. Ниже ещё 13 шагов.
-
-Порядок тот же: копировать промпт целиком, сохранять под именем из
-заголовка шага. Всё складывать туда же — `app/web/static/skins/groovy/`.
-
-## Что изменилось в промптах
-
-К стилевому блоку добавлено требование **чёрного контура внутри самой
-картинки**. В дизайн-системе обводка — конструкция, а не рамка: если у
-рисунка контура нет, он будет выглядеть наклейкой не отсюда рядом с
-обведёнными кнопками и карточками.
-
-**Стилевой блок дополнения** (для шагов 12–24):
-
-```
-1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
-```
-
-**Техблок** — тот же, что в основной части.
-
----
-
-## Герои карточек (шаги 12–14)
-
-Крупные сюжетные картинки, 640×400, показываются на 150–190px.
-
-| Шаг | Файл | Subject |
-|---|---|---|
-| 12 | `hero-progress.png` | `a striped rocket flying upward past two small clouds, leaving a curly trail` |
-| 13 | `hero-weekly.png` | `a bar chart made of rounded candy-colored blocks with a smiling sun above it` |
-| 14 | `hero-quick.png` | `an open treasure chest with stars and sparkles floating out of it` |
-
----
-
-## Угловой декор (шаги 15–22)
-
-Мелкие спрайты. Лежат в углах карточек и **выходят за край** —
-поэтому у них другой техблок, чем у картинок из основной части:
-там композиция центрируется, здесь наоборот прижимается к краю.
-Промпты ниже уже собраны целиком, ничего дописывать не надо.
-
-### Шаг 15 — `decor-flowers-left.png` (256×256)
-
-Задачи, дайджесты — левый нижний угол.
-
-```
-1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
-
-Subject: a tight cluster of three daisies and two leaves, growing up from the BOTTOM-LEFT corner, stems rooted at the corner.
-
-Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Composition anchored to one edge and touching it, NOT centered — this is a corner sticker that will bleed off the edge of a card. One tight cluster, no scene, no ground line.
-```
-
-### Шаг 16 — `decor-flowers-right.png` (256×256)
-
-Привычки, полка — правый нижний угол.
-
-```
-1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
-
-Subject: a tight cluster of two round flowers and one leafy stem, growing up from the BOTTOM-RIGHT corner, stems rooted at the corner.
-
-Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Composition anchored to one edge and touching it, NOT centered — this is a corner sticker that will bleed off the edge of a card. One tight cluster, no scene, no ground line.
-```
-
-### Шаг 17 — `decor-cloud-small.png` (256×256)
-
-Задачи, календарь — правый верхний угол, медленно дрейфует.
-
-```
-1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
-
-Subject: a single small puffy cloud with a simple smiling face, pushed to the TOP-RIGHT corner.
-
-Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Composition anchored to one edge and touching it, NOT centered — this is a corner sticker that will bleed off the edge of a card. One tight cluster, no scene, no ground line.
-```
-
-### Шаг 18 — `decor-cloud-big.png` (256×256)
-
-Итоги недели — левый верхний угол, дрейфует.
-
-```
-1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
-
-Subject: one large puffy cloud without a face and two small four-pointed sparkles beside it, pushed to the TOP-LEFT corner.
-
-Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Composition anchored to one edge and touching it, NOT centered — this is a corner sticker that will bleed off the edge of a card. One tight cluster, no scene, no ground line.
-```
-
-### Шаг 19 — `decor-rainbow.png` (512×256)
-
-Привычки — верхний правый край, лежит поперёк.
-
-```
-1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
-
-Subject: a rainbow arc with a puffy cloud at each end, the arc rising from the BOTTOM edge of the frame so its two ends are cut off by that edge.
-
-Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Composition anchored to one edge and touching it, NOT centered — this is a corner sticker that will bleed off the edge of a card. One tight cluster, no scene, no ground line.
-```
-
-### Шаг 20 — `decor-hill.png` (512×256)
-
-Цели — нижний левый край.
-
-```
-1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
-
-Subject: a rolling grassy hill with two tiny flowers on it, occupying the BOTTOM half of the frame and running off both the left and right edges.
-
-Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Composition anchored to one edge and touching it, NOT centered — this is a corner sticker that will bleed off the edge of a card. One tight cluster, no scene, no ground line.
-```
-
-### Шаг 21 — `decor-mushroom.png` (256×256)
-
-Ежедневный визит — правый нижний угол.
-
-```
-1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
-
-Subject: one spotted mushroom with a simple smiling face and two blades of grass at its base, pushed to the BOTTOM-RIGHT corner.
-
-Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Composition anchored to one edge and touching it, NOT centered — this is a corner sticker that will bleed off the edge of a card. One tight cluster, no scene, no ground line.
-```
-
-### Шаг 22 — `decor-stars.png` (256×256)
-
-Визит и цели — верхние углы.
-
-```
-1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
-
-Subject: a loose cluster of five four-pointed stars of different sizes, gathered toward one corner of the frame.
-
-Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Composition anchored to one edge and touching it, NOT centered — this is a corner sticker that will bleed off the edge of a card. One tight cluster, no scene, no ground line.
-```
-
----
-
-## Волны-разделители (шаги 23–24)
-
-Широкие полосы **1024×256** вдоль низа карточки. Техблок снова свой:
-полоса должна доходить до обоих краёв, иначе на широкой карточке
-будет виден шов.
-
-### Шаг 23 — `wave-color.png` (1024×256)
-
-```
-1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
-
-Subject: horizontally stacked wavy stripes in coral red, sunset orange, golden yellow, sage green and dusty lavender, five stripes total.
-
-Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow. No text, no letters, no numbers anywhere in the image. A horizontal band spanning the full width of the image, with the stripes running off both the left and right edges so the band can tile seamlessly. Nothing floating above or below the band.
-```
-
-### Шаг 24 — `wave-mono.png` (1024×256)
-
-```
-1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
-
-Subject: horizontally stacked wavy stripes in two close tones of cream and warm beige, subtle and low contrast, four stripes total.
-
-Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow. No text, no letters, no numbers anywhere in the image. A horizontal band spanning the full width of the image, with the stripes running off both the left and right edges so the band can tile seamlessly. Nothing floating above or below the band.
-```
-
----
-
-## Микрозвёзды НЕ генерируем
-
-Четырёхлучевые звёздочки и точки по 10–18px рисуются инлайновым SVG:
-их по 3–6 на карточку, они одноцветные и должны краситься акцентом
-домена. Картинкой это было бы 20 лишних запросов и невозможность
-перекрасить.
-
-## Про вес
-
-24 картинки в скине — это уже не 250 КБ. Реалистичная оценка 400–450 КБ.
-Мелкий декор жмётся хорошо (1–4 КБ на спрайт), основной вес по-прежнему
-на четырёх пустых состояниях и героях. Сжимать той же командой:
-палитра 200, масштаб 1.0.
