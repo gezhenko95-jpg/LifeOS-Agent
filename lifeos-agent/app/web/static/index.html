@@ -1101,8 +1101,35 @@
   .theme-swatch:hover:not(:disabled) { transform: scale(1.15); }
   .theme-swatch.active { border-color: var(--text); }
   .theme-swatch[data-locked] {
+    background: var(--border);
+    background-size: cover;
+    background-position: center;
     opacity: 0.4;
     filter: grayscale(0.7);
+  }
+  /* Свой цвет каждой закрытой темы — раньше приходил инлайном из JS
+     (style="background:…"), теперь только для открытых (см.
+     renderThemePicker): шорхэнд background в инлайне намертво забивал
+     бы background-image бейджей у скинов ниже, а !important в проекте
+     принципиально не используется нигде. Здесь эти же цвета — просто в
+     CSS, у скина выше специфичность (:root[data-skin=…] + 3 селектора
+     против этих же 3 без него), поэтому бейдж и тут переопределяет
+     чисто по каскаду.
+
+     ВАЖНО: только background-color/background-image (лонгхенды), НЕ
+     шорхэнд background — шорхэнд неявно обнуляет background-size у
+     ЭТОГО правила (specificity 3) даже там, где сам он не задаёт
+     background-image, а более специфичный бейдж-селектор (specificity
+     5) забирает только background-image, но не участвует в каскаде
+     background-size — итог был "url бейджа есть, но background-size:
+     auto вместо cover", картинка рисовалась в родном масштабе PNG
+     вместо заполнения кружка. Пойман через getComputedStyle, не на
+     глаз (на 26px кружке разница не видна без зума). */
+  .theme-swatch[data-locked][data-theme-id="violet"] { background-color: #8b5cf6; }
+  .theme-swatch[data-locked][data-theme-id="emerald"] { background-color: #10b981; }
+  .theme-swatch[data-locked][data-theme-id="sunset"] { background-color: #f97316; }
+  .theme-swatch[data-locked][data-theme-id="rainbow"] {
+    background-image: conic-gradient(from 0deg, #f43f5e, #f59e0b, #22c55e, #3b82f6, #a855f7, #f43f5e);
   }
   /* Наведение на закрытую тему всё равно показывает её цвет — это и есть
      предпросмотр «что откроется». */
@@ -1260,6 +1287,21 @@
   :root[data-skin="pixel"] .achievements li { border-radius: 0; border-width: 2px; }
   :root[data-skin="pixel"] .icon-chip { border-radius: 0; }
   :root[data-skin="pixel"] .theme-swatch { border-radius: 0; }
+  /* Бейджи закрытых тем — картинка вместо плоского цвета+числа, число
+     остаётся поверх (см. .theme-swatch .req). Порог = имя файла, id
+     темы → порог см. THEMES в <script> ниже. background-size/position
+     дублируются в каждом правиле, а не заданы один раз в базовом
+     .theme-swatch[data-locked] (см. выше) — у скина есть общее
+     :root[data-skin="X"] button { background: ...} (шорхэнд для формы
+     кнопок), и на background-size оно с базовым правилом того же
+     уровня специфичности "по классам" (2 против 2) побеждает лишним
+     селектором элемента (button) — легко потерять час, если не знать
+     про этот тай-брейк. Дешевле продублировать здесь, где специфичность
+     уже заведомо выше всего. */
+  :root[data-skin="pixel"] .theme-swatch[data-locked][data-theme-id="violet"] { background-image: url("skins/pixel/badge-100.png"); background-size: cover; background-position: center; }
+  :root[data-skin="pixel"] .theme-swatch[data-locked][data-theme-id="emerald"] { background-image: url("skins/pixel/badge-300.png"); background-size: cover; background-position: center; }
+  :root[data-skin="pixel"] .theme-swatch[data-locked][data-theme-id="sunset"] { background-image: url("skins/pixel/badge-600.png"); background-size: cover; background-position: center; }
+  :root[data-skin="pixel"] .theme-swatch[data-locked][data-theme-id="rainbow"] { background-image: url("skins/pixel/badge-1000.png"); background-size: cover; background-position: center; }
   :root[data-skin="pixel"] .shelf-poster { border-radius: 0; border: 2px solid var(--border); }
   :root[data-skin="pixel"] .progress-bar,
   :root[data-skin="pixel"] .progress-bar > span { border-radius: 0; }
@@ -1857,6 +1899,11 @@
     padding: 0;
   }
   :root[data-skin="groovy"] .theme-swatch:hover:not(:disabled) { transform: scale(1.15); box-shadow: none; }
+  /* Бейджи закрытых тем — см. тот же приём и комментарий у pixel выше. */
+  :root[data-skin="groovy"] .theme-swatch[data-locked][data-theme-id="violet"] { background-image: url("skins/groovy/badge-100.png"); background-size: cover; background-position: center; }
+  :root[data-skin="groovy"] .theme-swatch[data-locked][data-theme-id="emerald"] { background-image: url("skins/groovy/badge-300.png"); background-size: cover; background-position: center; }
+  :root[data-skin="groovy"] .theme-swatch[data-locked][data-theme-id="sunset"] { background-image: url("skins/groovy/badge-600.png"); background-size: cover; background-position: center; }
+  :root[data-skin="groovy"] .theme-swatch[data-locked][data-theme-id="rainbow"] { background-image: url("skins/groovy/badge-1000.png"); background-size: cover; background-position: center; }
   :root[data-skin="groovy"] .digest-topic { border-bottom: 3px solid var(--paper-shade); }
   :root[data-skin="groovy"] .digest-preview {
     border: 3px solid var(--ink);
@@ -1978,6 +2025,11 @@
   :root[data-skin="japan"] .achievements li { border-radius: 0; }
   :root[data-skin="japan"] .icon-chip { border-radius: 0; }
   :root[data-skin="japan"] .theme-swatch { border-radius: 0; }
+  /* Бейджи закрытых тем — см. тот же приём и комментарий у pixel выше. */
+  :root[data-skin="japan"] .theme-swatch[data-locked][data-theme-id="violet"] { background-image: url("skins/japan/badge-100.png"); background-size: cover; background-position: center; }
+  :root[data-skin="japan"] .theme-swatch[data-locked][data-theme-id="emerald"] { background-image: url("skins/japan/badge-300.png"); background-size: cover; background-position: center; }
+  :root[data-skin="japan"] .theme-swatch[data-locked][data-theme-id="sunset"] { background-image: url("skins/japan/badge-600.png"); background-size: cover; background-position: center; }
+  :root[data-skin="japan"] .theme-swatch[data-locked][data-theme-id="rainbow"] { background-image: url("skins/japan/badge-1000.png"); background-size: cover; background-position: center; }
   :root[data-skin="japan"] .shelf-poster { border-radius: 0; }
   :root[data-skin="japan"] .progress-bar,
   :root[data-skin="japan"] .progress-bar > span { border-radius: 0; }
@@ -2276,6 +2328,11 @@
     padding: 0;
   }
   :root[data-skin="graffiti"] .theme-swatch:hover:not(:disabled) { transform: scale(1.15); box-shadow: none; }
+  /* Бейджи закрытых тем — см. тот же приём и комментарий у pixel выше. */
+  :root[data-skin="graffiti"] .theme-swatch[data-locked][data-theme-id="violet"] { background-image: url("skins/graffiti/badge-100.png"); background-size: cover; background-position: center; }
+  :root[data-skin="graffiti"] .theme-swatch[data-locked][data-theme-id="emerald"] { background-image: url("skins/graffiti/badge-300.png"); background-size: cover; background-position: center; }
+  :root[data-skin="graffiti"] .theme-swatch[data-locked][data-theme-id="sunset"] { background-image: url("skins/graffiti/badge-600.png"); background-size: cover; background-position: center; }
+  :root[data-skin="graffiti"] .theme-swatch[data-locked][data-theme-id="rainbow"] { background-image: url("skins/graffiti/badge-1000.png"); background-size: cover; background-position: center; }
   :root[data-skin="graffiti"] .digest-topic { border-bottom: 3px solid var(--paper-shade); }
   :root[data-skin="graffiti"] .digest-preview {
     border: 3px solid var(--ink);
@@ -3160,10 +3217,16 @@ function renderThemePicker() {
   const picker = document.getElementById("themePicker");
   picker.innerHTML = THEMES.map((t) => {
     const unlocked = lastRewards.totalCoins >= t.threshold;
-    const bg = t.swatch.startsWith("#") ? t.swatch : t.swatch; // и то, и то — валидный CSS background
     const req = !unlocked ? `<span class="req">${t.threshold}</span>` : "";
-    return `<button type="button" class="theme-swatch${t.id === active ? " active" : ""}"
-      style="background:${bg}" data-theme-id="${t.id}"
+    // Открытые темы — свой цвет инлайном (это и есть превью). Закрытые
+    // — БЕЗ инлайн-фона: у скинов с бейджами (badge-100/300/600/1000.png,
+    // см. CSS ниже) фон задаёт картинка, у обычного оформления — серый
+    // из .theme-swatch[data-locked]. `style="background"` — шорхэнд, он
+    // забил бы background-image насмерть, а тянуть !important ради
+    // этого не стали — в проекте их принципиально нет ни одного.
+    const style = unlocked ? ` style="background:${t.swatch}"` : "";
+    return `<button type="button" class="theme-swatch${t.id === active ? " active" : ""}"${style}
+      data-theme-id="${t.id}"
       title="${escapeHtml(t.label)}${unlocked ? "" : ` — от ${t.threshold} монет`}"
       ${unlocked ? "" : 'data-locked="1" aria-disabled="true"'}>${req}</button>`;
   }).join("");
