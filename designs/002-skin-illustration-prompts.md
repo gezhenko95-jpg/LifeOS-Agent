@@ -265,6 +265,102 @@ Pixel art on a strict 32x32 pixel grid. Hard aliased edges, no anti-aliasing wha
 
 ---
 
+# ДОПОЛНЕНИЕ 2: домен «Финансы» (появился 23.08, после всех прошлых списков)
+
+Ни у одного скина нет картинки под финансовую карточку — домена не
+существовало, когда писались списки выше. Два сюжета на каждый скин:
+пустое состояние (список транзакций пуст) и «герой» карточки — крупная
+картинка сверху, как `hero-progress`/`hero-weekly`/`hero-quick` у груви.
+
+**Слот под них в CSS/разметке ещё не сделан** — то же правило, что и
+везде в проекте: картинка и разметка входят одним изменением. Как
+картинки будут готовы, пришлите их — подключу и слот, и файлы разом.
+
+| Файл | Размер | Куда | Показывается |
+|---|---|---|---|
+| `empty-finance.png` | 640×400 | `skins/<skin>/` | список транзакций пуст |
+| `hero-finance.png` | 640×400 | `skins/<skin>/` | шапка карточки «Финансы» |
+
+## Груви
+
+Стилевой блок — **тот же, что у дополнения 1** (с чёрным контуром,
+шаги 12–24 выше), не базовый: финансовая карточка того же поколения
+дизайн-системы 003, что и остальные, ей нужен тот же контур.
+
+```
+1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
+
+Subject: a piggy bank with one coin floating just above its coin slot, about to drop in.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject.
+```
+
+```
+1970s retro groovy illustration. Every shape has a thick uniform black outline, 4 to 6 pixels relative to a 500px wide image. Bubbly organic forms, rounded corners. Palette: coral red, sunset orange, golden yellow, sage green, periwinkle blue, dusty lavender. Flat fills, occasional simple two-stop gradients. Cheerful, optimistic, slightly naive. Sticker-pack aesthetic, like a die-cut vinyl sticker.
+
+Subject: a rising staircase of stacked coins with a small sprouting plant on the top step.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject.
+```
+
+## Японская гравюра
+
+Базовый стилевой блок скина (тот же, что в основном разделе):
+
+```
+Japanese woodblock print, ukiyo-e engraving style. Two-color risograph printing: deep indigo blue and vermilion red only. Fine parallel hatching for shading, visible woodgrain texture, slight misregistration between the two color plates. Bold confident linework, flat areas of color, no gradients. Weathered, aged linework.
+
+Subject: a piggy bank with one coin floating just above its coin slot, about to drop in.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject.
+```
+
+```
+Japanese woodblock print, ukiyo-e engraving style. Two-color risograph printing: deep indigo blue and vermilion red only. Fine parallel hatching for shading, visible woodgrain texture, slight misregistration between the two color plates. Bold confident linework, flat areas of color, no gradients. Weathered, aged linework.
+
+Subject: a rising staircase of stacked coins with a small sprouting plant on the top step.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject.
+```
+
+## Граффити
+
+```
+Street graffiti and urban stencil art. Rough spray-paint texture with visible overspray and paint drips running downward. High-contrast palette: electric violet, hot magenta, safety orange, acid yellow. Halftone dot shading. Torn paper and stencil-cut edges. Bold marker outlines, raw and deliberately imperfect, white chalk-like highlights.
+
+Subject: a piggy bank with one coin floating just above its coin slot, about to drop in.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject.
+```
+
+```
+Street graffiti and urban stencil art. Rough spray-paint texture with visible overspray and paint drips running downward. High-contrast palette: electric violet, hot magenta, safety orange, acid yellow. Halftone dot shading. Torn paper and stencil-cut edges. Bold marker outlines, raw and deliberately imperfect, white chalk-like highlights.
+
+Subject: a rising staircase of stacked coins with a small sprouting plant on the top step.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject.
+```
+
+## Пиксель
+
+```
+Pixel art on a strict 32x32 pixel grid. Hard aliased edges, no anti-aliasing whatsoever. Limited palette: black outlines, cream white, acid lime green, electric violet. Chunky two-pixel-wide outlines. NES-era video game sprite aesthetic. Every edge snaps to the pixel grid.
+
+Subject: a piggy bank with one coin floating just above its coin slot, about to drop in.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject.
+```
+
+```
+Pixel art on a strict 32x32 pixel grid. Hard aliased edges, no anti-aliasing whatsoever. Limited palette: black outlines, cream white, acid lime green, electric violet. Chunky two-pixel-wide outlines. NES-era video game sprite aesthetic. Every edge snaps to the pixel grid.
+
+Subject: a rising staircase of stacked coins with a small sprouting plant on the top step.
+
+Flat vector illustration, no photographic texture. Transparent background — no background fill, no card, no frame, no drop shadow behind the subject. No text, no letters, no numbers anywhere in the image. Centered composition, even margins, single subject.
+```
+
+---
+
 ## Приёмка: проверить пять вещей до того, как класть в `static/`
 
 1. Фон **действительно** прозрачный, а не белый. Открыть на тёмной
