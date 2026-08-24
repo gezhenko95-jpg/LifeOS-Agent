@@ -224,6 +224,54 @@ async def test_stats_counts_completed_this_week(client):
     assert response.json()["completed_this_week"] == 1
 
 
+async def test_list_completed_in_range(client):
+    create_resp = await client.post(
+        "/tasks", json={"telegram_user_id": 9, "title": "Отчёт"}
+    )
+    task_id = create_resp.json()["id"]
+    await client.patch(
+        f"/tasks/{task_id}",
+        params={"telegram_user_id": 9},
+        json={"status": "completed"},
+    )
+
+    response = await client.get(
+        "/tasks/completed",
+        params={
+            "telegram_user_id": 9,
+            "since": "2020-01-01T00:00:00Z",
+            "until": "2099-01-01T00:00:00Z",
+        },
+    )
+
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+    assert response.json()[0]["title"] == "Отчёт"
+
+
+async def test_list_completed_outside_range_is_empty(client):
+    create_resp = await client.post(
+        "/tasks", json={"telegram_user_id": 9, "title": "Отчёт"}
+    )
+    task_id = create_resp.json()["id"]
+    await client.patch(
+        f"/tasks/{task_id}",
+        params={"telegram_user_id": 9},
+        json={"status": "completed"},
+    )
+
+    response = await client.get(
+        "/tasks/completed",
+        params={
+            "telegram_user_id": 9,
+            "since": "2020-01-01T00:00:00Z",
+            "until": "2020-02-01T00:00:00Z",
+        },
+    )
+
+    assert response.json() == []
+
+
 async def test_stats_zero_when_nothing_completed(client):
     response = await client.get("/tasks/stats", params={"telegram_user_id": 8})
 

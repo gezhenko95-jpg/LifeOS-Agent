@@ -859,6 +859,16 @@
   }
   .cal-task.overdue { outline: 1px solid var(--overdue); }
   .cal-task.dragging { opacity: 0.45; }
+  /* Выполненные в этот день — зачёркнуты и приглушены, отдельно от
+     активных задач того же дня (см. loadCompletedForCalendar). Цветную
+     метку/приоритет намеренно не красим для done — тускло и так, лишний
+     цвет на зачёркнутом тексте только мешает читать. */
+  .cal-task.done {
+    background: var(--border);
+    color: var(--muted);
+    text-decoration: line-through;
+    opacity: 0.7;
+  }
   .cal-more { font-size: 0.68rem; color: var(--muted); }
   .cal-input {
     width: 100%;
@@ -2648,6 +2658,7 @@
     </div>
     <div class="editor-actions">
       <button type="button" id="editorSave">Сохранить</button>
+      <button type="button" class="secondary" id="editorComplete" hidden>✓ Выполнить</button>
       <button type="button" class="secondary" id="editorCancel">Отмена</button>
     </div>
   </div>
@@ -3657,6 +3668,7 @@ async function loadTasks() {
   if (!id) { list.innerHTML = ""; lastHabits = []; return; }
   const tasks = await api(`/tasks?telegram_user_id=${encodeURIComponent(id)}`);
   lastTasks = tasks;
+  await loadCompletedForCalendar();
   renderCalendar();
   if (!tasks.length) {
     list.innerHTML = '<li class="empty">Активных задач нет — и это нормально.</li>';
@@ -4243,7 +4255,13 @@ let editorTarget = null; // { kind: "task" | "habit" | "goal", id }
 function openEditor(kind, id) {
   const source =
     kind === "task" ? lastTasks : kind === "habit" ? lastHabits : lastGoals;
-  const item = source.find((entry) => entry.id === id);
+  // Зачёркнутая (выполненная) плашка в календаре кликабельна так же, как
+  // активная, но её задачи нет в lastTasks (список активных) —
+  // lastCompletedTasks как запасной источник, иначе клик молча ничего
+  // не делал (item не найден).
+  const item =
+    source.find((entry) => entry.id === id) ||
+    (kind === "task" ? lastCompletedTasks.find((entry) => entry.id === id) : null);
   if (!item) return;
 
   editorTarget = { kind: kind, id: id };
@@ -4253,6 +4271,11 @@ function openEditor(kind, id) {
   const colorRow = document.getElementById("editorColorRow");
   colorRow.hidden = kind !== "task";
   if (kind === "task") document.getElementById("editorColor").value = item.color || "";
+
+  // "✓ Выполнить" — раньше открыть задачу из календаря (клик по плашке
+  // в месячной сетке/панели часов) можно было только на правку, без
+  // способа отметить готовой прямо там же.
+  document.getElementById("editorComplete").hidden = kind !== "task";
 
   const reminderRow = document.getElementById("editorReminderRow");
   reminderRow.hidden = kind !== "habit";
@@ -4324,7 +4347,25 @@ async function saveEditor() {
   showToast("Сохранено");
 }
 
+async function completeEditorTask() {
+  if (!editorTarget || editorTarget.kind !== "task") return;
+  const id = requireUserId();
+  await api(
+    "/tasks/" + editorTarget.id + "?telegram_user_id=" + encodeURIComponent(id),
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "completed" }),
+    }
+  );
+  closeEditor();
+  await loadTasks();
+  renderDayPanel();
+  showToast("Выполнено");
+}
+
 document.getElementById("editorSave").addEventListener("click", saveEditor);
+document.getElementById("editorComplete").addEventListener("click", completeEditorTask);
 document.getElementById("editorCancel").addEventListener("click", closeEditor);
 document.getElementById("editorTitle").addEventListener("keydown", (e) => {
   if (e.key === "Enter") saveEditor();
@@ -4391,7 +4432,7 @@ function gridStart(date) {
     название, время справа. Время показываем всегда — «на когда стоит
     задача» это первое, что спрашивают у календаря, а раньше его нужно
     было угадывать по строке часа. */
-function calTaskChip(task) {
+function calTaskChip(task, done) {
   const time = task.due_date
     ? new Date(task.due_date).toLocaleTimeString("ru-RU", {
         hour: "2-digit",
@@ -4400,19 +4441,47 @@ function calTaskChip(task) {
     : "";
   const classes = [
     "cal-task",
-    task.priority === "high" ? "high" : "",
-    dueStatus(task.due_date) === "overdue" ? "overdue" : "",
+    done ? "done" : "",
+    !done && task.priority === "high" ? "high" : "",
+    !done && dueStatus(task.due_date) === "overdue" ? "overdue" : "",
     task.color ? "color-" + task.color : "",
   ]
     .filter(Boolean)
     .join(" ");
   return (
-    '<span class="' + classes + '" draggable="true" data-task-id="' + task.id +
-    '" title="' + escapeHtml(task.title) + '">' +
+    '<span class="' + classes + '" draggable="' + (done ? "false" : "true") +
+    '" data-task-id="' + task.id + '" title="' + escapeHtml(task.title) + '">' +
     '<span class="cal-task-title">' + escapeHtml(task.title) + "</span>" +
     (time ? '<span class="cal-task-time">' + time + "</span>" : "") +
     "</span>"
   );
+}
+
+// Выполненные задачи не приходят в lastTasks (list_active_tasks —
+// только активные) — отдельный запрос на видимый диапазон сетки, чтобы
+// показать их зачёркнутыми в день, когда они были завершены (не в день
+// due_date — человек мог сделать раньше/позже срока).
+let lastCompletedTasks = [];
+
+async function loadCompletedForCalendar() {
+  const id = getUserId();
+  if (!id) { lastCompletedTasks = []; return; }
+  const rangeStart = gridStart(calMonth);
+  const rangeEnd = new Date(rangeStart);
+  rangeEnd.setDate(rangeEnd.getDate() + 42);
+  try {
+    lastCompletedTasks = await api(
+      `/tasks/completed?telegram_user_id=${encodeURIComponent(id)}` +
+      `&since=${rangeStart.toISOString()}&until=${rangeEnd.toISOString()}`
+    );
+  } catch (e) {
+    lastCompletedTasks = [];
+  }
+}
+
+async function refreshCalendar() {
+  await loadCompletedForCalendar();
+  renderCalendar();
 }
 
 function renderCalendar() {
@@ -4428,6 +4497,13 @@ function renderCalendar() {
     const key = dayKey(new Date(task.due_date));
     if (!byDay.has(key)) byDay.set(key, []);
     byDay.get(key).push(task);
+  }
+  const doneByDay = new Map();
+  for (const task of lastCompletedTasks) {
+    if (!task.completed_at) continue;
+    const key = dayKey(new Date(task.completed_at));
+    if (!doneByDay.has(key)) doneByDay.set(key, []);
+    doneByDay.get(key).push(task);
   }
 
   const todayKey = dayKey(new Date());
@@ -4458,9 +4534,16 @@ function renderCalendar() {
     if (cursor.getMonth() !== calMonth.getMonth()) classes.push("other-month");
     if (key === todayKey) classes.push("today");
 
+    const doneTasks = doneByDay.get(key) || [];
     const shown = dayTasks.slice(0, CAL_MAX_VISIBLE);
     const hidden = dayTasks.length - shown.length;
-    const chips = shown.map((task) => calTaskChip(task)).join("");
+    // Выполненные — после активных, свой остаток в счётчик "+N" не
+    // добавляем отдельно: и так видно как зачёркнутый хвост дня, лишний
+    // "+2" сверху запутал бы больше, чем помог.
+    const doneShown = doneTasks.slice(0, Math.max(0, CAL_MAX_VISIBLE - shown.length));
+    const chips =
+      shown.map((task) => calTaskChip(task, false)).join("") +
+      doneShown.map((task) => calTaskChip(task, true)).join("");
 
     cells.push(`
       <div class="${classes.join(" ")}" data-day="${key}">
@@ -4476,15 +4559,15 @@ function renderCalendar() {
 
 document.getElementById("calPrev").addEventListener("click", () => {
   calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1);
-  renderCalendar();
+  refreshCalendar();
 });
 document.getElementById("calNext").addEventListener("click", () => {
   calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1);
-  renderCalendar();
+  refreshCalendar();
 });
 document.getElementById("calToday").addEventListener("click", () => {
   calMonth = startOfMonth(new Date());
-  renderCalendar();
+  refreshCalendar();
 });
 
 // --- Панель дня: часы, дневник, добавление любого типа ---------------

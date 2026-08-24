@@ -160,6 +160,20 @@ async def delete_comment(
         )
 
 
+@router.get("/completed", response_model=list[TaskRead])
+async def list_completed_tasks(
+    telegram_user_id: int,
+    since: datetime,
+    until: datetime,
+    service: TaskService = Depends(get_task_service),
+) -> list[TaskRead]:
+    """Выполненные в [since, until) — для календаря на /ui (зачёркнутые
+    задачи в день, когда их отметили готовыми). Существующий сервисный
+    метод (Personal Insights) уже делал ровно это, роута не было."""
+    tasks = await service.list_tasks_completed_between(telegram_user_id, since, until)
+    return [TaskRead.model_validate(task) for task in tasks]
+
+
 @router.get("/stats", response_model=TaskStats)
 async def get_task_stats(
     telegram_user_id: int, service: TaskService = Depends(get_task_service)
