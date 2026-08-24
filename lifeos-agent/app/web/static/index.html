@@ -447,12 +447,30 @@
   /* Трекер настроения (specs/019-mood-tracker.md): один тап — сразу
      запись, без формы. Кнопки крупные (эмодзи — единственное
      содержимое), чтобы попадать пальцем на телефоне. */
-  .mood-picker { display: flex; gap: 8px; margin-bottom: 12px; }
+  /* flex-wrap — раньше 5 кнопок с flex:1 не помещались в узкую карточку
+     (grid-column: span 3) и min-content последней кнопки вылезал за
+     скруглённый край карточки, обрезаясь визуально. Теперь при нехватке
+     места ряд переносится на две строки вместо обрезки. */
+  .mood-picker { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
   .mood-picker button {
-    flex: 1;
+    flex: 1 1 44px;
+    min-width: 44px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
     font-size: 22px;
-    padding: 8px 0;
+    padding: 8px 4px;
     line-height: 1;
+  }
+  /* Расшифровка эмодзи — раньше была только в title (не видна без
+     наведения, бесполезна на телефоне). Подпись под кнопкой. */
+  .mood-label {
+    font-size: 0.6rem;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--muted);
   }
   ul.item-list { list-style: none; margin: 0; padding: 0; }
   ul.item-list li {
@@ -514,6 +532,21 @@
     background: var(--accent);
     border-radius: 4px;
     transition: width 0.25s;
+  }
+  /* Было инлайновым style="width:56px" — при увеличенном шрифте/паддинге
+     скина (groovy: padding 0 12px + border 3px×2 из общего input-правила)
+     двух цифр уже не помещалось, число обрезалось об край поля. Убираем
+     нативные стрелки браузера (съедали ~18px) и даём полю честную
+     ширину под три цифры (100%). */
+  input.progress-input {
+    width: 62px;
+    text-align: center;
+    -moz-appearance: textfield;
+  }
+  input.progress-input::-webkit-inner-spin-button,
+  input.progress-input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
   }
   .shelf-group h3 {
     font-size: 0.78rem;
@@ -888,10 +921,34 @@
   }
   .digest-freq {
     flex: 1;
+    min-width: 0;
     font-size: 0.78rem;
     color: var(--muted);
   }
+  /* flex-shrink:0 — раньше кнопка могла сжиматься уже своего текста
+     (min-width:auto по умолчанию у flex-элементов сжатие не запрещает,
+     если сосед не готов уступать), из-за чего в скинах с жёсткой
+     box-shadow (groovy/graffiti) текст и тень визуально резались о
+     край карточки. Кнопка теперь либо помещается целиком, либо
+     переносится на свою строку — .digest-head уже flex-wrap. */
+  .digest-send { flex-shrink: 0; }
   .digest-channel { flex: 1; min-width: 0; word-break: break-all; }
+  /* Список каналов темы — сворачивается тем же паттерном, что общий
+     .card.collapsed, но локально на теме: тем может быть много, и
+     видеть сразу все каналы каждой темы не нужно. */
+  .digest-topic .item-list.collapsed > li:nth-child(n + 4) { display: none; }
+  .digest-channels-toggle {
+    display: block;
+    margin: 4px 0 0;
+    background: transparent;
+    border: none;
+    padding: 0;
+    font-size: 0.78rem;
+    color: var(--muted);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .digest-channels-toggle:hover { color: var(--accent); }
   .digest-topic .add-form { margin: 8px 0 0; }
   .digest-preview {
     margin-top: 12px;
@@ -2707,11 +2764,11 @@
   <section class="card" data-domain="mood">
     <h2 data-icon="mood">Настроение</h2>
     <div class="mood-picker" id="moodPicker">
-      <button type="button" data-score="1" title="1/5">😢</button>
-      <button type="button" data-score="2" title="2/5">😕</button>
-      <button type="button" data-score="3" title="3/5">😐</button>
-      <button type="button" data-score="4" title="4/5">🙂</button>
-      <button type="button" data-score="5" title="5/5">😄</button>
+      <button type="button" data-score="1" title="1/5 — плохо">😢<span class="mood-label">плохо</span></button>
+      <button type="button" data-score="2" title="2/5 — так себе">😕<span class="mood-label">так себе</span></button>
+      <button type="button" data-score="3" title="3/5 — норм">😐<span class="mood-label">норм</span></button>
+      <button type="button" data-score="4" title="4/5 — хорошо">🙂<span class="mood-label">хорошо</span></button>
+      <button type="button" data-score="5" title="5/5 — отлично">😄<span class="mood-label">отлично</span></button>
     </div>
     <ul class="item-list" id="moodList"></ul>
   </section>
@@ -3696,7 +3753,7 @@ async function loadGoals() {
       <span class="progress-bar"><span style="width:${goal.progress}%"></span></span>
       <span class="meta">${goal.progress}%</span>
       <input type="number" min="0" max="100" step="5" value="${goal.progress}"
-             style="width:56px" data-action="progress-input" data-id="${goal.id}" />
+             class="progress-input" data-action="progress-input" data-id="${goal.id}" />
       <button class="secondary" data-action="edit" data-kind="goal" data-id="${goal.id}" title="Изменить">✎</button>
       <button class="secondary" data-action="save-progress" data-id="${goal.id}">✓</button>
       <button class="danger" data-action="delete-goal" data-id="${goal.id}">✕</button>
@@ -4815,12 +4872,19 @@ function renderDigests() {
             )
             .join("")
         : '<li class="empty">Каналов нет</li>';
+      // Список каналов сворачивается по умолчанию, если их больше 3 —
+      // тем может быть несколько, и вываливать все паблики сразу шумно.
+      const collapsible = d.channels.length > 3;
+      const toggle = collapsible
+        ? `<button type="button" class="digest-channels-toggle" data-digest-id="${d.id}">Показать все каналы (${d.channels.length}) ▾</button>`
+        : "";
       return (
         `<div class="digest-topic">` +
         `<div class="digest-head"><b>${escapeHtml(d.name)}</b>` +
         `<span class="digest-freq">${DIGEST_FREQUENCY_LABELS[d.auto_frequency] || "по запросу"}</span>` +
         `<button class="secondary digest-send" data-digest-id="${d.id}">Прислать новое</button></div>` +
-        `<ul class="item-list">${channels}</ul>` +
+        `<ul class="item-list${collapsible ? " collapsed" : ""}">${channels}</ul>` +
+        toggle +
         `<form class="add-form digest-add-channel" data-digest-id="${d.id}">` +
         `<input type="text" placeholder="@канал или ссылка t.me" required />` +
         `<button type="submit">+ Канал</button></form>` +
@@ -4901,6 +4965,16 @@ document.getElementById("digestForm").addEventListener("submit", async (e) => {
 // Делегирование: темы и каналы перерисовываются целиком, поэтому вешать
 // обработчики на сами кнопки нельзя — они переживают одну перерисовку.
 document.getElementById("digestList").addEventListener("click", async (e) => {
+  const toggle = e.target.closest(".digest-channels-toggle");
+  if (toggle) {
+    const list = toggle.previousElementSibling;
+    const collapsed = list.classList.toggle("collapsed");
+    const count = list.querySelectorAll("li").length;
+    toggle.textContent = collapsed
+      ? `Показать все каналы (${count}) ▾`
+      : "Свернуть каналы ▴";
+    return;
+  }
   const send = e.target.closest(".digest-send");
   if (send) {
     await sendDigest(send.dataset.digestId, send);
