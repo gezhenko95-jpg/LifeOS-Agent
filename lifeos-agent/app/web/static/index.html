@@ -688,6 +688,32 @@
   @media (prefers-reduced-motion: reduce) {
     .blink-dot { animation: none; }
   }
+  /* Шкала фокус-сессии — "тлеет"/тает по мере убывания времени (tickFocusTimer
+     в <script>, обновляет width/background раз в секунду). */
+  .focus-bar {
+    height: 10px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    overflow: hidden;
+    margin: 8px 0;
+  }
+  .focus-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--accent);
+    width: 100%;
+    transition: width 1s linear, background 1s linear;
+  }
+  .focus-bar-fill.ember-low {
+    animation: ember-flicker 1.4s ease-in-out infinite;
+  }
+  @keyframes ember-flicker {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .focus-bar-fill { transition: none; animation: none; }
+  }
   .item-title { flex: 1; min-width: 120px; }
   .item-title.high { color: var(--high); font-weight: 600; }
   .meta { color: var(--muted); font-size: 0.8rem; white-space: nowrap; }
@@ -4728,20 +4754,65 @@ async function loadFocus() {
       </form>`;
   } else {
     const endsAt = active.status === "in_progress" ? active.work_ends_at : active.break_ends_at;
-    const leftMinutes = endsAt
-      ? Math.max(0, Math.round((new Date(endsAt).getTime() - Date.now()) / 60000))
-      : 0;
+    const totalSeconds = (active.status === "in_progress" ? active.work_minutes : active.break_minutes) * 60;
     const phase = active.status === "in_progress" ? "Работа" : "Перерыв";
+    // Живой таймер — data-атрибуты, сама разметка не трогается тиком
+    // (tickFocusTimer ниже), только текст .focus-countdown и ширина
+    // .focus-bar-fill. Без этого пришлось бы перерисовывать всю карточку
+    // раз в секунду.
     statusBox.innerHTML = `
-      <p class="stat-line">${phase} — ещё <span class="stat-number">${leftMinutes}</span> мин</p>
-      <p class="meta">${active.work_minutes} мин работы / ${active.break_minutes} мин перерыва</p>
-      <button class="danger" data-action="cancel-focus" data-id="${active.id}">✕ Прервать</button>`;
+      <div class="focus-timer" data-ends-at="${endsAt || ""}" data-total-seconds="${totalSeconds}">
+        <p class="stat-line">${phase} — осталось <span class="focus-countdown stat-number">--:--</span></p>
+        <div class="focus-bar"><div class="focus-bar-fill" id="focusBarFill"></div></div>
+        <p class="meta">${active.work_minutes} мин работы / ${active.break_minutes} мин перерыва</p>
+        <button class="danger" data-action="cancel-focus" data-id="${active.id}">✕ Прервать</button>
+      </div>`;
+    tickFocusTimer(); // не ждать секунду до первого обновления
   }
 
   statsBox.textContent = stats.completed_count
     ? `За неделю: ${stats.completed_count} сессий, ${stats.total_minutes} мин`
     : "";
 }
+
+// Не даём loadFocus() улететь в параллельный шквал вызовов, пока
+// сессия уже "истекла" на клиенте, а бэкенд (опрос раз в
+// focus_notifications_interval_seconds) ещё не перевёл её в следующую
+// фазу — без этого флага каждый тик секунды заново дёргал бы API.
+let focusReloadPending = false;
+
+function tickFocusTimer() {
+  const box = document.querySelector(".focus-timer[data-ends-at]");
+  if (!box) return;
+  const endsAt = box.dataset.endsAt;
+  const totalSeconds = Number(box.dataset.totalSeconds);
+  if (!endsAt || !totalSeconds) return;
+
+  const remainingMs = new Date(endsAt).getTime() - Date.now();
+  const remainingSeconds = Math.max(0, Math.floor(remainingMs / 1000));
+  const countdownEl = box.querySelector(".focus-countdown");
+  if (countdownEl) countdownEl.textContent = formatElapsed(remainingSeconds * 1000);
+
+  const pct = Math.max(0, Math.min(100, (remainingSeconds / totalSeconds) * 100));
+  const fill = document.getElementById("focusBarFill");
+  if (fill) {
+    fill.style.width = pct + "%";
+    // "Тлеющая" шкала — плавный переход от акцентного цвета к тревожному
+    // по мере убывания, не жёсткая ступенька по порогам (color-mix живёт
+    // в токенах темы, переживает смену скина). Мерцание — только когда
+    // действительно мало осталось.
+    fill.style.background = `color-mix(in srgb, var(--accent) ${pct}%, var(--overdue) ${100 - pct}%)`;
+    fill.classList.toggle("ember-low", pct <= 20);
+  }
+
+  if (remainingSeconds <= 0 && !focusReloadPending) {
+    focusReloadPending = true;
+    loadFocus().finally(() => {
+      focusReloadPending = false;
+    });
+  }
+}
+registerTicker(tickFocusTimer);
 
 document.getElementById("focusStatus").addEventListener("submit", async (e) => {
   if (e.target.id !== "focusStartForm") return;
