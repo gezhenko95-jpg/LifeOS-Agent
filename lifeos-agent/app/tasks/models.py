@@ -104,6 +104,14 @@ class Task(Base):
         comment='Отметка "в работе" — независима от lifecycle-статуса (status)',
     )
 
+    in_progress_started_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment='Момент последнего включения "в работе" — NULL, если сейчас '
+        "не в работе. Используется только для таймера на /ui, не хранит "
+        "историю (следующий toggle перезаписывает), поэтому не лог.",
+    )
+
     parent_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("tasks.id", ondelete="CASCADE"),
         nullable=True,

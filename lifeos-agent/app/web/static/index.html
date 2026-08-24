@@ -573,9 +573,30 @@
   .task-panel[hidden] { display: none; }
   .task-panel-col { flex: 1; min-width: 180px; }
   .task-panel-col h4 { margin: 0 0 6px; font-size: 0.78rem; color: var(--muted); }
-  .task-panel-col ul.item-list li { padding: 4px 0; font-size: 0.85rem; }
+  .task-panel-col ul.item-list li { padding: 4px 0; font-size: 0.85rem; justify-content: space-between; }
+  .task-panel-col ul.item-list li button.secondary { padding: 0 6px; flex: none; }
   .task-panel-done { text-decoration: line-through; opacity: 0.6; }
   .task-panel-col .add-form { margin-top: 6px; }
+
+  /* Ряд из 5 кнопок задачи (▶✎✓✕▾) — раньше были плоскими соседями
+     .item-title/.meta в одном flex-контейнере ul.item-list li, поэтому
+     на узкой панели переносились по одной вперемешку с остальными
+     элементами строки (кнопки-пилюли складывались в лесенку). Тот же
+     приём flex-basis:100%, что у .task-panel чуть выше — ряд кнопок
+     либо помещается целиком, либо целиком уходит на свою строку, но
+     кнопки внутри него не расползаются поодиночке. */
+  .task-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
+  @media (max-width: 480px) {
+    .task-actions { flex-basis: auto; justify-content: flex-start; }
+  }
+  .task-actions button { flex: none; }
 
   /* Подзаголовок группы внутри списка задач ("⚠️ Просрочено (N)" /
      "Остальные") — своя строка, без рамки/фона обычного li и без
@@ -629,6 +650,31 @@
   }
   @media (prefers-reduced-motion: reduce) {
     ul.item-list li { animation: none; }
+  }
+  /* "В работе" — мигающая точка + живой таймер elapsed-time (см.
+     tickInProgressTimers в <script>, тикает раз в секунду). */
+  .in-progress-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-right: 4px;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    font-size: 0.85em;
+  }
+  .blink-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: blink-dot 1.1s ease-in-out infinite;
+  }
+  @keyframes blink-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.25; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .blink-dot { animation: none; }
   }
   .item-title { flex: 1; min-width: 120px; }
   .item-title.high { color: var(--high); font-weight: 600; }
@@ -1136,9 +1182,14 @@
     font-size: 0.9rem;
     resize: vertical;
   }
-  .editor-row { display: flex; align-items: center; gap: 10px; }
+  .editor-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  /* Без этой пары openEditor()'овский .hidden = true ни на что не влияет:
+     [hidden] в UA-стилях проигрывает более специфичному display:flex выше
+     при равном весе — задача показывала поля контакта (Теги/Нэдж) и
+     наоборот, потому что скрытые editor-row всё равно рендерились. */
+  .editor-row[hidden] { display: none; }
   .editor-row label { color: var(--muted); font-size: 0.85rem; min-width: 110px; }
-  .editor-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .editor-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
   /* Описание в списке — второй строкой, приглушённое. */
   .item-note {
     display: block;
@@ -3065,6 +3116,44 @@ function escapeHtml(text) {
   }[c]));
 }
 
+// Общий "тикающий" таймер — один setInterval на всю страницу вместо
+// одного на каждый живой элемент (дешевле, нечего плодить и чистить по
+// отдельности). Используется таймером "в работе" у задач (ниже) и
+// таймером фокус-сессии (loadFocus) — оба просто регистрируют свою
+// функцию-колбэк, вызываемую раз в секунду, пока она зарегистрирована.
+let uiTickerId = null;
+const uiTickerCallbacks = new Set();
+function registerTicker(fn) {
+  uiTickerCallbacks.add(fn);
+  if (uiTickerId === null) {
+    uiTickerId = setInterval(() => uiTickerCallbacks.forEach((cb) => cb()), 1000);
+  }
+}
+function unregisterTicker(fn) {
+  uiTickerCallbacks.delete(fn);
+}
+
+function formatElapsed(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+// "В работе" у задач тикает всегда (не только пока открыта вкладка
+// "Задачи") — querySelectorAll по пустому списку элементов дешёв, а
+// снимать регистрацию было бы не с чем: индикаторов может не быть в DOM
+// вообще (другая вкладка панели), и это не ошибка.
+function tickInProgressTimers() {
+  document.querySelectorAll(".in-progress-indicator[data-started-at]").forEach((el) => {
+    const startedAt = el.dataset.startedAt;
+    if (!startedAt) return;
+    const elapsedEl = el.querySelector(".elapsed-time");
+    if (elapsedEl) elapsedEl.textContent = formatElapsed(Date.now() - new Date(startedAt).getTime());
+  });
+}
+registerTicker(tickInProgressTimers);
+
 // Короткая вспышка на строке списка перед тем, как её унесёт
 // перерисовка — без неё "выполнено" ощущается как мгновенная подмена
 // содержимого, а не как результат нажатия. matchMedia проверяется один
@@ -3833,16 +3922,18 @@ function taskRow(task) {
     <li>
       <span class="status-dot ${status}" title="${status}"></span>
       <span class="item-title ${task.priority === "high" ? "high" : ""}">
-        ${task.in_progress ? "▶ " : ""}${task.priority === "high" ? "❗ " : ""}${escapeHtml(task.title)}
+        ${task.in_progress ? `<span class="in-progress-indicator" data-started-at="${task.in_progress_started_at || ""}"><span class="blink-dot" title="В работе"></span><span class="elapsed-time">--:--</span></span> ` : ""}${task.priority === "high" ? "❗ " : ""}${escapeHtml(task.title)}
         ${task.description ? `<span class="item-note">${escapeHtml(task.description)}</span>` : ""}
         ${badges.length ? `<span class="task-badges">${badges.join("")}</span>` : ""}
       </span>
       <span class="meta ${status === "overdue" ? "overdue" : ""}">${formatDueHuman(task.due_date)}</span>
-      <button class="secondary ${task.in_progress ? "active-toggle" : ""}" data-action="toggle-in-progress" data-id="${task.id}" title="В работе">▶</button>
-      <button class="secondary" data-action="edit" data-kind="task" data-id="${task.id}" title="Изменить">✎</button>
-      <button class="secondary" data-action="complete-task" data-id="${task.id}">✓</button>
-      <button class="danger" data-action="delete-task" data-id="${task.id}">✕</button>
-      <button class="secondary" data-action="toggle-panel" data-id="${task.id}" title="Подзадачи и комментарии">${expanded ? "▴" : "▾"}</button>
+      <span class="task-actions">
+        <button class="secondary ${task.in_progress ? "active-toggle" : ""}" data-action="toggle-in-progress" data-id="${task.id}" title="В работе">▶</button>
+        <button class="secondary" data-action="edit" data-kind="task" data-id="${task.id}" title="Изменить">✎</button>
+        <button class="secondary" data-action="complete-task" data-id="${task.id}">✓</button>
+        <button class="danger" data-action="delete-task" data-id="${task.id}">✕</button>
+        <button class="secondary" data-action="toggle-panel" data-id="${task.id}" title="Подзадачи и комментарии">${expanded ? "▴" : "▾"}</button>
+      </span>
       <div class="task-panel" data-panel-for="${task.id}" ${expanded ? "" : "hidden"}></div>
     </li>`;
 }
@@ -3873,6 +3964,7 @@ async function loadTasks() {
       ? '<li class="task-section-header">Остальные</li>'
       : "";
   list.innerHTML = overdueHtml + restHeader + restTasks.map(taskRow).join("");
+  tickInProgressTimers(); // не ждать секунду до первого обновления после перерисовки
   for (const taskId of expandedTaskPanels) {
     if (tasks.some((t) => t.id === taskId)) await renderTaskPanel(taskId);
     else expandedTaskPanels.delete(taskId);
@@ -3891,7 +3983,18 @@ async function renderTaskPanel(taskId) {
     api(`/tasks/${taskId}/comments?telegram_user_id=${encodeURIComponent(id)}`),
   ]);
   const subtasksHtml = subtasks.length
-    ? subtasks.map((s) => `<li class="${s.status === "completed" ? "task-panel-done" : ""}">${s.status === "completed" ? "✓ " : "· "}${escapeHtml(s.title)}</li>`).join("")
+    ? subtasks
+        .map(
+          (s) => `<li class="${s.status === "completed" ? "task-panel-done" : ""}">
+            <span>${escapeHtml(s.title)}</span>
+            ${
+              s.status === "completed"
+                ? ""
+                : `<button type="button" class="secondary" data-action="complete-subtask" data-id="${s.id}" data-parent-id="${taskId}" title="Завершить подзадачу">✓</button>`
+            }
+          </li>`
+        )
+        .join("")
     : '<li class="empty">Подзадач нет</li>';
   const commentsHtml = comments.length
     ? comments.map((c) => `<li><span>${escapeHtml(c.text)}</span><span class="meta">${new Date(c.created_at).toLocaleDateString("ru-RU")}</span></li>`).join("")
@@ -3953,6 +4056,17 @@ document.getElementById("taskList").addEventListener("click", async (e) => {
       method: "POST",
     });
     await loadTasks();
+  } else if (btn.dataset.action === "complete-subtask") {
+    // Подзадача — такая же строка Task, просто с parent_id, тот же PATCH,
+    // что и у обычной задачи. Список задач целиком не трогаем (счётчик
+    // 📎 считает все подзадачи, не только открытые) — перерисовываем
+    // только уже открытую панель.
+    await api(`/tasks/${taskId}?telegram_user_id=${getUserId()}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "completed" }),
+    });
+    await renderTaskPanel(Number(btn.dataset.parentId));
   } else if (btn.dataset.action === "toggle-panel") {
     const id = Number(taskId);
     if (expandedTaskPanels.has(id)) {
@@ -4999,7 +5113,11 @@ document.getElementById("calToday").addEventListener("click", () => {
 // уже стоит в этот день, прочитать дневниковую запись за него — и
 // добавить не только задачу, но и привычку, фильм, книгу или запись.
 
-const CAL_FIRST_HOUR = 6; // до шести утра пустые строки только мешают
+// Было 6 (не показывать пустые ночные строки) — но у задачи без явного
+// времени due_date падает на полночь (getHours()===0), и такая задача
+// молча выпадала из списка дня, хотя чипом в самой ячейке месяца была
+// видна. 0 — все задачи дня гарантированно попадают хоть в одну строку.
+const CAL_FIRST_HOUR = 0;
 const CAL_LAST_HOUR = 23;
 
 let calSelectedDay = null;

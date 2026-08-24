@@ -70,6 +70,7 @@ class TaskRead(BaseModel):
     completed_at: Optional[datetime]
     created_at: datetime
     in_progress: bool = False
+    in_progress_started_at: Optional[datetime] = None
     parent_id: Optional[int] = None
     subtask_count: int = 0
     comment_count: int = 0

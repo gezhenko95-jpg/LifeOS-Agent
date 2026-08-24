@@ -153,6 +153,9 @@ class TaskService:
         if task is None:
             return None
         task.in_progress = not task.in_progress
+        task.in_progress_started_at = (
+            datetime.now(timezone.utc) if task.in_progress else None
+        )
         return await self._repository.save(task)
 
     async def list_active_tasks(self, telegram_user_id: int) -> list[Task]:

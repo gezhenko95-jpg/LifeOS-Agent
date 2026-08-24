@@ -506,6 +506,16 @@ async def test_toggle_in_progress_flips_flag(repository):
     assert updated.in_progress is True
 
 
+async def test_toggle_in_progress_sets_started_at(repository):
+    task = Task(id=1, telegram_user_id=1, title="Задача", in_progress=False)
+    repository.get_by_id.return_value = task
+    service = TaskService(repository)
+
+    updated = await service.toggle_in_progress(1, task_id=1)
+
+    assert updated.in_progress_started_at is not None
+
+
 async def test_toggle_in_progress_flips_back(repository):
     task = Task(id=1, telegram_user_id=1, title="Задача", in_progress=True)
     repository.get_by_id.return_value = task
@@ -514,6 +524,22 @@ async def test_toggle_in_progress_flips_back(repository):
     updated = await service.toggle_in_progress(1, task_id=1)
 
     assert updated.in_progress is False
+
+
+async def test_toggle_in_progress_clears_started_at(repository):
+    task = Task(
+        id=1,
+        telegram_user_id=1,
+        title="Задача",
+        in_progress=True,
+        in_progress_started_at=datetime.now(timezone.utc),
+    )
+    repository.get_by_id.return_value = task
+    service = TaskService(repository)
+
+    updated = await service.toggle_in_progress(1, task_id=1)
+
+    assert updated.in_progress_started_at is None
 
 
 async def test_toggle_in_progress_missing_task_returns_none(repository):
