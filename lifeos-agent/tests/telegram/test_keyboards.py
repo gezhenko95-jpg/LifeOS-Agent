@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from app.crm.models import Contact
 from app.finance.models import EXPENSE, INCOME, Transaction
 from app.finance.service import CategoryBreakdown, FinanceSummary
+from app.focus.models import IN_PROGRESS, ON_BREAK, FocusSession
 from app.goals.models import Goal
 from app.habits.models import Habit
 from app.mood.models import MoodEntry
@@ -11,6 +12,7 @@ from app.telegram.keyboards import (
     MENU_CONTACTS,
     MENU_DIGEST,
     MENU_FINANCE,
+    MENU_FOCUS,
     MENU_GOALS,
     MENU_HABITS,
     MENU_HELP,
@@ -24,6 +26,7 @@ from app.telegram.keyboards import (
     build_contacts_message,
     build_finance_menu,
     build_finance_message,
+    build_focus_message,
     build_goals_message,
     build_habits_message,
     build_main_menu,
@@ -492,6 +495,7 @@ def test_main_menu_has_expected_buttons_in_rows():
         [MENU_JOURNAL, MENU_WATCHLIST],
         [MENU_DIGEST, MENU_FINANCE],
         [MENU_CONTACTS, MENU_MOOD],
+        [MENU_FOCUS],
         [MENU_INSIGHTS, MENU_SITE],
         [MENU_HELP],
     ]
@@ -535,3 +539,51 @@ def test_open_site_keyboard_has_url_button():
     markup = build_open_site_keyboard("https://lifeos-agent.ru/ui")
 
     assert markup.inline_keyboard[0][0].url == "https://lifeos-agent.ru/ui"
+
+
+# --- Фокус-сессии (specs/026-focus-sessions.md) -----------------------------
+
+
+def test_focus_message_no_active_session_offers_start():
+    text, markup = build_focus_message(None)
+
+    assert "Сессии нет" in text
+    callbacks = _callback_data(markup)
+    assert "z|s" in callbacks
+    assert "z|a" in callbacks
+
+
+def test_focus_message_in_progress_shows_time_left_and_cancel():
+    active = FocusSession(
+        id=7,
+        telegram_user_id=1,
+        work_minutes=25,
+        break_minutes=5,
+        started_at=datetime.now(timezone.utc),
+        work_ends_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+        status=IN_PROGRESS,
+    )
+
+    text, markup = build_focus_message(active)
+
+    assert "Работа" in text
+    assert "10 мин" in text
+    assert _callback_data(markup) == ["z|x|7"]
+
+
+def test_focus_message_on_break_shows_break_phase():
+    active = FocusSession(
+        id=7,
+        telegram_user_id=1,
+        work_minutes=25,
+        break_minutes=5,
+        started_at=datetime.now(timezone.utc) - timedelta(minutes=25),
+        work_ends_at=datetime.now(timezone.utc),
+        break_ends_at=datetime.now(timezone.utc) + timedelta(minutes=3),
+        status=ON_BREAK,
+    )
+
+    text, _ = build_focus_message(active)
+
+    assert "Перерыв" in text
+    assert "3 мин" in text

@@ -162,3 +162,51 @@ async def test_ai_insight_uses_active_persona_voice():
 
     messages = ai_client.complete.call_args.args[0]
     assert "директор" in messages[0]["content"].lower()
+
+
+# --- Фокус-сессии (specs/026-focus-sessions.md) -----------------------------
+
+
+async def test_no_focus_service_skips_section():
+    task_service = AsyncMock()
+    task_service.count_tasks_completed_since.return_value = 0
+
+    text = await build_weekly_digest(
+        1, task_service, _empty_habit_service(), _empty_goal_service()
+    )
+
+    assert "🍅" not in text
+
+
+async def test_focus_service_with_no_sessions_skips_section():
+    task_service = AsyncMock()
+    task_service.count_tasks_completed_since.return_value = 0
+    focus_service = AsyncMock()
+    focus_service.stats_since.return_value = (0, 0)
+
+    text = await build_weekly_digest(
+        1,
+        task_service,
+        _empty_habit_service(),
+        _empty_goal_service(),
+        focus_service=focus_service,
+    )
+
+    assert "🍅" not in text
+
+
+async def test_focus_service_with_sessions_shows_stats():
+    task_service = AsyncMock()
+    task_service.count_tasks_completed_since.return_value = 0
+    focus_service = AsyncMock()
+    focus_service.stats_since.return_value = (4, 100)
+
+    text = await build_weekly_digest(
+        1,
+        task_service,
+        _empty_habit_service(),
+        _empty_goal_service(),
+        focus_service=focus_service,
+    )
+
+    assert "🍅 Фокус-сессий: 4, 100 мин." in text

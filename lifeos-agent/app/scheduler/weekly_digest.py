@@ -14,6 +14,7 @@ from html import escape
 
 from app.ai.client import AIClient, AIServiceError
 from app.assistant.personas import DEFAULT_PERSONA, Persona, build_insight_prompt
+from app.focus.service import FocusSessionService
 from app.goals.service import GoalService
 from app.habits.service import HabitService
 from app.tasks.service import TaskService
@@ -95,6 +96,18 @@ async def _format_goals_section(
     return "\n".join(lines)
 
 
+async def _format_focus_section(
+    telegram_user_id: int, focus_service: FocusSessionService, since: datetime
+) -> str:
+    """specs/026-focus-sessions.md — статистика фокус-сессий за неделю.
+    Пустая строка, если не завершено ни одной (та же логика, что у
+    целей — раздел без данных просто не появляется, не "0 сессий")."""
+    count, minutes = await focus_service.stats_since(telegram_user_id, since)
+    if count == 0:
+        return ""
+    return f"\n🍅 Фокус-сессий: {count}, {minutes} мин."
+
+
 async def _generate_insight(
     ai_client: AIClient, digest_text: str, persona: Persona
 ) -> str | None:
@@ -119,7 +132,10 @@ async def build_weekly_digest(
     goal_service: GoalService,
     ai_client: AIClient | None = None,
     persona: Persona = DEFAULT_PERSONA,
+    focus_service: FocusSessionService | None = None,
 ) -> str:
+    """focus_service=None тихо пропускает раздел фокус-сессий — тот же
+    паттерн опциональности, что у ai_client/у ConversationEngine."""
     since = datetime.now(timezone.utc) - _WEEK
 
     parts = ["Итоги недели 📊", ""]
@@ -132,6 +148,13 @@ async def build_weekly_digest(
     goals_section = await _format_goals_section(telegram_user_id, goal_service)
     if goals_section:
         parts.append(goals_section)
+
+    if focus_service is not None:
+        focus_section = await _format_focus_section(
+            telegram_user_id, focus_service, since
+        )
+        if focus_section:
+            parts.append(focus_section)
 
     text = "\n".join(parts)
 

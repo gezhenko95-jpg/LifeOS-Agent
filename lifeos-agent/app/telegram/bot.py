@@ -39,6 +39,7 @@ from app.telegram.jobs import (
     send_evening_checkin_job,
     send_evening_reflection_job,
     send_finance_report_job,
+    send_focus_notifications_job,
     send_habit_reminders_job,
     send_midday_checkin_job,
     send_monthly_insights_job,
@@ -131,6 +132,7 @@ def build_application() -> Application:
     _register_evening_reflection(application, settings)
     _register_task_reminders(application, settings)
     _register_habit_reminders(application, settings)
+    _register_focus_notifications(application, settings)
     _register_proactive_prompts(application, settings)
     _register_weekly_digest(application, settings)
     _register_finance_report(application, settings)
@@ -200,6 +202,20 @@ def _register_habit_reminders(application: Application, settings: Settings) -> N
         interval=settings.habit_reminders_interval_seconds,
         first=20,
         name="habit_reminders",
+    )
+
+
+def _register_focus_notifications(application: Application, settings: Settings) -> None:
+    """Опрос БД на "пора" фокус-сессии (specs/026) — тот же приём и
+    довод, что у напоминаний задач/привычек выше."""
+    if not settings.focus_notifications_enabled or not settings.owner_telegram_user_id:
+        return
+
+    application.job_queue.run_repeating(
+        send_focus_notifications_job,
+        interval=settings.focus_notifications_interval_seconds,
+        first=15,
+        name="focus_notifications",
     )
 
 

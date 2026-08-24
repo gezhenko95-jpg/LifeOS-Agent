@@ -18,6 +18,7 @@ from app.core.container import (
     build_contact_service,
     build_digest_service,
     build_finance_service,
+    build_focus_service,
     build_mood_service,
     build_rewards_service,
     build_task_comment_service,
@@ -44,6 +45,7 @@ from app.telegram.keyboards import (
     build_digest_menu_message,
     build_finance_menu,
     build_finance_message,
+    build_focus_message,
     build_goals_menu,
     build_goals_message,
     build_habit_templates_message,
@@ -66,6 +68,7 @@ from app.telegram.pending_input import (
     DIGEST_NEW,
     FINANCE_EXPENSE_ADD,
     FINANCE_INCOME_ADD,
+    FOCUS_CUSTOM_DURATION,
     GOAL_ADD,
     HABIT_ADD,
     JOURNAL_SEARCH,
@@ -94,7 +97,7 @@ def _current_month_start() -> datetime:
 
 # Кнопки без id: действуют на раздел целиком, а не на сущность (см.
 # app/telegram/keyboards.py, где перечислен весь формат callback_data).
-_SECTION_DOMAINS = ("t", "h", "g", "j", "w", "d", "f", "c", "m")
+_SECTION_DOMAINS = ("t", "h", "g", "j", "w", "d", "f", "c", "m", "z")
 _IDLESS_ACTIONS = {
     # Общие для всех разделов: экран раздела / список / добавить.
     *((domain, action) for domain in _SECTION_DOMAINS for action in ("m", "l", "n")),
@@ -102,6 +105,8 @@ _IDLESS_ACTIONS = {
     ("j", "f"),  # поиск по теме
     ("h", "t"),  # каталог готовых привычек
     ("f", "i"),  # финансы: добавить ДОХОД — второй "add" без своего id
+    ("z", "s"),  # фокус: начать с дефолтной длительностью
+    ("z", "a"),  # фокус: начать со своей длительностью (спросить)
 }
 
 # Действия, у которых третья часть callback_data — НЕ число. Пока такое
@@ -146,6 +151,10 @@ _ASK_CONTACT = (
 )
 _ASK_TASK_SUBTASK = "📎 <b>Название подзадачи?</b>\n\nКоротко, как обычная задача."
 _ASK_TASK_COMMENT = "💬 <b>Что написать в комментарии?</b>"
+_ASK_FOCUS_CUSTOM = (
+    "⏱ <b>Сколько минут работать?</b>\n\nЧисло, например «40» — перерыв "
+    "посчитается как пятая часть (минимум 5 мин)."
+)
 
 logger = logging.getLogger(__name__)
 
@@ -259,6 +268,10 @@ async def handle_callback_query(
         elif domain == "m":
             text, markup = await _handle_mood_action(
                 session, action, item_id, telegram_user_id, query
+            )
+        elif domain == "z":
+            text, markup = await _handle_focus_action(
+                session, action, item_id, telegram_user_id, context
             )
         else:
             return
@@ -550,6 +563,35 @@ async def _handle_mood_action(
 
     entries = await service.list_recent(telegram_user_id)
     return build_mood_message(entries)
+
+
+async def _handle_focus_action(
+    session: AsyncSession,
+    action: str,
+    item_id: str,
+    telegram_user_id: int,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> tuple[str, InlineKeyboardMarkup]:
+    """ "m" — статус (сессия или предложение начать, build_focus_message
+    сама решает, что показать — списка тут нет, см. её докстринг).
+    "s" — начать с дефолтом 25/5. "a" — спросить свою длительность
+    (pending input). "x" — прервать активную сессию."""
+    service = build_focus_service(session)
+
+    if action == "a":
+        set_pending(context.user_data, PendingInput(FOCUS_CUSTOM_DURATION))
+        return _ASK_FOCUS_CUSTOM, InlineKeyboardMarkup([])
+
+    if action == "s":
+        try:
+            await service.start_session(telegram_user_id)
+        except ValueError as exc:
+            return str(exc), InlineKeyboardMarkup([])
+    elif action == "x":
+        await service.cancel_session(telegram_user_id, int(item_id))
+
+    active = await service.get_active_session(telegram_user_id)
+    return build_focus_message(active)
 
 
 async def _handle_journal_action(

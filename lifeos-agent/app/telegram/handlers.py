@@ -31,6 +31,7 @@ from app.core.container import (
     build_contact_service,
     build_digest_service,
     build_engine,
+    build_focus_service,
     build_task_comment_service,
 )
 from app.db.session import AsyncSessionLocal
@@ -52,6 +53,7 @@ from app.telegram.keyboards import (
     MENU_CONTACTS,
     MENU_DIGEST,
     MENU_FINANCE,
+    MENU_FOCUS,
     MENU_GOALS,
     MENU_HABITS,
     MENU_HELP,
@@ -65,6 +67,7 @@ from app.telegram.keyboards import (
     build_digest_detail_message,
     build_digest_menu_message,
     build_finance_menu,
+    build_focus_message,
     build_goals_menu,
     build_goals_message,
     build_habits_menu,
@@ -87,6 +90,7 @@ from app.telegram.pending_input import (
     DIGEST_NEW,
     FINANCE_EXPENSE_ADD,
     FINANCE_INCOME_ADD,
+    FOCUS_CUSTOM_DURATION,
     GOAL_ADD,
     HABIT_ADD,
     JOURNAL_SEARCH,
@@ -143,6 +147,13 @@ _MENU_UTILITIES = {
     MENU_INSIGHTS: "insights",
     MENU_SITE: "site",
     MENU_HELP: "help",
+    # Не в _MENU_SECTIONS — та карта ждёт функцию БЕЗ БД (build_tasks_menu
+    # и т.п. — статичный экран "список/добавить"). У фокуса своего
+    # статичного экрана нет: показывается либо активная сессия, либо
+    # предложение начать, и то, и другое — по данным из БД
+    # (build_focus_message), поэтому идёт через _send_focus_status, как
+    # insights/site.
+    MENU_FOCUS: "focus",
 }
 
 
@@ -300,6 +311,9 @@ async def handle_text_message(
     if utility == "help":
         await _reply_via_engine(update, context, "/help")
         return
+    if utility == "focus":
+        await _send_focus_status(update)
+        return
 
     await _route_parsed_text(update, context, text)
 
@@ -407,6 +421,9 @@ async def _consume_pending_input(
         await _add_task_comment_from_text(
             update, telegram_user_id, pending.task_id, text
         )
+        return True
+    if pending.kind == FOCUS_CUSTOM_DURATION:
+        await _start_focus_from_text(update, telegram_user_id, text)
         return True
     return False
 
@@ -527,6 +544,39 @@ async def _add_task_comment_from_text(
         await update.message.reply_text("Задача больше не существует.")
         return
     await update.message.reply_text("💬 Комментарий добавлен.")
+
+
+async def _start_focus_from_text(
+    update: Update, telegram_user_id: int, text: str
+) -> None:
+    """«➕ Своя длительность» — только число минут работы, перерыв
+    считается как пятая часть (минимум 5 мин, тот же дух, что у
+    классических 25/5 — 1:5)."""
+    if update.message is None:
+        return
+
+    digits = "".join(ch for ch in text if ch.isdigit())
+    work_minutes = int(digits) if digits else 0
+    if work_minutes <= 0:
+        await update.message.reply_text(
+            "Не понял число минут — напишите, например, «40»."
+        )
+        return
+    break_minutes = max(5, work_minutes // 5)
+
+    async with AsyncSessionLocal() as session:
+        service = build_focus_service(session)
+        try:
+            await service.start_session(
+                telegram_user_id, work_minutes=work_minutes, break_minutes=break_minutes
+            )
+        except ValueError as exc:
+            await update.message.reply_text(str(exc))
+            return
+
+    await update.message.reply_text(
+        f"⏱ Начали: {work_minutes} мин работы / {break_minutes} мин перерыва."
+    )
 
 
 async def _add_watchlist_item_from_text(
@@ -1031,6 +1081,23 @@ async def _send_site_link(update: Update) -> None:
         return
     await update.message.reply_text(
         "Полный интерфейс:", reply_markup=build_open_site_keyboard(url)
+    )
+
+
+async def _send_focus_status(update: Update) -> None:
+    """Кнопка «⏱ Фокус» — сразу текущее состояние (сессия идёт/нет), не
+    промежуточный статичный экран (см. комментарий у _MENU_UTILITIES)."""
+    if update.message is None or update.effective_user is None:
+        return
+    telegram_user_id = update.effective_user.id
+
+    async with AsyncSessionLocal() as session:
+        service = build_focus_service(session)
+        active = await service.get_active_session(telegram_user_id)
+
+    text, markup = build_focus_message(active)
+    await update.message.reply_text(
+        text, reply_markup=markup, parse_mode=ParseMode.HTML
     )
 
 

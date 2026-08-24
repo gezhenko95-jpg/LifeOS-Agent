@@ -15,6 +15,7 @@ from app.api import (
     crm,
     digest,
     finance,
+    focus,
     goals,
     habits,
     health,
@@ -82,6 +83,7 @@ app.include_router(assistant.router, tags=["assistant"], dependencies=_protected
 # настроение), токен обязателен. /ui грузит его через fetch()+blob, не
 # голым <img src>, ровно из-за этого (см. loadWeeklyChart в index.html).
 app.include_router(charts.router, tags=["charts"], dependencies=_protected)
+app.include_router(focus.router, tags=["focus"], dependencies=_protected)
 
 # Простейший веб-интерфейс — статическая страница, использует REST API выше.
 app.mount("/ui", StaticFiles(directory=_WEB_STATIC_DIR, html=True), name="ui")

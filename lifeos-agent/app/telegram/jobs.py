@@ -18,6 +18,7 @@ from app.core.container import (
     build_contact_service,
     build_digest_service,
     build_finance_service,
+    build_focus_service,
     build_mood_service,
     build_prompt_service,
 )
@@ -242,6 +243,7 @@ async def send_weekly_digest_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             GoalService(GoalRepository(session)),
             ai_client=get_ai_client(settings),
             persona=persona,
+            focus_service=build_focus_service(session),
         )
         chart = await _try_build_chart(
             telegram_user_id, task_service, habit_service, build_mood_service(session)
@@ -499,3 +501,41 @@ async def send_task_reminders_job(context: ContextTypes.DEFAULT_TYPE) -> None:
                 chat_id=telegram_user_id, text=f"⏰ Напоминание: «{task.title}»"
             )
             await task_service.mark_reminded(telegram_user_id, task.id)
+
+
+async def send_focus_notifications_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Опрос БД на "пора" (specs/026-focus-sessions.md) — тот же приём,
+    что у напоминаний задач/привычек выше, не job_queue.run_once: API и
+    бот в этом проекте разные процессы (отдельные контейнеры
+    docker-compose), in-memory таймер бота не виден из API и не
+    переживает рестарт бота (деплой перезапускает контейнер на каждую
+    правку). Один тик — сразу оба перехода (работа→перерыв,
+    перерыв→конец), не два отдельных вызова."""
+    settings = get_settings()
+    telegram_user_id = settings.owner_telegram_user_id
+    if not telegram_user_id:
+        return
+
+    async with AsyncSessionLocal() as session:
+        service = build_focus_service(session)
+
+        for focus in await service.list_due_work_end():
+            if focus.telegram_user_id != telegram_user_id:
+                continue
+            updated = await service.mark_work_notified(focus)
+            await context.bot.send_message(
+                chat_id=telegram_user_id,
+                text=(
+                    f"⏱ Работа окончена! Перерыв {updated.break_minutes} мин — "
+                    "потом ещё одно сообщение, когда закончится."
+                ),
+            )
+
+        for focus in await service.list_due_break_end():
+            if focus.telegram_user_id != telegram_user_id:
+                continue
+            await service.mark_break_notified(focus)
+            await context.bot.send_message(
+                chat_id=telegram_user_id,
+                text="✅ Перерыв закончен, сессия завершена. Отличная работа!",
+            )

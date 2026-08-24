@@ -182,3 +182,75 @@ async def test_midday_checkin_no_habits_sends_plain_question(no_db, monkeypatch)
     context.bot.send_message.assert_awaited_once()
     _, kwargs = context.bot.send_message.call_args
     assert kwargs["text"] == jobs._MIDDAY_TEXT_NO_HABITS
+
+
+# --- Фокус-сессии (specs/026-focus-sessions.md) -----------------------------
+
+
+def _focus_session(**kwargs):
+    kwargs.setdefault("telegram_user_id", 1)
+    kwargs.setdefault("work_minutes", 25)
+    kwargs.setdefault("break_minutes", 5)
+    return MagicMock(**kwargs)
+
+
+async def test_focus_notifications_sends_work_done_message(no_db, monkeypatch):
+    monkeypatch.setattr(jobs, "get_settings", _owner_settings)
+    session = _focus_session(break_minutes=5)
+    service = AsyncMock()
+    service.list_due_work_end.return_value = [session]
+    service.mark_work_notified.return_value = session
+    service.list_due_break_end.return_value = []
+    monkeypatch.setattr(jobs, "build_focus_service", lambda s: service)
+
+    context = _context()
+    await jobs.send_focus_notifications_job(context)
+
+    context.bot.send_message.assert_awaited_once()
+    _, kwargs = context.bot.send_message.call_args
+    assert "Работа окончена" in kwargs["text"]
+    assert "5 мин" in kwargs["text"]
+    service.mark_work_notified.assert_awaited_once_with(session)
+
+
+async def test_focus_notifications_sends_break_done_message(no_db, monkeypatch):
+    monkeypatch.setattr(jobs, "get_settings", _owner_settings)
+    session = _focus_session()
+    service = AsyncMock()
+    service.list_due_work_end.return_value = []
+    service.list_due_break_end.return_value = [session]
+    monkeypatch.setattr(jobs, "build_focus_service", lambda s: service)
+
+    context = _context()
+    await jobs.send_focus_notifications_job(context)
+
+    context.bot.send_message.assert_awaited_once()
+    _, kwargs = context.bot.send_message.call_args
+    assert "завершена" in kwargs["text"]
+    service.mark_break_notified.assert_awaited_once_with(session)
+
+
+async def test_focus_notifications_ignores_other_users_sessions(no_db, monkeypatch):
+    monkeypatch.setattr(jobs, "get_settings", _owner_settings)
+    session = _focus_session(telegram_user_id=999)
+    service = AsyncMock()
+    service.list_due_work_end.return_value = [session]
+    service.list_due_break_end.return_value = []
+    monkeypatch.setattr(jobs, "build_focus_service", lambda s: service)
+
+    context = _context()
+    await jobs.send_focus_notifications_job(context)
+
+    context.bot.send_message.assert_not_awaited()
+    service.mark_work_notified.assert_not_awaited()
+
+
+async def test_focus_notifications_no_owner_does_nothing(monkeypatch):
+    monkeypatch.setattr(
+        jobs, "get_settings", lambda: MagicMock(owner_telegram_user_id=0)
+    )
+
+    context = _context()
+    await jobs.send_focus_notifications_job(context)
+
+    context.bot.send_message.assert_not_awaited()

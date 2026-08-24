@@ -68,6 +68,10 @@ d — дайджесты, f — финансы, c — контакты (личн
   m|s|{score} — настроение: записать оценку 1-5 (используется и под
     вечерним дневниковым вопросом, и в разделе «Настроение»); m|x|{id} —
     удалить запись
+  z|s — фокус: начать 25/5 (дефолт); z|a — начать со своей
+    длительностью (бот ждёт следующее сообщение, см. pending_input.py);
+    z|x|{id} — прервать активную сессию. Без z|l — списка нет, сессия
+    максимум одна (см. build_focus_message)
 
 Действия без id ("w|m", "j|l", …) — намеренно двухчастные: в
 callback_data Telegram даёт 64 БАЙТА, и имя дайджеста туда класть нельзя
@@ -89,6 +93,7 @@ from app.crm.models import Contact
 from app.digest.models import Digest, DigestChannel
 from app.finance.models import CATEGORIES, EXPENSE, Transaction
 from app.finance.service import FinanceSummary
+from app.focus.models import IN_PROGRESS, ON_BREAK, FocusSession
 from app.goals.models import Goal
 from app.habits.models import Habit
 from app.habits.templates import HABIT_TEMPLATES
@@ -120,6 +125,7 @@ MENU_DIGEST = "📰 Дайджест"
 MENU_FINANCE = "💰 Финансы"
 MENU_CONTACTS = "📇 Люди"
 MENU_MOOD = "😊 Настроение"
+MENU_FOCUS = "⏱ Фокус"
 MENU_SITE = "🌐 Сайт"
 MENU_HELP = "❓ Помощь"
 
@@ -208,6 +214,7 @@ def build_main_menu() -> ReplyKeyboardMarkup:
         [KeyboardButton(MENU_JOURNAL), KeyboardButton(MENU_WATCHLIST)],
         [KeyboardButton(MENU_DIGEST), KeyboardButton(MENU_FINANCE)],
         [KeyboardButton(MENU_CONTACTS), KeyboardButton(MENU_MOOD)],
+        [KeyboardButton(MENU_FOCUS)],
         [KeyboardButton(MENU_INSIGHTS), KeyboardButton(MENU_SITE)],
         [KeyboardButton(MENU_HELP)],
     ]
@@ -620,6 +627,46 @@ def build_mood_message(entries: list[MoodEntry]) -> tuple[str, InlineKeyboardMar
     rows = _numbered_action_rows(shown, "m|x", "🗑")
     rows.append(_back_to_section("m"))
     return "\n".join(lines), InlineKeyboardMarkup(rows)
+
+
+def build_focus_message(
+    active: FocusSession | None,
+) -> tuple[str, InlineKeyboardMarkup]:
+    """Один сеанс максимум (см. FocusSessionService.start_session) —
+    поэтому нет списка/номеров, как у остальных доменов: либо сессии
+    нет и предлагается начать, либо она идёт и предлагается прервать
+    (тот же принцип, что у build_mood_menu — единственное действие не
+    прячется за отдельную кнопку-приглашение)."""
+    if active is None:
+        return (
+            "⏱ <b>Фокус</b>\n\nСессии нет. 25 минут работы, потом перерыв — "
+            "классический Pomodoro. Или своя длительность.",
+            InlineKeyboardMarkup(
+                [
+                    [InlineKeyboardButton("▶ 25 мин", callback_data="z|s")],
+                    [InlineKeyboardButton("➕ Своя длительность", callback_data="z|a")],
+                ]
+            ),
+        )
+
+    if active.status == IN_PROGRESS:
+        phase, ends_at = "Работа", active.work_ends_at
+    else:
+        assert active.status == ON_BREAK
+        phase, ends_at = "Перерыв", active.break_ends_at
+    # SQLite (тесты) не хранит tzinfo — обратно приходит naive datetime,
+    # хотя записывали aware (тот же нюанс, что у to_local() в
+    # app/tasks/formatting.py). now() того же "часового пояса", что и
+    # ends_at, а не жёстко UTC — иначе TypeError на naive-naive/aware
+    # вычитании.
+    now = datetime.now(ends_at.tzinfo) if ends_at else datetime.now(timezone.utc)
+    left_minutes = max(0, round((ends_at - now).total_seconds() / 60)) if ends_at else 0
+    text = (
+        f"⏱ <b>Фокус</b>\n\n{phase} — ещё {left_minutes} мин.\n"
+        f"{active.work_minutes} мин работы / {active.break_minutes} мин перерыва."
+    )
+    rows = [[InlineKeyboardButton("✕ Прервать", callback_data=f"z|x|{active.id}")]]
+    return text, InlineKeyboardMarkup(rows)
 
 
 # --- Экраны разделов (второй уровень меню) --------------------------------

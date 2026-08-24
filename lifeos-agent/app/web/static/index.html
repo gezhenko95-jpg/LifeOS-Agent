@@ -390,6 +390,7 @@
   .grid > [data-domain="finance"],
   .grid > [data-domain="contacts"],
   .grid > [data-domain="mood"],
+  .grid > [data-domain="focus"],
   .grid > [data-domain="shelf"] { grid-column: span 3; }
   .grid > [data-domain="digest"],
   .grid > [data-domain="calendar"] { grid-column: span 12; }
@@ -406,6 +407,7 @@
     .grid > [data-domain="finance"],
     .grid > [data-domain="contacts"],
     .grid > [data-domain="mood"],
+    .grid > [data-domain="focus"],
     .grid > [data-domain="shelf"] { grid-column: span 6; }
   }
   @media (max-width: 760px) {
@@ -2649,6 +2651,7 @@
     <button type="button" class="tab" data-tab="finance">Финансы</button>
     <button type="button" class="tab" data-tab="contacts">Люди</button>
     <button type="button" class="tab" data-tab="mood">Настроение</button>
+    <button type="button" class="tab" data-tab="focus">Фокус</button>
   </nav>
 
   <!-- Счётчики продублированы ЗНАЧЕНИЕМ, а не узлом: на исходных
@@ -2942,6 +2945,12 @@
       <button type="button" data-score="5" title="5/5 — отлично">😄<span class="mood-label">отлично</span></button>
     </div>
     <ul class="item-list" id="moodList"></ul>
+  </section>
+
+  <section class="card" data-domain="focus">
+    <h2 data-icon="focus">Фокус</h2>
+    <div id="focusStatus"></div>
+    <p class="meta" id="focusStats"></p>
   </section>
 
   <section class="card" data-domain="shelf">
@@ -3272,6 +3281,12 @@ const ICON = {
   // читается как "люди" даже на 12px, без пикс./контурного варианта
   // (glyphBody тихо откатывается на этот же базовый набор, см. ниже).
   people: '<circle cx="8.6" cy="9" r="3.3"/><path d="M8.6 13.2c-3.1 0-5.6 2.1-5.9 5h11.8c-.3-2.9-2.8-5-5.9-5z"/><circle cx="16.3" cy="10.4" r="2.5"/><path d="M16.3 14c-.5 0-1 .05-1.4.15 1.2 1 2 2.4 2.2 4.05h4.5c-.2-2.3-2.2-4.2-5.3-4.2z"/>',
+  // Фокус-сессии (specs/026-focus-sessions.md): циферблат-кольцо (тот же
+  // приём, что у ring/target) + стрелки. Только базовый набор — pixel/
+  // japan тихо откатываются на него же (glyphBody), тот же приём, что у
+  // people выше — свой пиксельный/контурный вариант не оправдан ради
+  // одной карточки.
+  focus: '<path d="M12 3.4a8.6 8.6 0 1 0 0 17.2 8.6 8.6 0 0 0 0-17.2zm0 3a5.6 5.6 0 1 1 0 11.2 5.6 5.6 0 0 1 0-11.2z" fill-rule="evenodd"/><path d="M12.9 8.4h-1.8v4.6l3.6 2.1.9-1.5-2.7-1.6z"/>',
   // Трекер настроения (specs/019-mood-tracker.md): сплошное лицо +
   // светлые прорези глаз/улыбки поверх — тот же приём, что у flameCore
   // (белая деталь fill-opacity поверх сплошной заливки).
@@ -4454,6 +4469,80 @@ document.getElementById("moodList").addEventListener("click", async (e) => {
   await loadMood();
 });
 
+// --- Фокус-сессии (specs/026-focus-sessions.md) -------------------------
+//
+// Один активный сеанс максимум (см. FocusSessionService.start_session) —
+// карточка либо предлагает начать, либо показывает текущую фазу и время
+// до конца, тот же принцип, что у build_focus_message в боте.
+
+async function loadFocus() {
+  const id = getUserId();
+  const statusBox = document.getElementById("focusStatus");
+  const statsBox = document.getElementById("focusStats");
+  if (!id) { statusBox.innerHTML = ""; statsBox.textContent = ""; return; }
+
+  const [active, stats] = await Promise.all([
+    api(`/focus/sessions/active?telegram_user_id=${encodeURIComponent(id)}`),
+    api(`/focus/stats?telegram_user_id=${encodeURIComponent(id)}`),
+  ]);
+
+  if (!active) {
+    statusBox.innerHTML = `
+      <form class="add-form" id="focusStartForm">
+        <input type="number" id="focusWorkMinutes" placeholder="25" min="1" />
+        <button type="submit">▶ Начать</button>
+      </form>`;
+  } else {
+    const endsAt = active.status === "in_progress" ? active.work_ends_at : active.break_ends_at;
+    const leftMinutes = endsAt
+      ? Math.max(0, Math.round((new Date(endsAt).getTime() - Date.now()) / 60000))
+      : 0;
+    const phase = active.status === "in_progress" ? "Работа" : "Перерыв";
+    statusBox.innerHTML = `
+      <p class="stat-line">${phase} — ещё <span class="stat-number">${leftMinutes}</span> мин</p>
+      <p class="meta">${active.work_minutes} мин работы / ${active.break_minutes} мин перерыва</p>
+      <button class="danger" data-action="cancel-focus" data-id="${active.id}">✕ Прервать</button>`;
+  }
+
+  statsBox.textContent = stats.completed_count
+    ? `За неделю: ${stats.completed_count} сессий, ${stats.total_minutes} мин`
+    : "";
+}
+
+document.getElementById("focusStatus").addEventListener("submit", async (e) => {
+  if (e.target.id !== "focusStartForm") return;
+  e.preventDefault();
+  const id = requireUserId();
+  const raw = document.getElementById("focusWorkMinutes").value.trim();
+  const workMinutes = raw ? Number(raw) : 25;
+  const breakMinutes = raw ? Math.max(5, Math.round(workMinutes / 5)) : 5;
+  try {
+    await api("/focus/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        telegram_user_id: Number(id),
+        work_minutes: workMinutes,
+        break_minutes: breakMinutes,
+      }),
+    });
+  } catch (err) {
+    showToast(String(err.message || err));
+    return;
+  }
+  await loadFocus();
+});
+
+document.getElementById("focusStatus").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-action='cancel-focus']");
+  if (!btn) return;
+  const id = requireUserId();
+  await api(`/focus/sessions/${btn.dataset.id}/cancel?telegram_user_id=${encodeURIComponent(id)}`, {
+    method: "POST",
+  });
+  await loadFocus();
+});
+
 
 // --- Свёрнутые карточки ----------------------------------------------
 //
@@ -5634,7 +5723,7 @@ const TAB_KEY = "lifeos_tab";
 // семи; календарь на ней намеренно отсутствует, он занимал весь верх
 // экрана и ломал композицию.
 const TAB_CARDS = {
-  dash: ["rewards", "tasks", "habits", "goals", "weekly", "finance", "contacts", "mood", "shelf", "digest"],
+  dash: ["rewards", "tasks", "habits", "goals", "weekly", "finance", "contacts", "mood", "focus", "shelf", "digest"],
   tasks: ["tasks"],
   habits: ["habits"],
   goals: ["goals"],
@@ -5644,6 +5733,7 @@ const TAB_CARDS = {
   finance: ["finance"],
   contacts: ["contacts"],
   mood: ["mood"],
+  focus: ["focus"],
 };
 
 function getActiveTab() {
@@ -5736,6 +5826,7 @@ async function loadAll() {
     loadFinance(),
     loadContacts(),
     loadMood(),
+    loadFocus(),
     loadPersona(),
   ]);
   // Достижения зависят от данных всех карточек разом — считаем после

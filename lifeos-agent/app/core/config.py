@@ -64,6 +64,12 @@ class Settings(BaseSettings):
     habit_reminders_enabled: bool = True
     habit_reminders_interval_seconds: int = 60
 
+    # Фокус-сессии/Pomodoro (specs/026-focus-sessions.md) — тот же приём
+    # опроса БД, что у напоминаний задач/привычек выше, не
+    # job_queue.run_once (API и бот — разные процессы, см. спеку).
+    focus_notifications_enabled: bool = True
+    focus_notifications_interval_seconds: int = 20
+
     # Три касания дня (см. flows/009-daily-rhythm.md — имена настроек не
     # переименовывали при переосмыслении содержания, чтобы не задеть уже
     # настроенный .env): утро (10:30) — вопрос про сон или gap-вопрос про

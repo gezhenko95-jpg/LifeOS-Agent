@@ -7,6 +7,7 @@ from app.crm.models import Contact
 from app.db.base import Base
 from app.digest.models import Digest
 from app.finance.models import EXPENSE, INCOME, Transaction
+from app.focus.models import FocusSession
 from app.goals.models import Goal
 from app.habits.models import Habit
 from app.mood.models import MoodEntry
@@ -17,6 +18,7 @@ from app.telegram.callbacks import (
     _handle_contact_action,
     _handle_digest_action,
     _handle_finance_action,
+    _handle_focus_action,
     _handle_goal_action,
     _handle_habit_action,
     _handle_mood_action,
@@ -566,3 +568,50 @@ async def test_mood_action_x_wrong_owner_does_not_delete(session):
 
     result = await session.execute(select(MoodEntry))
     assert len(result.scalars().all()) == 1  # чужая запись никуда не делась
+
+
+# --- Фокус-сессии (specs/026-focus-sessions.md) -----------------------------
+
+
+async def test_focus_action_m_no_active_session(session):
+    text, markup = await _handle_focus_action(session, "m", "", 1, _context())
+
+    assert "Сессии нет" in text
+
+
+async def test_focus_action_s_starts_default_session(session):
+    text, markup = await _handle_focus_action(session, "s", "", 1, _context())
+
+    assert "Работа" in text
+    assert "25 мин" in text
+
+
+async def test_focus_action_s_rejects_when_already_active(session):
+    await _handle_focus_action(session, "s", "", 1, _context())
+
+    text, markup = await _handle_focus_action(session, "s", "", 1, _context())
+
+    assert "уже идёт" in text
+
+
+async def test_focus_action_a_asks_for_duration(session):
+    context = _context()
+
+    text, markup = await _handle_focus_action(session, "a", "", 1, context)
+
+    assert "минут" in text
+    assert context.user_data["pending_input"].kind == "focus_custom_duration"
+
+
+async def test_focus_action_x_cancels_session(session):
+    await _handle_focus_action(session, "s", "", 1, _context())
+    from sqlalchemy import select
+
+    result = await session.execute(select(FocusSession))
+    active = result.scalars().first()
+
+    text, markup = await _handle_focus_action(
+        session, "x", str(active.id), 1, _context()
+    )
+
+    assert "Сессии нет" in text

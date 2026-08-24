@@ -44,6 +44,7 @@ CONTACT_ADD = "contact_add"
 # задаче, отсюда task_id в контексте (как digest_id у DIGEST_CHANNEL).
 TASK_SUBTASK_ADD = "task_subtask_add"
 TASK_COMMENT_ADD = "task_comment_add"
+FOCUS_CUSTOM_DURATION = "focus_custom_duration"
 
 _KEY = "pending_input"
 
