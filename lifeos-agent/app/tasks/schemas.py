@@ -21,6 +21,7 @@ class TaskCreate(BaseModel):
     description: Optional[str] = Field(default=None, max_length=500)
     color: Optional[str] = Field(default=None, max_length=20)
     parent_id: Optional[int] = None
+    contact_id: Optional[int] = None
 
 
 class TaskUpdate(BaseModel):
@@ -33,6 +34,11 @@ class TaskUpdate(BaseModel):
     recurrence: Optional[str] = None
     description: Optional[str] = Field(default=None, max_length=500)
     color: Optional[str] = Field(default=None, max_length=20)
+    contact_id: Optional[int] = None
+    # None у contact_id означает "не трогать" (как везде в TaskUpdate) —
+    # отдельный флаг для явного снятия привязки (тот же приём, что
+    # clear_reminder/clear_description у привычек).
+    clear_contact: bool = False
 
 
 class TaskStats(BaseModel):
@@ -67,6 +73,7 @@ class TaskRead(BaseModel):
     parent_id: Optional[int] = None
     subtask_count: int = 0
     comment_count: int = 0
+    contact_id: Optional[int] = None
 
 
 class TaskCommentCreate(BaseModel):

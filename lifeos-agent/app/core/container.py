@@ -42,7 +42,12 @@ from app.watchlist.service import WatchlistService
 
 
 def build_task_service(session: AsyncSession) -> TaskService:
-    return TaskService(TaskRepository(session))
+    # contact_repository — валидирует владение contact_id при связке
+    # задачи с человеком (specs/022-tasks-v2.md). Прямая сборка
+    # TaskService(TaskRepository(session)) в нескольких местах jobs.py/
+    # handlers.py/callbacks.py (A-3, ещё не отрефакторено) этой проверки
+    # не получает — существующий, не новый trade-off.
+    return TaskService(TaskRepository(session), ContactRepository(session))
 
 
 def build_task_comment_service(session: AsyncSession) -> TaskCommentService:

@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -532,3 +533,68 @@ async def test_toggle_in_progress_someone_elses_task_returns_none(repository):
     result = await service.toggle_in_progress(1, task_id=1)
 
     assert result is None
+
+
+# --- Привязка к контакту CRM (specs/022-tasks-v2.md) ------------------------
+
+
+async def test_create_task_with_contact_id_no_validator_configured(repository):
+    """TaskService(repository) без contact_repository — старый вызов,
+    привязка проходит без проверки владения (см. __init__)."""
+    service = TaskService(repository)
+
+    task = await service.create_task(
+        telegram_user_id=1, title="Позвонить", contact_id=5
+    )
+
+    assert task.contact_id == 5
+
+
+async def test_create_task_with_contact_id_validated_success(repository):
+    contacts = AsyncMock()
+    contacts.get_by_id.return_value = SimpleNamespace(id=5, telegram_user_id=1)
+    service = TaskService(repository, contacts)
+
+    task = await service.create_task(
+        telegram_user_id=1, title="Позвонить", contact_id=5
+    )
+
+    assert task.contact_id == 5
+
+
+async def test_create_task_with_unknown_contact_id_raises(repository):
+    contacts = AsyncMock()
+    contacts.get_by_id.return_value = None
+    service = TaskService(repository, contacts)
+
+    with pytest.raises(ValueError):
+        await service.create_task(telegram_user_id=1, title="Позвонить", contact_id=99)
+
+
+async def test_create_task_with_someone_elses_contact_id_raises(repository):
+    contacts = AsyncMock()
+    contacts.get_by_id.return_value = SimpleNamespace(id=5, telegram_user_id=2)
+    service = TaskService(repository, contacts)
+
+    with pytest.raises(ValueError):
+        await service.create_task(telegram_user_id=1, title="Позвонить", contact_id=5)
+
+
+async def test_update_task_sets_contact_id(repository):
+    task = Task(id=1, telegram_user_id=1, title="Задача")
+    repository.get_by_id.return_value = task
+    service = TaskService(repository)
+
+    updated = await service.update_task(1, task_id=1, contact_id=7)
+
+    assert updated.contact_id == 7
+
+
+async def test_update_task_clear_contact(repository):
+    task = Task(id=1, telegram_user_id=1, title="Задача", contact_id=7)
+    repository.get_by_id.return_value = task
+    service = TaskService(repository)
+
+    updated = await service.update_task(1, task_id=1, clear_contact=True)
+
+    assert updated.contact_id is None

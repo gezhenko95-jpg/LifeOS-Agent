@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from app.core.ownership import owned_or_none
+from app.crm.repository import ContactRepository
 from app.tasks.models import Task, TaskComment
 from app.tasks.repository import TaskCommentRepository, TaskRepository
 
@@ -45,8 +46,17 @@ def _add_month(dt: datetime) -> datetime:
 
 
 class TaskService:
-    def __init__(self, repository: TaskRepository) -> None:
+    def __init__(
+        self,
+        repository: TaskRepository,
+        contact_repository: Optional[ContactRepository] = None,
+    ) -> None:
         self._repository = repository
+        # Опционально (как ai_client у ConversationEngine) — валидирует
+        # владение contact_id, если задан. Старые вызовы TaskService(repo)
+        # без него по-прежнему работают, просто без этой проверки
+        # (тот же trade-off, что уже принят проектом для A-1, AUDIT.md).
+        self._contacts = contact_repository
 
     async def create_task(
         self,
@@ -58,6 +68,7 @@ class TaskService:
         description: Optional[str] = None,
         color: Optional[str] = None,
         parent_id: Optional[int] = None,
+        contact_id: Optional[int] = None,
     ) -> Task:
         title = title.strip()
         if not title:
@@ -68,6 +79,8 @@ class TaskService:
             raise ValueError(f"Неизвестный цвет: {color}")
         if recurrence is not None and recurrence not in _RECURRENCE_INTERVALS:
             raise ValueError(f"Неизвестная периодичность: {recurrence}")
+        if contact_id is not None:
+            await self._check_contact_owned(telegram_user_id, contact_id)
 
         if parent_id is not None:
             parent = owned_or_none(
@@ -102,8 +115,22 @@ class TaskService:
             description=(description or "").strip() or None,
             color=(color or "").strip().lower() or None,
             parent_id=parent_id,
+            contact_id=contact_id,
         )
         return await self._repository.add(task)
+
+    async def _check_contact_owned(
+        self, telegram_user_id: int, contact_id: int
+    ) -> None:
+        """Пропускается молча, если сервис собран без contact_repository
+        (см. __init__) — тот же trade-off, что у A-1 в AUDIT.md."""
+        if self._contacts is None:
+            return
+        contact = owned_or_none(
+            await self._contacts.get_by_id(contact_id), telegram_user_id
+        )
+        if contact is None:
+            raise ValueError("Контакт не найден")
 
     async def list_subtasks(self, telegram_user_id: int, parent_id: int) -> list[Task]:
         return await self._repository.list_subtasks(telegram_user_id, parent_id)
@@ -146,11 +173,15 @@ class TaskService:
         recurrence: Optional[str] = None,
         description: Optional[str] = None,
         color: Optional[str] = None,
+        contact_id: Optional[int] = None,
+        clear_contact: bool = False,
     ) -> Optional[Task]:
         if priority is not None and priority not in _PRIORITY_ORDER:
             raise ValueError(f"Неизвестный приоритет: {priority}")
         if recurrence is not None and recurrence not in _RECURRENCE_INTERVALS:
             raise ValueError(f"Неизвестная периодичность: {recurrence}")
+        if contact_id is not None:
+            await self._check_contact_owned(telegram_user_id, contact_id)
 
         task = owned_or_none(
             await self._repository.get_by_id(task_id), telegram_user_id
@@ -181,6 +212,10 @@ class TaskService:
             if color and color not in TASK_COLORS:
                 raise ValueError(f"Неизвестный цвет: {color}")
             task.color = color or None
+        if clear_contact:
+            task.contact_id = None
+        elif contact_id is not None:
+            task.contact_id = contact_id
 
         saved = await self._repository.save(task)
         if was_active and status == COMPLETED:

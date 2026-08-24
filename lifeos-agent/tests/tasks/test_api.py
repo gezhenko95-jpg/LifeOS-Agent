@@ -272,6 +272,64 @@ async def test_list_completed_outside_range_is_empty(client):
     assert response.json() == []
 
 
+# --- Привязка к контакту CRM -----------------------------------------------
+
+
+async def test_create_task_with_contact_id(client):
+    contact_resp = await client.post(
+        "/crm/contacts", json={"telegram_user_id": 17, "name": "Аня"}
+    )
+    contact_id = contact_resp.json()["id"]
+
+    task_resp = await client.post(
+        "/tasks",
+        json={"telegram_user_id": 17, "title": "Позвонить", "contact_id": contact_id},
+    )
+
+    assert task_resp.status_code == 201
+    assert task_resp.json()["contact_id"] == contact_id
+
+
+async def test_create_task_with_unknown_contact_id_returns_400(client):
+    response = await client.post(
+        "/tasks",
+        json={"telegram_user_id": 17, "title": "Позвонить", "contact_id": 9999},
+    )
+    assert response.status_code == 400
+
+
+async def test_create_task_with_someone_elses_contact_id_returns_400(client):
+    contact_resp = await client.post(
+        "/crm/contacts", json={"telegram_user_id": 18, "name": "Чужой контакт"}
+    )
+    contact_id = contact_resp.json()["id"]
+
+    response = await client.post(
+        "/tasks",
+        json={"telegram_user_id": 17, "title": "Позвонить", "contact_id": contact_id},
+    )
+    assert response.status_code == 400
+
+
+async def test_update_task_clears_contact(client):
+    contact_resp = await client.post(
+        "/crm/contacts", json={"telegram_user_id": 19, "name": "Боря"}
+    )
+    contact_id = contact_resp.json()["id"]
+    task_resp = await client.post(
+        "/tasks",
+        json={"telegram_user_id": 19, "title": "Написать", "contact_id": contact_id},
+    )
+    task_id = task_resp.json()["id"]
+
+    patch_resp = await client.patch(
+        f"/tasks/{task_id}",
+        params={"telegram_user_id": 19},
+        json={"clear_contact": True},
+    )
+    assert patch_resp.json()["contact_id"] is None
+
+
 async def test_stats_zero_when_nothing_completed(client):
     response = await client.get("/tasks/stats", params={"telegram_user_id": 8})
 

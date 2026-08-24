@@ -111,6 +111,13 @@ class Task(Base):
         comment="Родительская задача (подзадача/эпик), NULL — верхний уровень",
     )
 
+    contact_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("contacts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="Связанный контакт CRM (NULL — не связана)",
+    )
+
 
 class TaskComment(Base):
     """Комментарий к задаче — лог из нескольких записей, не одна

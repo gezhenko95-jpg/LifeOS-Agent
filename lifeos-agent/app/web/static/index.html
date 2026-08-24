@@ -485,6 +485,9 @@
     font-size: 0.72rem;
     cursor: pointer;
   }
+  /* Бейдж связанного контакта — не кнопка (нечего разворачивать), свой
+     курсор, чтобы не выглядела кликабельной как 📎/💬. */
+  .task-badge-contact { cursor: default; }
   /* "В работе" — та же кнопка-иконка, что ✎/✓/✕, но с заливкой
      акцентом, когда включена (иначе состояние не отличить от обычной
      неактивной кнопки в ряду). */
@@ -2656,6 +2659,12 @@
       <label for="editorReminder">Напоминание</label>
       <input id="editorReminder" type="time" />
     </div>
+    <div class="editor-row" id="editorContactRow">
+      <label for="editorContact">Человек</label>
+      <select id="editorContact">
+        <option value="">не связана</option>
+      </select>
+    </div>
     <div class="editor-actions">
       <button type="button" id="editorSave">Сохранить</button>
       <button type="button" class="secondary" id="editorComplete" hidden>✓ Выполнить</button>
@@ -3679,6 +3688,10 @@ async function loadTasks() {
     const badges = [];
     if (task.subtask_count) badges.push(`<button type="button" class="task-badge" data-action="toggle-panel" data-id="${task.id}">📎 ${task.subtask_count}</button>`);
     if (task.comment_count) badges.push(`<button type="button" class="task-badge" data-action="toggle-panel" data-id="${task.id}">💬 ${task.comment_count}</button>`);
+    if (task.contact_id) {
+      const contact = lastContacts.find((c) => c.id === task.contact_id);
+      if (contact) badges.push(`<span class="task-badge task-badge-contact">👤 ${escapeHtml(contact.name)}</span>`);
+    }
     const expanded = expandedTaskPanels.has(task.id);
     return `
     <li>
@@ -4056,14 +4069,21 @@ function parseBirthdayInput(raw) {
   return { birthday_day: Number(match[1]), birthday_month: Number(match[2]) };
 }
 
+// Кэш контактов — редактору задачи нужен список имён для выпадающего
+// списка "Человек" (specs/022-tasks-v2.md), без отдельного запроса на
+// каждое открытие редактора.
+let lastContacts = [];
+
 async function loadContacts() {
   const id = getUserId();
   const list = document.getElementById("contactsList");
   if (!id) {
     list.innerHTML = "";
+    lastContacts = [];
     return;
   }
   const contacts = await api(`/crm/contacts?telegram_user_id=${encodeURIComponent(id)}`);
+  lastContacts = contacts;
 
   if (!contacts.length) {
     list.innerHTML = '<li class="empty">Пока никого. Добавьте того, кому иногда стоит написать первым.</li>';
@@ -4277,6 +4297,18 @@ function openEditor(kind, id) {
   // способа отметить готовой прямо там же.
   document.getElementById("editorComplete").hidden = kind !== "task";
 
+  const contactRow = document.getElementById("editorContactRow");
+  contactRow.hidden = kind !== "task";
+  if (kind === "task") {
+    const select = document.getElementById("editorContact");
+    select.innerHTML =
+      '<option value="">не связана</option>' +
+      lastContacts
+        .map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`)
+        .join("");
+    select.value = item.contact_id ? String(item.contact_id) : "";
+  }
+
   const reminderRow = document.getElementById("editorReminderRow");
   reminderRow.hidden = kind !== "habit";
   if (kind === "habit") {
@@ -4309,6 +4341,9 @@ async function saveEditor() {
 
   if (editorTarget.kind === "task") {
     body.color = document.getElementById("editorColor").value;
+    const contactValue = document.getElementById("editorContact").value;
+    if (contactValue) body.contact_id = Number(contactValue);
+    else body.clear_contact = true;
   }
   if (editorTarget.kind === "habit") {
     const time = document.getElementById("editorReminder").value;
