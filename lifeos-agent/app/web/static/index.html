@@ -516,6 +516,22 @@
   .task-panel-done { text-decoration: line-through; opacity: 0.6; }
   .task-panel-col .add-form { margin-top: 6px; }
 
+  /* Подзаголовок группы внутри списка задач ("⚠️ Просрочено (N)" /
+     "Остальные") — своя строка, без рамки/фона обычного li и без
+     наведения (не элемент действия). */
+  ul.item-list li.task-section-header {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    padding: 10px 4px 4px;
+    border-bottom: none;
+    animation: none;
+  }
+  ul.item-list li.task-section-header:hover { background: transparent; }
+  ul.item-list li.task-section-header.overdue { color: var(--overdue); }
+
   ul.item-list { list-style: none; margin: 0; padding: 0; }
   ul.item-list li {
     display: flex;
@@ -3671,29 +3687,17 @@ document.getElementById("claimButton").addEventListener("click", async () => {
 // (после ✓/✕ соседней задачи) — id задачи, а не индекс DOM-узла.
 const expandedTaskPanels = new Set();
 
-async function loadTasks() {
-  const id = getUserId();
-  const list = document.getElementById("taskList");
-  if (!id) { list.innerHTML = ""; lastHabits = []; return; }
-  const tasks = await api(`/tasks?telegram_user_id=${encodeURIComponent(id)}`);
-  lastTasks = tasks;
-  await loadCompletedForCalendar();
-  renderCalendar();
-  if (!tasks.length) {
-    list.innerHTML = '<li class="empty">Активных задач нет — и это нормально.</li>';
-    return;
+function taskRow(task) {
+  const status = dueStatus(task.due_date);
+  const badges = [];
+  if (task.subtask_count) badges.push(`<button type="button" class="task-badge" data-action="toggle-panel" data-id="${task.id}">📎 ${task.subtask_count}</button>`);
+  if (task.comment_count) badges.push(`<button type="button" class="task-badge" data-action="toggle-panel" data-id="${task.id}">💬 ${task.comment_count}</button>`);
+  if (task.contact_id) {
+    const contact = lastContacts.find((c) => c.id === task.contact_id);
+    if (contact) badges.push(`<span class="task-badge task-badge-contact">👤 ${escapeHtml(contact.name)}</span>`);
   }
-  list.innerHTML = tasks.map((task) => {
-    const status = dueStatus(task.due_date);
-    const badges = [];
-    if (task.subtask_count) badges.push(`<button type="button" class="task-badge" data-action="toggle-panel" data-id="${task.id}">📎 ${task.subtask_count}</button>`);
-    if (task.comment_count) badges.push(`<button type="button" class="task-badge" data-action="toggle-panel" data-id="${task.id}">💬 ${task.comment_count}</button>`);
-    if (task.contact_id) {
-      const contact = lastContacts.find((c) => c.id === task.contact_id);
-      if (contact) badges.push(`<span class="task-badge task-badge-contact">👤 ${escapeHtml(contact.name)}</span>`);
-    }
-    const expanded = expandedTaskPanels.has(task.id);
-    return `
+  const expanded = expandedTaskPanels.has(task.id);
+  return `
     <li>
       <span class="status-dot ${status}" title="${status}"></span>
       <span class="item-title ${task.priority === "high" ? "high" : ""}">
@@ -3709,7 +3713,34 @@ async function loadTasks() {
       <button class="secondary" data-action="toggle-panel" data-id="${task.id}" title="Подзадачи и комментарии">${expanded ? "▴" : "▾"}</button>
       <div class="task-panel" data-panel-for="${task.id}" ${expanded ? "" : "hidden"}></div>
     </li>`;
-  }).join("");
+}
+
+async function loadTasks() {
+  const id = getUserId();
+  const list = document.getElementById("taskList");
+  if (!id) { list.innerHTML = ""; lastHabits = []; return; }
+  const tasks = await api(`/tasks?telegram_user_id=${encodeURIComponent(id)}`);
+  lastTasks = tasks;
+  await loadCompletedForCalendar();
+  renderCalendar();
+  if (!tasks.length) {
+    list.innerHTML = '<li class="empty">Активных задач нет — и это нормально.</li>';
+    return;
+  }
+  // Просроченные — отдельной графой сверху, не вперемешку с остальными:
+  // раньше расхождение с общей сводкой ("⚠️ N просрочены" видно только в
+  // тексте бота) было незаметно на /ui, пока не откроешь каждую строку.
+  const overdueTasks = tasks.filter((t) => dueStatus(t.due_date) === "overdue");
+  const restTasks = tasks.filter((t) => dueStatus(t.due_date) !== "overdue");
+  const overdueHtml = overdueTasks.length
+    ? `<li class="task-section-header overdue">⚠️ Просрочено (${overdueTasks.length})</li>` +
+      overdueTasks.map(taskRow).join("")
+    : "";
+  const restHeader =
+    overdueTasks.length && restTasks.length
+      ? '<li class="task-section-header">Остальные</li>'
+      : "";
+  list.innerHTML = overdueHtml + restHeader + restTasks.map(taskRow).join("");
   for (const taskId of expandedTaskPanels) {
     if (tasks.some((t) => t.id === taskId)) await renderTaskPanel(taskId);
     else expandedTaskPanels.delete(taskId);
