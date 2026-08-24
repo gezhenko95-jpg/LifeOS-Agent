@@ -103,6 +103,18 @@ async def test_gather_habit_series_has_thirty_days_per_habit():
     assert days[-2] is False  # вчера — не отмечено
 
 
+async def test_gather_weekly_counts_respects_custom_weeks():
+    task_service = AsyncMock()
+    task_service.count_tasks_completed_between.side_effect = [1, 2, 3, 4]
+    habit_service = AsyncMock()
+    habit_service.list_active_habits.return_value = []
+
+    data = await gather_chart_data(1, task_service, habit_service, weeks=4)
+
+    assert len(data.weekly_task_counts) == 4
+    assert task_service.count_tasks_completed_between.await_count == 4
+
+
 async def test_gather_no_habits_gives_empty_series():
     task_service = AsyncMock()
     task_service.count_tasks_completed_between.return_value = 0

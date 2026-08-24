@@ -507,11 +507,27 @@
     letter-spacing: normal;
     color: var(--muted);
   }
-  /* График "Итоги недели" — matplotlib PNG с сервера (тот же, что уходит
-     в еженедельный дайджест в Telegram), max-width вместо фиксированной
-     ширины: карточка меняет размер между скинами/брейкпоинтами. */
-  .weekly-chart-img { display: block; width: 100%; height: auto; margin-top: 10px; border-radius: var(--radius-control); }
-  .weekly-chart-img[hidden] { display: none; }
+  /* График "Итоги недели" — HTML/CSS, не PNG-картинка с сервера (был
+     matplotlib, тот же, что уходит в дайджест Telegram — PNG-роут
+     остался, только /ui больше им не пользуется, см. loadWeeklyChart).
+     Тот же визуальный язык, что .finance-analytics ниже — переключатель
+     недель/типа данных над ним. */
+  .weekly-chart-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+  .segmented { display: inline-flex; border: var(--border-width) solid var(--border); border-radius: 999px; overflow: hidden; }
+  .segmented-btn { background: none; border: none; padding: 4px 10px; font-size: 0.78rem; color: var(--muted); cursor: pointer; }
+  .segmented-btn.active { background: var(--accent); color: var(--accent-text); }
+  .weekly-chart-html { margin-top: 8px; }
+  /* Привычки — мини-heatmap, ячейка = день (30 дней, как у PNG-версии). */
+  .habit-heatmap { display: flex; flex-direction: column; gap: 6px; }
+  .habit-heatmap-row { display: flex; align-items: center; gap: 8px; }
+  .habit-heatmap-title { width: 90px; flex: none; font-size: 0.75rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .habit-heatmap-cells { display: flex; gap: 2px; flex-wrap: wrap; flex: 1; min-width: 0; }
+  .habit-heatmap-cell { width: 8px; height: 8px; border-radius: 2px; background: var(--border); flex: none; }
+  .habit-heatmap-cell.done { background: var(--ok); }
+  /* Настроение — столбики по высоте (1-5), не точки: тот же смысл, что
+     scatter в PNG-версии, но в языке остальных HTML/CSS-графиков. */
+  .mood-sparkline { display: flex; align-items: flex-end; gap: 3px; height: 60px; }
+  .mood-sparkline-bar { flex: 1; min-width: 4px; max-width: 14px; border-radius: 3px 3px 0 0; background: var(--accent); }
 
   /* Аналитика финансов по месяцам — две горизонтальные полоски (доход/
      траты) в одной строке на месяц, ширина от общего максимума за
@@ -2982,7 +2998,20 @@
   <section class="card" data-domain="weekly">
     <h2 data-icon="chart">Итоги недели</h2>
     <p class="stat-line"><span class="stat-number" id="weeklyTasksCount">—</span> задач выполнено за последние 7 дней</p>
-    <img id="weeklyChartImg" class="weekly-chart-img" alt="Задачи по неделям, привычки, настроение" hidden />
+    <div class="weekly-chart-controls">
+      <select id="weeklyChartWeeks">
+        <option value="4">4 недели</option>
+        <option value="8">8 недель</option>
+        <option value="12" selected>12 недель</option>
+        <option value="26">26 недель</option>
+      </select>
+      <div class="segmented" id="weeklyChartSeriesPicker">
+        <button type="button" class="segmented-btn active" data-series="tasks">Задачи</button>
+        <button type="button" class="segmented-btn" data-series="habits">Привычки</button>
+        <button type="button" class="segmented-btn" data-series="mood">Настроение</button>
+      </div>
+    </div>
+    <div id="weeklyChartHtml" class="weekly-chart-html"></div>
   </section>
 
   <section class="card" data-domain="finance">
@@ -5782,46 +5811,93 @@ async function handleShelfClick(e) {
 async function loadWeeklyStats() {
   const id = getUserId();
   const el = document.getElementById("weeklyTasksCount");
-  const img = document.getElementById("weeklyChartImg");
-  if (!id) { el.textContent = "—"; img.hidden = true; return; }
+  const box = document.getElementById("weeklyChartHtml");
+  if (!id) { el.textContent = "—"; box.innerHTML = ""; return; }
   const stats = await api(`/tasks/stats?telegram_user_id=${encodeURIComponent(id)}`);
   lastWeeklyCount = stats.completed_this_week;
   animateNumber(el, stats.completed_this_week);
   await loadWeeklyChart(id);
 }
 
-// Держим ссылку на предыдущий blob URL — без revokeObjectURL каждая
-// перерисовка карточки (loadAll вызывается на каждое изменение) копила
-// бы утечку памяти.
-let weeklyChartUrl = null;
+// Кэш последнего ответа /charts/weekly/data — переключатель типа данных
+// (задачи/привычки/настроение) не должен бить по API заново, сервер уже
+// прислал все три ряда разом (см. WeeklyChartData в app/api/charts.py).
+let lastWeeklyChartData = null;
+let weeklyChartSeries = "tasks"; // "tasks" | "habits" | "mood"
+let weeklyChartWeeksValue = 12;
 
-/** <img src> не умеет слать X-API-Token (см. app/main.py, комментарий
-    у роутера charts) — график содержит личные данные, поэтому не может
-    жить без токена, как открытый прокси обложек (app/api/poster.py).
-    Тянем сами через fetch(), превращаем в blob URL. */
 async function loadWeeklyChart(id) {
-  const img = document.getElementById("weeklyChartImg");
   try {
-    const response = await fetch(
-      `/charts/weekly?telegram_user_id=${encodeURIComponent(id)}`,
-      { headers: { "X-API-Token": getApiToken() } }
+    lastWeeklyChartData = await api(
+      `/charts/weekly/data?telegram_user_id=${encodeURIComponent(id)}&weeks=${weeklyChartWeeksValue}`
     );
-    if (!response.ok) {
-      // 404 — нечего показать (ни задач, ни привычек, ни настроения за
-      // период), не ошибка. Другие коды — тоже просто не показываем
-      // картинку, число выполненных задач выше уже сказало главное.
-      img.hidden = true;
-      return;
-    }
-    const blob = await response.blob();
-    if (weeklyChartUrl) URL.revokeObjectURL(weeklyChartUrl);
-    weeklyChartUrl = URL.createObjectURL(blob);
-    img.src = weeklyChartUrl;
-    img.hidden = false;
   } catch (e) {
-    img.hidden = true;
+    lastWeeklyChartData = null;
   }
+  renderWeeklyChart();
 }
+
+function renderWeeklyChart() {
+  const box = document.getElementById("weeklyChartHtml");
+  const data = lastWeeklyChartData;
+  if (!data) { box.innerHTML = ""; return; }
+  if (weeklyChartSeries === "habits") box.innerHTML = renderHabitHeatmap(data.habit_series);
+  else if (weeklyChartSeries === "mood") box.innerHTML = renderMoodSparkline(data.mood_series);
+  else box.innerHTML = renderWeeklyTaskBars(data.weekly_task_counts);
+}
+
+function renderWeeklyTaskBars(points) {
+  if (!points.length || points.every((p) => p.count === 0)) {
+    return '<p class="empty">За этот период задач не выполнялось.</p>';
+  }
+  const maxValue = Math.max(1, ...points.map((p) => p.count));
+  const rows = points.map((p) => {
+    const pct = Math.round((p.count / maxValue) * 100);
+    return `
+    <div class="fa-row">
+      <span class="fa-label">${escapeHtml(p.label)}</span>
+      <span class="fa-bars"><span class="fa-bar fa-bar-income" style="width:${pct}%"></span></span>
+      <span class="fa-net meta">${p.count}</span>
+    </div>`;
+  });
+  return `<div class="finance-analytics">${rows.join("")}</div>`;
+}
+
+function renderHabitHeatmap(rows) {
+  if (!rows.length) return '<p class="empty">Активных привычек нет.</p>';
+  const html = rows.map((row) => `
+    <div class="habit-heatmap-row">
+      <span class="habit-heatmap-title" title="${escapeHtml(row.title)}">${escapeHtml(row.title)}</span>
+      <span class="habit-heatmap-cells">${row.days.map((done) => `<span class="habit-heatmap-cell${done ? " done" : ""}"></span>`).join("")}</span>
+    </div>`);
+  return `<div class="habit-heatmap">${html.join("")}</div>`;
+}
+
+function renderMoodSparkline(points) {
+  if (!points.length) return '<p class="empty">Отметок настроения за 30 дней нет.</p>';
+  const ordered = [...points].sort((a, b) => a.date.localeCompare(b.date));
+  const bars = ordered.map((p) => {
+    const pct = Math.round((p.score / 5) * 100);
+    return `<span class="mood-sparkline-bar" style="height:${pct}%" title="${p.date} — ${p.score}/5"></span>`;
+  });
+  return `<div class="mood-sparkline">${bars.join("")}</div>`;
+}
+
+document.getElementById("weeklyChartWeeks").addEventListener("change", async (e) => {
+  weeklyChartWeeksValue = Number(e.target.value);
+  const id = getUserId();
+  if (id) await loadWeeklyChart(id);
+});
+
+document.getElementById("weeklyChartSeriesPicker").addEventListener("click", (e) => {
+  const btn = e.target.closest(".segmented-btn");
+  if (!btn) return;
+  weeklyChartSeries = btn.dataset.series;
+  document
+    .querySelectorAll("#weeklyChartSeriesPicker .segmented-btn")
+    .forEach((b) => b.classList.toggle("active", b === btn));
+  renderWeeklyChart();
+});
 
 // ---- User id + init ----
 

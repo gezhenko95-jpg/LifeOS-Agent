@@ -56,12 +56,20 @@ async def gather_chart_data(
     task_service: TaskService,
     habit_service: HabitService,
     mood_service: MoodService | None = None,
+    weeks: int = _WEEKS,
 ) -> ChartData:
     """`mood_service=None` тихо пропускает третий подграфик — тот же
-    паттерн опциональности, что у ConversationEngine/build_nudges."""
+    паттерн опциональности, что у ConversationEngine/build_nudges.
+
+    `weeks` — диапазон столбцов задач (по умолчанию `_WEEKS`, как раньше,
+    PNG-дайджест в Telegram его не передаёт и не видит разницы). Добавлен
+    ради JSON-графика на /ui (отчёт владельца 24.08, вечер #6, волна 6:
+    "фильтр на диапазон недель") — habit_series/mood_series своим
+    фиксированным окном (_HABIT_DAYS/_MOOD_DAYS) не параметризуются, весь
+    смысл "по неделям" — только у задач."""
     now = datetime.now(timezone.utc)
     weekly_counts = []
-    for weeks_ago in range(_WEEKS - 1, -1, -1):
+    for weeks_ago in range(weeks - 1, -1, -1):
         until = now - timedelta(weeks=weeks_ago)
         since = until - timedelta(weeks=1)
         count = await task_service.count_tasks_completed_between(

@@ -67,3 +67,48 @@ async def test_weekly_chart_requires_auth_token(client):
     app.dependency_overrides.pop(require_api_token, None)
     response = await client.get("/charts/weekly", params={"telegram_user_id": 1})
     assert response.status_code != 200
+
+
+# --- /charts/weekly/data (JSON, /ui — HTML/CSS-график вместо PNG) ----------
+
+
+async def test_weekly_chart_data_empty_when_nothing_to_show(client):
+    """В отличие от /charts/weekly — никогда не 404, пустые массивы."""
+    response = await client.get("/charts/weekly/data", params={"telegram_user_id": 1})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["habit_series"] == []
+    assert body["mood_series"] == []
+    assert len(body["weekly_task_counts"]) == 12  # default weeks
+
+
+async def test_weekly_chart_data_reflects_completed_task(client):
+    create_resp = await client.post(
+        "/tasks", json={"telegram_user_id": 2, "title": "Отчёт"}
+    )
+    task_id = create_resp.json()["id"]
+    await client.patch(
+        f"/tasks/{task_id}",
+        params={"telegram_user_id": 2},
+        json={"status": "completed"},
+    )
+
+    response = await client.get("/charts/weekly/data", params={"telegram_user_id": 2})
+    assert response.status_code == 200
+    total = sum(point["count"] for point in response.json()["weekly_task_counts"])
+    assert total == 1
+
+
+async def test_weekly_chart_data_custom_weeks(client):
+    response = await client.get(
+        "/charts/weekly/data", params={"telegram_user_id": 1, "weeks": 4}
+    )
+    assert response.status_code == 200
+    assert len(response.json()["weekly_task_counts"]) == 4
+
+
+async def test_weekly_chart_data_rejects_out_of_range_weeks(client):
+    response = await client.get(
+        "/charts/weekly/data", params={"telegram_user_id": 1, "weeks": 0}
+    )
+    assert response.status_code == 422
