@@ -17,13 +17,18 @@ def _habit(title="Привычка", id=1) -> SimpleNamespace:
 
 
 def _contact(
-    name="Аня", last_contact_at=None, birthday_month=None, birthday_day=None
+    name="Аня",
+    last_contact_at=None,
+    birthday_month=None,
+    birthday_day=None,
+    nudge_after_days=None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         name=name,
         last_contact_at=last_contact_at or NOW,
         birthday_month=birthday_month,
         birthday_day=birthday_day,
+        nudge_after_days=nudge_after_days,
     )
 
 
@@ -192,6 +197,35 @@ async def test_stale_contact_not_nudged_outside_threshold():
     contact_service = AsyncMock()
     contact_service.list_contacts.return_value = [
         _contact("Аня", last_contact_at=NOW - timedelta(days=29))
+    ]
+
+    lines = await build_nudges(1, goal_service, habit_service, contact_service)
+
+    assert lines == []
+
+
+async def test_stale_contact_uses_own_threshold_when_set():
+    """Своя частота нэджа (specs/018, довесок) — 14 дней вместо
+    глобальных 30."""
+    goal_service, habit_service = _empty_goal_habit_services()
+    contact_service = AsyncMock()
+    contact_service.list_contacts.return_value = [
+        _contact("Аня", last_contact_at=NOW - timedelta(days=14), nudge_after_days=14)
+    ]
+
+    lines = await build_nudges(1, goal_service, habit_service, contact_service)
+
+    assert len(lines) == 1
+    assert "14" in lines[0]
+
+
+async def test_stale_contact_own_threshold_ignores_global_default():
+    """На 30-й день у контакта со своим порогом 14 нэдж уже не должен
+    сработать повторно (условие == threshold, не >=)."""
+    goal_service, habit_service = _empty_goal_habit_services()
+    contact_service = AsyncMock()
+    contact_service.list_contacts.return_value = [
+        _contact("Аня", last_contact_at=NOW - timedelta(days=30), nudge_after_days=14)
     ]
 
     lines = await build_nudges(1, goal_service, habit_service, contact_service)

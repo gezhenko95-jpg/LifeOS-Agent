@@ -48,6 +48,16 @@ class Contact(Base):
         String(500), nullable=True, comment="Свободная заметка"
     )
 
+    tags: Mapped[str | None] = mapped_column(
+        String(200), nullable=True, comment="Группы/теги через запятую"
+    )
+
+    nudge_after_days: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment='Свой порог "давно не писал" в днях (NULL — глобальный дефолт)',
+    )
+
     last_contact_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

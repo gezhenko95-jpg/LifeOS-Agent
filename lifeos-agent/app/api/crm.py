@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.container import build_contact_service
-from app.crm.schemas import ContactCreate, ContactRead
+from app.crm.schemas import ContactCreate, ContactRead, ContactUpdate
 from app.crm.service import ContactService
 from app.db.session import get_session
 
@@ -35,11 +35,41 @@ async def create_contact(
             birthday_month=payload.birthday_month,
             birthday_day=payload.birthday_day,
             notes=payload.notes,
+            tags=payload.tags,
+            nudge_after_days=payload.nudge_after_days,
         )
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
         ) from exc
+    return ContactRead.model_validate(contact)
+
+
+@router.patch("/contacts/{contact_id}", response_model=ContactRead)
+async def update_contact(
+    contact_id: int,
+    telegram_user_id: int,
+    payload: ContactUpdate,
+    service: ContactService = Depends(get_contact_service),
+) -> ContactRead:
+    try:
+        contact = await service.update_contact(
+            telegram_user_id=telegram_user_id,
+            contact_id=contact_id,
+            name=payload.name,
+            notes=payload.notes,
+            tags=payload.tags,
+            nudge_after_days=payload.nudge_after_days,
+            clear_nudge_after_days=payload.clear_nudge_after_days,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+    if contact is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Контакт не найден"
+        )
     return ContactRead.model_validate(contact)
 
 

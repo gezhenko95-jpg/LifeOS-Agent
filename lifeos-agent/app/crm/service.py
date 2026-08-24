@@ -29,12 +29,15 @@ class ContactService:
         birthday_month: Optional[int] = None,
         birthday_day: Optional[int] = None,
         notes: Optional[str] = None,
+        tags: Optional[str] = None,
+        nudge_after_days: Optional[int] = None,
     ) -> Contact:
         name = name.strip()
         if not name:
             raise ValueError("Имя не может быть пустым")
 
         _validate_birthday(birthday_month, birthday_day)
+        _validate_nudge_after_days(nudge_after_days)
 
         contact = Contact(
             telegram_user_id=telegram_user_id,
@@ -42,8 +45,56 @@ class ContactService:
             birthday_month=birthday_month,
             birthday_day=birthday_day,
             notes=(notes or "").strip() or None,
+            tags=(tags or "").strip() or None,
+            nudge_after_days=nudge_after_days,
         )
         return await self._repository.add(contact)
+
+    async def update_contact(
+        self,
+        telegram_user_id: int,
+        contact_id: int,
+        name: Optional[str] = None,
+        notes: Optional[str] = None,
+        tags: Optional[str] = None,
+        nudge_after_days: Optional[int] = None,
+        clear_nudge_after_days: bool = False,
+    ) -> Optional[Contact]:
+        """Раньше единственным способом изменить контакт было удалить и
+        создать заново — заметка/теги/частота нэджа были только полями
+        add_contact, без пути обновления (см. specs/022-tasks-v2.md —
+        та же дыра в изначальной специке личного CRM, найдена по ходу
+        добавления довесков к задачам).
+
+        notes/tags — пустая строка стирает (как description у задачи),
+        None — не трогать. nudge_after_days отдельным clear-флагом (как
+        clear_reminder у привычек) — 0 отличим от "не трогать", но
+        сброс к глобальному дефолту (None) без такого флага был бы
+        неотличим от "не менял"."""
+        if nudge_after_days is not None:
+            _validate_nudge_after_days(nudge_after_days)
+
+        contact = owned_or_none(
+            await self._repository.get_by_id(contact_id), telegram_user_id
+        )
+        if contact is None:
+            return None
+
+        if name is not None:
+            name = name.strip()
+            if not name:
+                raise ValueError("Имя не может быть пустым")
+            contact.name = name
+        if notes is not None:
+            contact.notes = notes.strip() or None
+        if tags is not None:
+            contact.tags = tags.strip() or None
+        if clear_nudge_after_days:
+            contact.nudge_after_days = None
+        elif nudge_after_days is not None:
+            contact.nudge_after_days = nudge_after_days
+
+        return await self._repository.save(contact)
 
     async def list_contacts(self, telegram_user_id: int) -> list[Contact]:
         return await self._repository.list_by_user(telegram_user_id)
@@ -83,3 +134,8 @@ def _validate_birthday(month: Optional[int], day: Optional[int]) -> None:
         date(_LEAP_YEAR_FOR_VALIDATION, month, day)
     except ValueError as exc:
         raise ValueError("Такой даты не существует") from exc
+
+
+def _validate_nudge_after_days(days: Optional[int]) -> None:
+    if days is not None and days < 1:
+        raise ValueError("Частота нэджа — минимум 1 день")

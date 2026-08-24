@@ -112,7 +112,10 @@ async def _stale_contact_nudges(
         if last_contact_at.tzinfo is None:
             last_contact_at = last_contact_at.replace(tzinfo=timezone.utc)
         days_since = (now - last_contact_at).days
-        if days_since == _STALE_CONTACT_DAYS:
+        # Свой порог у контакта (specs/018, довесок) — глобальный дефолт,
+        # если не задан.
+        threshold = contact.nudge_after_days or _STALE_CONTACT_DAYS
+        if days_since == threshold:
             lines.append(f"👋 Давно не писал(а) «{contact.name}» — {days_since} дней.")
     return lines
 

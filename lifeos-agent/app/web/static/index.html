@@ -2681,6 +2681,14 @@
         <option value="">не связана</option>
       </select>
     </div>
+    <div class="editor-row" id="editorTagsRow">
+      <label for="editorTags">Теги</label>
+      <input id="editorTags" placeholder="работа, друзья" />
+    </div>
+    <div class="editor-row" id="editorNudgeRow">
+      <label for="editorNudge">Нэдж "давно не писал" через, дней</label>
+      <input id="editorNudge" type="number" min="1" placeholder="30 (по умолчанию)" />
+    </div>
     <div class="editor-actions">
       <button type="button" id="editorSave">Сохранить</button>
       <button type="button" class="secondary" id="editorComplete" hidden>✓ Выполнить</button>
@@ -4123,15 +4131,25 @@ async function loadContacts() {
   const now = Date.now();
   list.innerHTML = contacts.map((c) => {
     const daysSince = Math.floor((now - new Date(c.last_contact_at).getTime()) / 86400000);
-    const overdue = daysSince >= 30;
+    // Свой порог у контакта (specs/018, довесок) — раньше "давно не
+    // писал" в /ui всегда сравнивалось с 30, даже если у контакта
+    // задана своя частота (расхождение с бэкендом — там уже учтён).
+    const threshold = c.nudge_after_days || 30;
+    const overdue = daysSince >= threshold;
     const since = daysSince <= 0 ? "сегодня" : `${daysSince} дн. назад`;
     const birthday = c.birthday_month && c.birthday_day
       ? ` · 🎂 ${c.birthday_day} ${MONTHS_GENITIVE[c.birthday_month - 1]}`
       : "";
+    const tags = c.tags
+      ? ` <span class="task-badge task-badge-contact">${escapeHtml(c.tags)}</span>`
+      : "";
     return `
     <li${overdue ? ' class="over-budget"' : ""}>
-      <span class="item-title">${overdue ? "⚠️ " : ""}${escapeHtml(c.name)}</span>
+      <span class="item-title">${overdue ? "⚠️ " : ""}${escapeHtml(c.name)}${tags}
+        ${c.notes ? `<span class="item-note">${escapeHtml(c.notes)}</span>` : ""}
+      </span>
       <span class="meta">Писал(а): ${since}${birthday}</span>
+      <button class="secondary" data-action="edit" data-kind="contact" data-id="${c.id}" title="Изменить">✎</button>
       <button data-action="contact-done" data-id="${c.id}" title="Написал(а)">👋</button>
       <button class="danger" data-action="delete-contact" data-id="${c.id}">✕</button>
     </li>
@@ -4305,7 +4323,10 @@ let editorTarget = null; // { kind: "task" | "habit" | "goal", id }
 
 function openEditor(kind, id) {
   const source =
-    kind === "task" ? lastTasks : kind === "habit" ? lastHabits : lastGoals;
+    kind === "task" ? lastTasks
+    : kind === "habit" ? lastHabits
+    : kind === "contact" ? lastContacts
+    : lastGoals;
   // Зачёркнутая (выполненная) плашка в календаре кликабельна так же, как
   // активная, но её задачи нет в lastTasks (список активных) —
   // lastCompletedTasks как запасной источник, иначе клик молча ничего
@@ -4316,8 +4337,16 @@ function openEditor(kind, id) {
   if (!item) return;
 
   editorTarget = { kind: kind, id: id };
-  document.getElementById("editorTitle").value = item.title || "";
-  document.getElementById("editorDescription").value = item.description || "";
+  // У контакта название — name, а не title, заметка — notes, а не
+  // description; дальше диалог общий и не видит разницы.
+  document.getElementById("editorTitle").value =
+    kind === "contact" ? item.name || "" : item.title || "";
+  document.getElementById("editorDescription").value =
+    kind === "contact" ? item.notes || "" : item.description || "";
+  document.getElementById("editorDescription").placeholder =
+    kind === "contact"
+      ? "Заметка — детали, которые не влезли в имя"
+      : "Описание — детали, которые не влезли в название";
 
   const colorRow = document.getElementById("editorColorRow");
   colorRow.hidden = kind !== "task";
@@ -4348,8 +4377,20 @@ function openEditor(kind, id) {
     document.getElementById("editorReminder").value = (item.reminder_time || "").slice(0, 5);
   }
 
+  const tagsRow = document.getElementById("editorTagsRow");
+  const nudgeRow = document.getElementById("editorNudgeRow");
+  tagsRow.hidden = kind !== "contact";
+  nudgeRow.hidden = kind !== "contact";
+  if (kind === "contact") {
+    document.getElementById("editorTags").value = item.tags || "";
+    document.getElementById("editorNudge").value = item.nudge_after_days || "";
+  }
+
   document.getElementById("editorHeading").textContent =
-    kind === "task" ? "Задача" : kind === "habit" ? "Привычка" : "Цель";
+    kind === "task" ? "Задача"
+    : kind === "habit" ? "Привычка"
+    : kind === "contact" ? "Контакт"
+    : "Цель";
   document.getElementById("editorDialog").hidden = false;
   document.getElementById("editorTitle").focus();
 }
@@ -4365,27 +4406,40 @@ async function saveEditor() {
   const title = document.getElementById("editorTitle").value.trim();
   if (!title) return;
 
-  const body = {
-    title: title,
-    description: document.getElementById("editorDescription").value.trim(),
-  };
-
-  if (editorTarget.kind === "task") {
-    body.color = document.getElementById("editorColor").value;
-    const contactValue = document.getElementById("editorContact").value;
-    if (contactValue) body.contact_id = Number(contactValue);
-    else body.clear_contact = true;
-  }
-  if (editorTarget.kind === "habit") {
-    const time = document.getElementById("editorReminder").value;
-    if (time) {
-      body.reminder_time = time + ":00";
-    } else {
-      // Пустое поле — именно снятие напоминания, а не «не трогай»
-      // (см. HabitService.update_habit: None означает «оставь как есть»).
-      body.clear_reminder = true;
+  let body;
+  if (editorTarget.kind === "contact") {
+    // Контакт: name/notes/tags/nudge_after_days, не title/description —
+    // диалог общий, но поле имени API-схемы своё (см. app/crm/schemas.py).
+    body = {
+      name: title,
+      notes: document.getElementById("editorDescription").value.trim(),
+      tags: document.getElementById("editorTags").value.trim(),
+    };
+    const nudge = document.getElementById("editorNudge").value;
+    if (nudge) body.nudge_after_days = Number(nudge);
+    else body.clear_nudge_after_days = true;
+  } else {
+    body = {
+      title: title,
+      description: document.getElementById("editorDescription").value.trim(),
+    };
+    if (editorTarget.kind === "task") {
+      body.color = document.getElementById("editorColor").value;
+      const contactValue = document.getElementById("editorContact").value;
+      if (contactValue) body.contact_id = Number(contactValue);
+      else body.clear_contact = true;
     }
-    if (!body.description) body.clear_description = true;
+    if (editorTarget.kind === "habit") {
+      const time = document.getElementById("editorReminder").value;
+      if (time) {
+        body.reminder_time = time + ":00";
+      } else {
+        // Пустое поле — именно снятие напоминания, а не «не трогай»
+        // (см. HabitService.update_habit: None означает «оставь как есть»).
+        body.clear_reminder = true;
+      }
+      if (!body.description) body.clear_description = true;
+    }
   }
 
   const path =
@@ -4393,7 +4447,9 @@ async function saveEditor() {
       ? "/tasks/"
       : editorTarget.kind === "habit"
         ? "/habits/"
-        : "/goals/";
+        : editorTarget.kind === "contact"
+          ? "/crm/contacts/"
+          : "/goals/";
   await api(path + editorTarget.id + "?telegram_user_id=" + encodeURIComponent(id), {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -4406,6 +4462,7 @@ async function saveEditor() {
   closeEditor();
   if (savedKind === "habit") await loadHabits();
   else if (savedKind === "goal") await loadGoals();
+  else if (savedKind === "contact") await loadContacts();
   else {
     await loadTasks();
     renderDayPanel();
