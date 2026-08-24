@@ -2,7 +2,7 @@
 FinanceService — repository замокан.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -246,3 +246,97 @@ async def test_monthly_breakdown_ignores_transactions_outside_window(repository)
     # (замокан, не проверяет диапазон), группировка по бакетам должна
     # молча отбросить то, что не попало ни в один месяц окна.
     assert months[0].income_total == 0
+
+
+# --- Рекомендации по бюджету (отчёт владельца 24.08, вечер #6, волна 8) -----
+
+_LAST_MONTH = NOW - timedelta(days=40)
+_TWO_MONTHS_AGO = NOW - timedelta(days=70)
+_THIS_MONTH = NOW.replace(day=1)
+
+
+async def test_build_budget_recommendations_averages_closed_months(repository):
+    repository.list_since.return_value = [
+        _transaction(
+            kind=EXPENSE, category="groceries", amount=1000, occurred_at=_LAST_MONTH
+        ),
+        _transaction(
+            kind=EXPENSE,
+            category="groceries",
+            amount=2000,
+            occurred_at=_TWO_MONTHS_AGO,
+        ),
+    ]
+    service = FinanceService(repository)
+
+    recommendations = await service.build_budget_recommendations(1, months=3)
+
+    assert len(recommendations) == 1
+    assert recommendations[0].category == "groceries"
+    assert recommendations[0].avg_monthly == 1000  # (1000+2000)/3
+    assert recommendations[0].suggested_cap == 1000
+
+
+async def test_build_budget_recommendations_excludes_mandatory_categories(repository):
+    repository.list_since.return_value = [
+        _transaction(
+            kind=EXPENSE, category="rent", amount=40000, occurred_at=_LAST_MONTH
+        ),
+    ]
+    service = FinanceService(repository)
+
+    recommendations = await service.build_budget_recommendations(1, months=3)
+
+    assert recommendations == []
+
+
+async def test_build_budget_recommendations_excludes_current_month(repository):
+    repository.list_since.return_value = [
+        _transaction(
+            kind=EXPENSE, category="groceries", amount=5000, occurred_at=_THIS_MONTH
+        ),
+    ]
+    service = FinanceService(repository)
+
+    recommendations = await service.build_budget_recommendations(1, months=3)
+
+    assert recommendations == []
+
+
+async def test_build_budget_recommendations_ignores_income(repository):
+    repository.list_since.return_value = [
+        _transaction(kind=INCOME, amount=80000, occurred_at=_LAST_MONTH),
+    ]
+    service = FinanceService(repository)
+
+    recommendations = await service.build_budget_recommendations(1, months=3)
+
+    assert recommendations == []
+
+
+async def test_build_budget_recommendations_empty_when_no_history(repository):
+    repository.list_since.return_value = []
+    service = FinanceService(repository)
+
+    recommendations = await service.build_budget_recommendations(1, months=3)
+
+    assert recommendations == []
+
+
+async def test_build_budget_recommendations_sorted_by_avg_descending(repository):
+    repository.list_since.return_value = [
+        _transaction(
+            kind=EXPENSE,
+            category="entertainment",
+            amount=1500,
+            occurred_at=_LAST_MONTH,
+        ),
+        _transaction(
+            kind=EXPENSE, category="groceries", amount=9000, occurred_at=_LAST_MONTH
+        ),
+    ]
+    service = FinanceService(repository)
+
+    recommendations = await service.build_budget_recommendations(1, months=3)
+
+    assert [r.category for r in recommendations] == ["groceries", "entertainment"]

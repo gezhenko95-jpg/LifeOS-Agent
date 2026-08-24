@@ -17,6 +17,7 @@ from app.core.container import build_debt_service, build_finance_service
 from app.db.session import get_session
 from app.finance.models import CATEGORIES, Transaction
 from app.finance.schemas import (
+    BudgetRecommendationRead,
     DebtCreate,
     DebtPayment,
     DebtPaymentRead,
@@ -129,6 +130,20 @@ async def get_analytics(
     довесок "добавить аналитику")."""
     summaries = await service.monthly_breakdown(telegram_user_id, months)
     return [MonthSummaryRead.model_validate(s) for s in summaries]
+
+
+@router.get("/recommendations", response_model=list[BudgetRecommendationRead])
+async def get_recommendations(
+    telegram_user_id: int,
+    months: int = 3,
+    service: FinanceService = Depends(get_finance_service),
+) -> list[BudgetRecommendationRead]:
+    """Сколько тратить по каждой необязательной категории — среднее за
+    последние `months` закрытых месяцев (specs/017, довесок волна 8)."""
+    recommendations = await service.build_budget_recommendations(
+        telegram_user_id, months
+    )
+    return [BudgetRecommendationRead.model_validate(r) for r in recommendations]
 
 
 @router.post("/debts", response_model=DebtRead, status_code=status.HTTP_201_CREATED)

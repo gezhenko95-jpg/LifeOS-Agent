@@ -58,6 +58,46 @@ async def test_analytics_reflects_transactions(client):
     assert response.json()[0]["net"] == 5000
 
 
+# --- Рекомендации по бюджету (отчёт владельца 24.08, вечер #6, волна 8) -----
+
+
+async def test_recommendations_empty_without_history(client):
+    response = await client.get(
+        "/finance/recommendations", params={"telegram_user_id": 9}
+    )
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+async def test_recommendations_exclude_mandatory_and_current_month(client):
+    # Обязательная категория — не в счёт вообще.
+    await client.post(
+        "/finance/transactions",
+        json={
+            "telegram_user_id": 9,
+            "kind": "expense",
+            "amount": 40000,
+            "category": "rent",
+        },
+    )
+    # Необязательная категория, но текущий месяц — тоже не в счёт (ещё
+    # не закончился), поэтому здесь всё ещё пусто.
+    await client.post(
+        "/finance/transactions",
+        json={
+            "telegram_user_id": 9,
+            "kind": "expense",
+            "amount": 3000,
+            "category": "groceries",
+        },
+    )
+
+    response = await client.get(
+        "/finance/recommendations", params={"telegram_user_id": 9}
+    )
+    assert response.json() == []
+
+
 async def test_create_and_list_debt(client):
     response = await client.post(
         "/finance/debts",

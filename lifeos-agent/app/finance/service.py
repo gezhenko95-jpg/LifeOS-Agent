@@ -16,6 +16,7 @@ from app.core.ownership import owned_or_none
 from app.finance.models import (
     CATEGORIES,
     CATEGORY_NORM_PERCENT,
+    DISCRETIONARY_CATEGORIES,
     EXPENSE,
     INCOME,
     MANDATORY_CATEGORIES,
@@ -53,6 +54,19 @@ class FinanceSummary:
     # тот же принцип, что у пустых секций брифинга/дайджеста (незачем
     # показывать "0 из 0" по каждой из семи категорий).
     categories: list[CategoryBreakdown] = field(default_factory=list)
+
+
+@dataclass
+class BudgetRecommendation:
+    """Одна категория в /finance/recommendations (отчёт владельца 24.08,
+    вечер #6, волна 8: "сколько тратить на еду в этом месяце и прочее").
+    suggested_cap = avg_monthly — чистый расчёт по истории, без AI-фразы
+    поверх (решение владельца, ADR-004: простой код лучше LLM)."""
+
+    category: str
+    label: str
+    avg_monthly: int
+    suggested_cap: int
 
 
 @dataclass
@@ -228,6 +242,56 @@ class FinanceService:
             )
             for y, m in order
         ]
+
+    async def build_budget_recommendations(
+        self, telegram_user_id: int, months: int = 3
+    ) -> list[BudgetRecommendation]:
+        """Среднее по необязательной категории (DISCRETIONARY_CATEGORIES —
+        обязательные rent/utilities/subscriptions/credit не участвуют, у
+        них нет смысла "сколько потратить", сумма фиксирована) за
+        последние `months` ЗАКРЫТЫХ месяцев, без текущего — он ещё не
+        закончился, средним по нему только занизили бы рекомендацию.
+        Пустой список — если истории меньше `months` месяцев ещё нет
+        смысла что-то советовать, а не показывать случайное число по
+        одной трате."""
+        now = datetime.now(timezone.utc)
+        end_year, end_month = now.year, now.month
+        start_year, start_month = end_year, end_month - months
+        while start_month <= 0:
+            start_month += 12
+            start_year -= 1
+        since = datetime(start_year, start_month, 1, tzinfo=timezone.utc)
+        current_month_start = datetime(end_year, end_month, 1, tzinfo=timezone.utc)
+
+        transactions = await self._repository.list_since(telegram_user_id, since)
+
+        spent_by_category: dict[str, int] = {}
+        for t in transactions:
+            if t.kind != EXPENSE or t.category not in DISCRETIONARY_CATEGORIES:
+                continue
+            # SQLite (тесты) отдаёт offset-naive datetime даже из
+            # DateTime(timezone=True)-колонки — тот же фикс, что уже
+            # применён в nudges.py/keyboards.py для last_contact_at.
+            occurred_at = t.occurred_at
+            if occurred_at.tzinfo is None:
+                occurred_at = occurred_at.replace(tzinfo=timezone.utc)
+            if occurred_at >= current_month_start:
+                continue  # текущий месяц не закончился — не в счёт
+            spent_by_category[t.category] = (
+                spent_by_category.get(t.category, 0) + t.amount
+            )
+
+        recommendations = [
+            BudgetRecommendation(
+                category=category,
+                label=CATEGORIES[category],
+                avg_monthly=round(spent / months),
+                suggested_cap=round(spent / months),
+            )
+            for category, spent in spent_by_category.items()
+        ]
+        recommendations.sort(key=lambda r: r.avg_monthly, reverse=True)
+        return recommendations
 
 
 class DebtService:

@@ -3060,6 +3060,10 @@
 
     <h3>Аналитика — по месяцам</h3>
     <div class="finance-analytics" id="financeAnalytics"></div>
+
+    <h3>Рекомендации</h3>
+    <div class="finance-analytics" id="budgetRecommendations"></div>
+    <p class="hint">Считается по категориям без обязательных трат (аренда/коммуналка/подписки/кредит) — отмечай категорию у каждой траты честно, иначе цифры будут неточными.</p>
   </section>
 
   <section class="card" data-domain="contacts">
@@ -4361,6 +4365,7 @@ async function loadFinance() {
     api(`/finance/transactions?telegram_user_id=${encodeURIComponent(id)}&limit=10`),
     loadDebts(),
     loadFinanceAnalytics(),
+    loadBudgetRecommendations(),
   ]);
   lastFinanceSummary = summary;
 
@@ -4638,6 +4643,26 @@ async function loadFinanceAnalytics() {
       <span class="fa-net meta ${netClass}">${m.net >= 0 ? "+" : ""}${m.net.toLocaleString("ru-RU")} ₽</span>
     </div>`;
   }).join("");
+}
+
+// Рекомендации по бюджету — чистый расчёт по истории (среднее за 3
+// закрытых месяца), без AI-фразы поверх (решение владельца, отчёт
+// 24.08 вечер #6: "сколько тратить на еду в этом месяце").
+async function loadBudgetRecommendations() {
+  const id = getUserId();
+  const box = document.getElementById("budgetRecommendations");
+  if (!id) { box.innerHTML = ""; return; }
+  const recommendations = await api(`/finance/recommendations?telegram_user_id=${encodeURIComponent(id)}`);
+  if (!recommendations.length) {
+    box.innerHTML = '<p class="empty">Пока мало истории — рекомендации появятся после 3 месяцев трат по категориям.</p>';
+    return;
+  }
+  box.innerHTML = recommendations.map((r) => `
+    <div class="fa-row">
+      <span class="fa-label">${escapeHtml(r.label.replace(/^\S+\s/, ""))}</span>
+      <span class="fa-net meta" style="flex:1; text-align:left;">в среднем ${r.avg_monthly.toLocaleString("ru-RU")} ₽/мес</span>
+      <span class="fa-net">≤ ${r.suggested_cap.toLocaleString("ru-RU")} ₽</span>
+    </div>`).join("");
 }
 
 // --- Люди / личный CRM (specs/018-personal-crm.md) --------------------

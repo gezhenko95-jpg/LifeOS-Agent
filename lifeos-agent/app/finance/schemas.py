@@ -78,6 +78,18 @@ class MonthSummaryRead(BaseModel):
     net: int
 
 
+class BudgetRecommendationRead(BaseModel):
+    """Одна строка в ответе /finance/recommendations — чистые числа, без
+    AI-фразы поверх (решение владельца, отчёт 24.08 вечер #6)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    category: str
+    label: str
+    avg_monthly: int
+    suggested_cap: int
+
+
 class DebtCreate(BaseModel):
     telegram_user_id: int
     name: str = Field(min_length=1, max_length=100)
