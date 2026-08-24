@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api import (
     assistant,
+    charts,
     crm,
     digest,
     finance,
@@ -77,6 +78,10 @@ app.include_router(finance.router, tags=["finance"], dependencies=_protected)
 app.include_router(crm.router, tags=["crm"], dependencies=_protected)
 app.include_router(mood.router, tags=["mood"], dependencies=_protected)
 app.include_router(assistant.router, tags=["assistant"], dependencies=_protected)
+# В отличие от poster — график содержит личные данные (задачи/привычки/
+# настроение), токен обязателен. /ui грузит его через fetch()+blob, не
+# голым <img src>, ровно из-за этого (см. loadWeeklyChart в index.html).
+app.include_router(charts.router, tags=["charts"], dependencies=_protected)
 
 # Простейший веб-интерфейс — статическая страница, использует REST API выше.
 app.mount("/ui", StaticFiles(directory=_WEB_STATIC_DIR, html=True), name="ui")
