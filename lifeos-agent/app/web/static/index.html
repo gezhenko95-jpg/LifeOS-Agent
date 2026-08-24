@@ -288,6 +288,21 @@
     color: var(--accent-text);
     border-color: var(--accent);
   }
+  /* "Давно не заходил" (client-side, localStorage) — точка в углу
+     кнопки, не текст: раздел не пуст (это не "0 задач"), просто в нём
+     давно не были — та же логика различия, что у пустых состояний. */
+  .tab-stale { position: relative; }
+  .tab-stale::after {
+    content: "";
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--overdue);
+    border: 1.5px solid var(--card-bg);
+  }
   .topstats { display: flex; gap: 8px; align-items: center; flex: none; }
   .topchip {
     display: inline-flex;
@@ -5595,6 +5610,38 @@ function applyTab(tabId) {
   // Звёзды раскладываются по видимым карточкам, поэтому после смены
   // вкладки их надо пересыпать.
   if (typeof sprinkleSparkles === "function") sprinkleSparkles();
+  recordTabVisit(tabId);
+}
+
+// --- "Давно не заходил" — индикатор на вкладке (client-side, localStorage) -
+//
+// Не завели бэкенд-таблицу last_visit ради этого — тот же приём, что
+// уже используется для активного скина/темы/свёрнутых карточек: чисто
+// клиентская привычка пользователя, серверу про неё знать незачем.
+const TAB_VISIT_PREFIX = "lifeos_last_visit_";
+const TAB_STALE_DAYS = 7;
+// "Панель" — не отдельный домен, а мозаика всех карточек разом; сама
+// себя "давно не заходил" не считает.
+const STALE_ELIGIBLE_TABS = Object.keys(TAB_CARDS).filter((t) => t !== "dash");
+
+function recordTabVisit(tabId) {
+  if (!STALE_ELIGIBLE_TABS.includes(tabId)) return;
+  localStorage.setItem(TAB_VISIT_PREFIX + tabId, String(Date.now()));
+  renderStaleTabIndicators();
+}
+
+function renderStaleTabIndicators() {
+  const now = Date.now();
+  document.querySelectorAll(".tab").forEach((btn) => {
+    const tabId = btn.dataset.tab;
+    if (!STALE_ELIGIBLE_TABS.includes(tabId)) return;
+    const lastVisit = Number(localStorage.getItem(TAB_VISIT_PREFIX + tabId) || 0);
+    const daysSince = lastVisit ? (now - lastVisit) / 86400000 : Infinity;
+    btn.classList.toggle("tab-stale", daysSince >= TAB_STALE_DAYS);
+    btn.title = lastVisit
+      ? (daysSince >= TAB_STALE_DAYS ? `Не открывали ${Math.floor(daysSince)} дн.` : "")
+      : "Ещё не открывали";
+  });
 }
 
 document.getElementById("tabs").addEventListener("click", (e) => {
