@@ -63,3 +63,40 @@ class FinanceSummaryRead(BaseModel):
     mandatory_total: int
     free_money: int
     categories: list[CategoryBreakdownRead] = Field(default_factory=list)
+
+
+class MonthSummaryRead(BaseModel):
+    """Один месяц в ответе /finance/analytics — net тоже dataclass-
+    свойство (income_total − expense_total), как over_budget выше."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    year: int
+    month: int
+    income_total: int
+    expense_total: int
+    net: int
+
+
+class DebtCreate(BaseModel):
+    telegram_user_id: int
+    name: str = Field(min_length=1, max_length=100)
+    total_amount: int = Field(gt=0)
+    due_date: Optional[datetime] = None
+
+
+class DebtPayment(BaseModel):
+    telegram_user_id: int
+    amount: int = Field(gt=0)
+
+
+class DebtRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    telegram_user_id: int
+    name: str
+    total_amount: int
+    remaining_amount: int
+    due_date: Optional[datetime] = None
+    created_at: datetime

@@ -10,10 +10,10 @@
 
 from datetime import datetime
 
-from sqlalchemy import desc, select
+from sqlalchemy import asc, desc, select
 
 from app.core.repository import BaseRepository
-from app.finance.models import Transaction
+from app.finance.models import Debt, Transaction
 
 
 class FinanceRepository(BaseRepository[Transaction]):
@@ -48,6 +48,26 @@ class FinanceRepository(BaseRepository[Transaction]):
             .where(Transaction.telegram_user_id == telegram_user_id)
             .order_by(desc(Transaction.occurred_at))
             .limit(limit)
+        )
+        result = await self._session.execute(query)
+        return list(result.scalars().all())
+
+
+class DebtRepository(BaseRepository[Debt]):
+    """Доступ к таблице `debts`. Отдельный класс от FinanceRepository —
+    разные модели (ADR-005)."""
+
+    model = Debt
+
+    async def list_by_user(self, telegram_user_id: int) -> list[Debt]:
+        """Долги со сроком — сверху по due_date (ближайший первым),
+        затем без срока — по дате создания. NULLS LAST не портабелен
+        между Postgres/SQLite одной строкой, поэтому сортировка в две
+        колонки: is_null (0/1) первым ключом, сама дата вторым."""
+        query = (
+            select(Debt)
+            .where(Debt.telegram_user_id == telegram_user_id)
+            .order_by(Debt.due_date.is_(None), asc(Debt.due_date), Debt.created_at)
         )
         result = await self._session.execute(query)
         return list(result.scalars().all())

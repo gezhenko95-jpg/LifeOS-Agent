@@ -19,9 +19,10 @@ from app.finance.models import (
     EXPENSE,
     INCOME,
     MANDATORY_CATEGORIES,
+    Debt,
     Transaction,
 )
-from app.finance.repository import FinanceRepository
+from app.finance.repository import DebtRepository, FinanceRepository
 
 _KINDS = {INCOME, EXPENSE}
 
@@ -47,6 +48,22 @@ class FinanceSummary:
     # тот же принцип, что у пустых секций брифинга/дайджеста (незачем
     # показывать "0 из 0" по каждой из семи категорий).
     categories: list[CategoryBreakdown] = field(default_factory=list)
+
+
+@dataclass
+class MonthSummary:
+    """Один месяц — для аналитики/тренда (specs/017-finance.md, довесок:
+    "добавить аналитику"). year/month, а не date/label — форматирование
+    остаётся на вызывающем коде (API/бот сами решают, как показать)."""
+
+    year: int
+    month: int
+    income_total: int
+    expense_total: int
+
+    @property
+    def net(self) -> int:
+        return self.income_total - self.expense_total
 
 
 class FinanceService:
@@ -155,3 +172,113 @@ class FinanceService:
             free_money=free_money,
             categories=categories,
         )
+
+    async def monthly_breakdown(
+        self, telegram_user_id: int, months: int = 6
+    ) -> list[MonthSummary]:
+        """Доход/траты по месяцам за последние `months` месяцев, для
+        тренда на /ui (specs/017-finance.md, довесок "добавить
+        аналитику"). Список ОДНОЙ выборкой (list_since уже фильтрует в
+        БД по диапазону), разбивка по месяцам — в Python (ADR-004, тот
+        же довод, что у build_period_summary: объём личных финансов
+        одного пользователя не требует агрегации в БД).
+
+        Месяцы без единой транзакции всё равно попадают в список нулями
+        — иначе график "прыгал" бы по оси, молча пропуская пустые
+        месяцы, а не показывая настоящий пробел."""
+        now = datetime.now(timezone.utc)
+        start_year, start_month = now.year, now.month - (months - 1)
+        while start_month <= 0:
+            start_month += 12
+            start_year -= 1
+        since = datetime(start_year, start_month, 1, tzinfo=timezone.utc)
+
+        transactions = await self._repository.list_since(telegram_user_id, since)
+
+        order: list[tuple[int, int]] = []
+        buckets: dict[tuple[int, int], dict[str, int]] = {}
+        year, month = start_year, start_month
+        for _ in range(months):
+            key = (year, month)
+            order.append(key)
+            buckets[key] = {"income": 0, "expense": 0}
+            month += 1
+            if month > 12:
+                month = 1
+                year += 1
+
+        for t in transactions:
+            key = (t.occurred_at.year, t.occurred_at.month)
+            bucket = buckets.get(key)
+            if bucket is None:
+                continue
+            bucket["income" if t.kind == INCOME else "expense"] += t.amount
+
+        return [
+            MonthSummary(
+                year=y,
+                month=m,
+                income_total=buckets[(y, m)]["income"],
+                expense_total=buckets[(y, m)]["expense"],
+            )
+            for y, m in order
+        ]
+
+
+class DebtService:
+    """Долги/задолженности (specs/017-finance.md, довесок). Отдельный
+    сервис от FinanceService (ADR-005) — своя модель, свой жизненный
+    цикл (остаток уменьшается платежами, не разовая запись)."""
+
+    def __init__(self, repository: DebtRepository) -> None:
+        self._repository = repository
+
+    async def add_debt(
+        self,
+        telegram_user_id: int,
+        name: str,
+        total_amount: int,
+        due_date: Optional[datetime] = None,
+    ) -> Debt:
+        name = name.strip()
+        if not name:
+            raise ValueError("Название долга не может быть пустым")
+        if total_amount <= 0:
+            raise ValueError("Сумма долга должна быть положительной")
+
+        debt = Debt(
+            telegram_user_id=telegram_user_id,
+            name=name,
+            total_amount=total_amount,
+            remaining_amount=total_amount,
+            due_date=due_date,
+        )
+        return await self._repository.add(debt)
+
+    async def list_debts(self, telegram_user_id: int) -> list[Debt]:
+        return await self._repository.list_by_user(telegram_user_id)
+
+    async def record_payment(
+        self, telegram_user_id: int, debt_id: int, amount: int
+    ) -> Optional[Debt]:
+        if amount <= 0:
+            raise ValueError("Сумма платежа должна быть положительной")
+        debt = owned_or_none(
+            await self._repository.get_by_id(debt_id), telegram_user_id
+        )
+        if debt is None:
+            return None
+        # Не уходит в минус — платёж больше остатка просто закрывает долг
+        # (частая ситуация: округление в большую сторону последним
+        # платежом), а не превращает Debt в "должны нам".
+        debt.remaining_amount = max(0, debt.remaining_amount - amount)
+        return await self._repository.save(debt)
+
+    async def delete_debt(self, telegram_user_id: int, debt_id: int) -> Optional[Debt]:
+        debt = owned_or_none(
+            await self._repository.get_by_id(debt_id), telegram_user_id
+        )
+        if debt is None:
+            return None
+        await self._repository.delete(debt)
+        return debt

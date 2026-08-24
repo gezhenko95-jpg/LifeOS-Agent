@@ -108,3 +108,37 @@ class Transaction(Base):
         server_default=func.now(),
         comment="Когда фактически записано",
     )
+
+
+class Debt(Base):
+    """Долг/задолженность со сроком — отдельная сущность от Transaction
+    (specs/017-finance.md, довесок). Ежемесячный платёж по кредиту
+    по-прежнему логируется обычной тратой в категории "credit" — Debt
+    только отслеживает остаток и срок, в расчёт свободных денег не
+    входит (см. FinanceService.build_period_summary)."""
+
+    __tablename__ = "debts"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
+
+    telegram_user_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, index=True
+    )
+
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    total_amount: Mapped[int] = mapped_column(
+        Integer, nullable=False, comment="Исходная сумма долга в рублях"
+    )
+
+    remaining_amount: Mapped[int] = mapped_column(
+        Integer, nullable=False, comment="Текущий остаток — уменьшается платежами"
+    )
+
+    due_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, comment="Срок закрытия"
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

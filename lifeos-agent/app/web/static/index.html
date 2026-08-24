@@ -472,6 +472,26 @@
     letter-spacing: normal;
     color: var(--muted);
   }
+  /* Аналитика финансов по месяцам — две горизонтальные полоски (доход/
+     траты) в одной строке на месяц, ширина от общего максимума за
+     период. Не canvas/svg-график: тот же язык, что и .progress-bar
+     остальной страницы, не заводим отдельную библиотеку ради шести
+     столбиков. */
+  .finance-analytics { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+  .fa-row { display: flex; align-items: center; gap: 8px; }
+  .fa-label { width: 28px; font-size: 0.75rem; color: var(--muted); flex: none; }
+  .fa-bars {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .fa-bar { display: block; height: 5px; border-radius: 3px; min-width: 2px; }
+  .fa-bar-income { background: var(--accent); }
+  .fa-bar-expense { background: var(--overdue); }
+  .fa-net { width: 90px; text-align: right; flex: none; font-size: 0.8rem; }
+
   /* Бейджи подзадач/комментариев в строке задачи — сами кнопки (не
      span), чтобы разворачивать панель тапом и по бейджу, не только по
      шеврону. */
@@ -2834,6 +2854,18 @@
     </form>
     <ul class="item-list" id="financeCategoryList"></ul>
     <ul class="item-list" id="financeList"></ul>
+
+    <h3>Долги</h3>
+    <form class="add-form" id="debtForm">
+      <input type="text" id="debtName" placeholder="Название долга" required />
+      <input type="number" id="debtAmount" placeholder="Сумма" min="1" required />
+      <input type="date" id="debtDueDate" title="Срок закрытия (необязательно)" />
+      <button type="submit">Добавить</button>
+    </form>
+    <ul class="item-list" id="debtList"></ul>
+
+    <h3>Аналитика — по месяцам</h3>
+    <div class="finance-analytics" id="financeAnalytics"></div>
   </section>
 
   <section class="card" data-domain="contacts">
@@ -4031,6 +4063,8 @@ async function loadFinance() {
   const [summary, transactions] = await Promise.all([
     api(`/finance/summary?telegram_user_id=${encodeURIComponent(id)}`),
     api(`/finance/transactions?telegram_user_id=${encodeURIComponent(id)}&limit=10`),
+    loadDebts(),
+    loadFinanceAnalytics(),
   ]);
   lastFinanceSummary = summary;
 
@@ -4091,6 +4125,105 @@ document.getElementById("financeList").addEventListener("click", async (e) => {
   });
   await loadFinance();
 });
+
+// --- Долги (specs/017-finance.md, довесок) -----------------------------
+
+async function loadDebts() {
+  const id = getUserId();
+  const list = document.getElementById("debtList");
+  if (!id) { list.innerHTML = ""; return; }
+  const debts = await api(`/finance/debts?telegram_user_id=${encodeURIComponent(id)}`);
+  if (!debts.length) {
+    list.innerHTML = '<li class="empty">Долгов нет — и пусть не будет.</li>';
+    return;
+  }
+  list.innerHTML = debts.map((d) => {
+    const closed = d.remaining_amount <= 0;
+    const due = d.due_date
+      ? ` · срок ${new Date(d.due_date).toLocaleDateString("ru-RU")}`
+      : "";
+    const pct = Math.round((1 - d.remaining_amount / d.total_amount) * 100);
+    return `
+    <li>
+      <span class="item-title">${closed ? "✅ " : ""}${escapeHtml(d.name)}</span>
+      <span class="progress-bar"><span style="width:${pct}%"></span></span>
+      <span class="meta">${d.remaining_amount.toLocaleString("ru-RU")} / ${d.total_amount.toLocaleString("ru-RU")} ₽${due}</span>
+      ${closed ? "" : `
+      <input type="number" class="progress-input" placeholder="Платёж" min="1" data-debt-id="${d.id}" />
+      <button class="secondary" data-action="pay-debt" data-id="${d.id}">✓</button>
+      `}
+      <button class="danger" data-action="delete-debt" data-id="${d.id}">✕</button>
+    </li>`;
+  }).join("");
+}
+
+document.getElementById("debtForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = requireUserId();
+  const name = document.getElementById("debtName").value.trim();
+  const totalAmount = Number(document.getElementById("debtAmount").value);
+  const dueDateRaw = document.getElementById("debtDueDate").value;
+  if (!name || !totalAmount) return;
+  const body = { telegram_user_id: Number(id), name, total_amount: totalAmount };
+  if (dueDateRaw) body.due_date = new Date(dueDateRaw + "T00:00:00").toISOString();
+  await api("/finance/debts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  document.getElementById("debtName").value = "";
+  document.getElementById("debtAmount").value = "";
+  document.getElementById("debtDueDate").value = "";
+  await loadDebts();
+});
+
+document.getElementById("debtList").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  const id = getUserId();
+  if (btn.dataset.action === "delete-debt") {
+    await api(`/finance/debts/${btn.dataset.id}?telegram_user_id=${id}`, {
+      method: "DELETE",
+    });
+    await loadDebts();
+  } else if (btn.dataset.action === "pay-debt") {
+    const input = document.querySelector(`input[data-debt-id="${btn.dataset.id}"]`);
+    const amount = Number(input.value);
+    if (!amount) return;
+    await api(`/finance/debts/${btn.dataset.id}/payment`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ telegram_user_id: Number(id), amount }),
+    });
+    await loadDebts();
+  }
+});
+
+// --- Аналитика (specs/017-finance.md, довесок) --------------------------
+
+const FA_MONTHS_SHORT = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+
+async function loadFinanceAnalytics() {
+  const id = getUserId();
+  const box = document.getElementById("financeAnalytics");
+  if (!id) { box.innerHTML = ""; return; }
+  const months = await api(`/finance/analytics?telegram_user_id=${encodeURIComponent(id)}&months=6`);
+  const maxValue = Math.max(1, ...months.map((m) => Math.max(m.income_total, m.expense_total)));
+  box.innerHTML = months.map((m) => {
+    const incomePct = Math.round((m.income_total / maxValue) * 100);
+    const expensePct = Math.round((m.expense_total / maxValue) * 100);
+    const netClass = m.net >= 0 ? "" : "overdue";
+    return `
+    <div class="fa-row">
+      <span class="fa-label">${FA_MONTHS_SHORT[m.month - 1]}</span>
+      <span class="fa-bars">
+        <span class="fa-bar fa-bar-income" style="width:${incomePct}%" title="Доход ${m.income_total.toLocaleString("ru-RU")} ₽"></span>
+        <span class="fa-bar fa-bar-expense" style="width:${expensePct}%" title="Траты ${m.expense_total.toLocaleString("ru-RU")} ₽"></span>
+      </span>
+      <span class="fa-net meta ${netClass}">${m.net >= 0 ? "+" : ""}${m.net.toLocaleString("ru-RU")} ₽</span>
+    </div>`;
+  }).join("");
+}
 
 // --- Люди / личный CRM (specs/018-personal-crm.md) --------------------
 

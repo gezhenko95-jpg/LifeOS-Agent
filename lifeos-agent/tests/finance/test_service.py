@@ -189,3 +189,60 @@ async def test_list_recent_transactions_delegates_to_repository(repository):
 
     assert len(result) == 1
     repository.list_recent.assert_awaited_once_with(1, 5)
+
+
+# --- Аналитика по месяцам (specs/017, довесок) ------------------------------
+
+
+async def test_monthly_breakdown_returns_requested_number_of_months(repository):
+    repository.list_since.return_value = []
+    service = FinanceService(repository)
+
+    months = await service.monthly_breakdown(1, months=6)
+
+    assert len(months) == 6
+
+
+async def test_monthly_breakdown_last_month_is_current(repository):
+    repository.list_since.return_value = []
+    service = FinanceService(repository)
+
+    months = await service.monthly_breakdown(1, months=3)
+
+    now = datetime.now(timezone.utc)
+    assert (months[-1].year, months[-1].month) == (now.year, now.month)
+
+
+async def test_monthly_breakdown_groups_by_month(repository):
+    this_month = datetime.now(timezone.utc).replace(day=15)
+    repository.list_since.return_value = [
+        _transaction(kind=INCOME, amount=1000, occurred_at=this_month),
+        _transaction(
+            kind=EXPENSE, amount=300, category="groceries", occurred_at=this_month
+        ),
+        _transaction(
+            kind=EXPENSE, amount=200, category="transport", occurred_at=this_month
+        ),
+    ]
+    service = FinanceService(repository)
+
+    months = await service.monthly_breakdown(1, months=1)
+
+    assert months[0].income_total == 1000
+    assert months[0].expense_total == 500
+    assert months[0].net == 500
+
+
+async def test_monthly_breakdown_ignores_transactions_outside_window(repository):
+    old = datetime.now(timezone.utc).replace(year=2000)
+    repository.list_since.return_value = [
+        _transaction(kind=INCOME, amount=99999, occurred_at=old),
+    ]
+    service = FinanceService(repository)
+
+    months = await service.monthly_breakdown(1, months=1)
+
+    # list_since сам фильтрует в БД — если бы репозиторий вернул лишнее
+    # (замокан, не проверяет диапазон), группировка по бакетам должна
+    # молча отбросить то, что не попало ни в один месяц окна.
+    assert months[0].income_total == 0

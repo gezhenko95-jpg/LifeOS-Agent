@@ -21,8 +21,8 @@ from app.crm.service import ContactService
 from app.digest.repository import DigestRepository
 from app.digest.scraper import get_channel_scraper
 from app.digest.service import DigestService
-from app.finance.repository import FinanceRepository
-from app.finance.service import FinanceService
+from app.finance.repository import DebtRepository, FinanceRepository
+from app.finance.service import DebtService, FinanceService
 from app.goals.repository import GoalRepository
 from app.goals.service import GoalService
 from app.habits.repository import HabitRepository
@@ -76,6 +76,10 @@ def build_rewards_service(session: AsyncSession) -> RewardsService:
 
 def build_finance_service(session: AsyncSession) -> FinanceService:
     return FinanceService(FinanceRepository(session))
+
+
+def build_debt_service(session: AsyncSession) -> DebtService:
+    return DebtService(DebtRepository(session))
 
 
 def build_contact_service(session: AsyncSession) -> ContactService:

@@ -13,15 +13,19 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.container import build_finance_service
+from app.core.container import build_debt_service, build_finance_service
 from app.db.session import get_session
 from app.finance.models import CATEGORIES, Transaction
 from app.finance.schemas import (
+    DebtCreate,
+    DebtPayment,
+    DebtRead,
     FinanceSummaryRead,
+    MonthSummaryRead,
     TransactionCreate,
     TransactionRead,
 )
-from app.finance.service import FinanceService
+from app.finance.service import DebtService, FinanceService
 
 router = APIRouter(prefix="/finance", tags=["finance"])
 
@@ -37,6 +41,12 @@ def get_finance_service(
     session: AsyncSession = Depends(get_session),
 ) -> FinanceService:
     return build_finance_service(session)
+
+
+def get_debt_service(
+    session: AsyncSession = Depends(get_session),
+) -> DebtService:
+    return build_debt_service(session)
 
 
 def _current_month_start() -> datetime:
@@ -105,3 +115,75 @@ async def get_summary(
     period_start = since or _current_month_start()
     summary = await service.build_period_summary(telegram_user_id, period_start)
     return FinanceSummaryRead.model_validate(summary)
+
+
+@router.get("/analytics", response_model=list[MonthSummaryRead])
+async def get_analytics(
+    telegram_user_id: int,
+    months: int = 6,
+    service: FinanceService = Depends(get_finance_service),
+) -> list[MonthSummaryRead]:
+    """Доход/траты по месяцам за период — тренд для /ui (specs/017,
+    довесок "добавить аналитику")."""
+    summaries = await service.monthly_breakdown(telegram_user_id, months)
+    return [MonthSummaryRead.model_validate(s) for s in summaries]
+
+
+@router.post("/debts", response_model=DebtRead, status_code=status.HTTP_201_CREATED)
+async def create_debt(
+    payload: DebtCreate, service: DebtService = Depends(get_debt_service)
+) -> DebtRead:
+    try:
+        debt = await service.add_debt(
+            telegram_user_id=payload.telegram_user_id,
+            name=payload.name,
+            total_amount=payload.total_amount,
+            due_date=payload.due_date,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+    return DebtRead.model_validate(debt)
+
+
+@router.get("/debts", response_model=list[DebtRead])
+async def list_debts(
+    telegram_user_id: int, service: DebtService = Depends(get_debt_service)
+) -> list[DebtRead]:
+    debts = await service.list_debts(telegram_user_id)
+    return [DebtRead.model_validate(d) for d in debts]
+
+
+@router.post("/debts/{debt_id}/payment", response_model=DebtRead)
+async def pay_debt(
+    debt_id: int,
+    payload: DebtPayment,
+    service: DebtService = Depends(get_debt_service),
+) -> DebtRead:
+    try:
+        debt = await service.record_payment(
+            payload.telegram_user_id, debt_id, payload.amount
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+    if debt is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Долг не найден"
+        )
+    return DebtRead.model_validate(debt)
+
+
+@router.delete("/debts/{debt_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_debt(
+    debt_id: int,
+    telegram_user_id: int,
+    service: DebtService = Depends(get_debt_service),
+) -> None:
+    debt = await service.delete_debt(telegram_user_id, debt_id)
+    if debt is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Долг не найден"
+        )
