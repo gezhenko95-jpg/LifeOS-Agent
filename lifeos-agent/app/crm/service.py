@@ -9,8 +9,8 @@ from datetime import date, datetime, timezone
 from typing import Optional
 
 from app.core.ownership import owned_or_none
-from app.crm.models import Contact
-from app.crm.repository import ContactRepository
+from app.crm.models import Contact, ContactComment
+from app.crm.repository import ContactCommentRepository, ContactRepository
 
 # 1904 — произвольный високосный год, только чтобы validate_birthday
 # мог проверить 29 февраля тем же способом, что и остальные даты
@@ -120,6 +120,63 @@ class ContactService:
             return None
         await self._repository.delete(contact)
         return contact
+
+
+class ContactCommentService:
+    """Комментарии к контакту — прямая копия TaskCommentService
+    (app/tasks/service.py): своя telegram_user_id у комментария, но
+    авторитетна принадлежность самого КОНТАКТА."""
+
+    def __init__(
+        self,
+        repository: ContactCommentRepository,
+        contact_repository: ContactRepository,
+    ) -> None:
+        self._repository = repository
+        self._contacts = contact_repository
+
+    async def add_comment(
+        self, telegram_user_id: int, contact_id: int, text: str
+    ) -> Optional[ContactComment]:
+        text = text.strip()
+        if not text:
+            raise ValueError("Комментарий не может быть пустым")
+        contact = owned_or_none(
+            await self._contacts.get_by_id(contact_id), telegram_user_id
+        )
+        if contact is None:
+            return None
+        comment = ContactComment(
+            contact_id=contact_id, telegram_user_id=telegram_user_id, text=text
+        )
+        return await self._repository.add(comment)
+
+    async def list_comments(
+        self, telegram_user_id: int, contact_id: int
+    ) -> list[ContactComment]:
+        contact = owned_or_none(
+            await self._contacts.get_by_id(contact_id), telegram_user_id
+        )
+        if contact is None:
+            return []
+        return await self._repository.list_by_contact(contact_id)
+
+    async def count_by_contacts(self, contact_ids: list[int]) -> dict[int, int]:
+        return await self._repository.count_by_contacts(contact_ids)
+
+    async def delete_comment(
+        self, telegram_user_id: int, comment_id: int
+    ) -> Optional[ContactComment]:
+        comment = await self._repository.get_by_id(comment_id)
+        if comment is None:
+            return None
+        contact = owned_or_none(
+            await self._contacts.get_by_id(comment.contact_id), telegram_user_id
+        )
+        if contact is None:
+            return None
+        await self._repository.delete(comment)
+        return comment
 
 
 def _validate_birthday(month: Optional[int], day: Optional[int]) -> None:

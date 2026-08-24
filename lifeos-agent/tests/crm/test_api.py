@@ -145,3 +145,103 @@ async def test_delete_contact(client):
 
     list_resp = await client.get("/crm/contacts", params={"telegram_user_id": 6})
     assert list_resp.json() == []
+
+
+# --- Задачи контакта (отчёт владельца 24.08, вечер #6, волна 3) -------------
+
+
+async def test_list_contact_tasks(client):
+    create_resp = await client.post(
+        "/crm/contacts", json={"telegram_user_id": 7, "name": "Аня"}
+    )
+    contact_id = create_resp.json()["id"]
+    await client.post(
+        "/tasks",
+        json={"telegram_user_id": 7, "title": "Позвонить", "contact_id": contact_id},
+    )
+    await client.post("/tasks", json={"telegram_user_id": 7, "title": "Без связи"})
+
+    response = await client.get(
+        f"/crm/contacts/{contact_id}/tasks", params={"telegram_user_id": 7}
+    )
+
+    assert response.status_code == 200
+    titles = [t["title"] for t in response.json()]
+    assert titles == ["Позвонить"]
+
+
+async def test_list_contact_tasks_empty(client):
+    create_resp = await client.post(
+        "/crm/contacts", json={"telegram_user_id": 8, "name": "Боря"}
+    )
+    contact_id = create_resp.json()["id"]
+
+    response = await client.get(
+        f"/crm/contacts/{contact_id}/tasks", params={"telegram_user_id": 8}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+# --- Комментарии контакта ----------------------------------------------
+
+
+async def test_add_and_list_contact_comments(client):
+    create_resp = await client.post(
+        "/crm/contacts", json={"telegram_user_id": 9, "name": "Аня"}
+    )
+    contact_id = create_resp.json()["id"]
+
+    add_resp = await client.post(
+        f"/crm/contacts/{contact_id}/comments",
+        json={"telegram_user_id": 9, "text": "Любит подарки на праздники"},
+    )
+    assert add_resp.status_code == 201
+    assert add_resp.json()["text"] == "Любит подарки на праздники"
+
+    list_resp = await client.get(
+        f"/crm/contacts/{contact_id}/comments", params={"telegram_user_id": 9}
+    )
+    assert list_resp.status_code == 200
+    assert len(list_resp.json()) == 1
+
+    contacts_resp = await client.get("/crm/contacts", params={"telegram_user_id": 9})
+    assert contacts_resp.json()[0]["comment_count"] == 1
+
+
+async def test_add_comment_missing_contact_returns_404(client):
+    response = await client.post(
+        "/crm/contacts/9999/comments",
+        json={"telegram_user_id": 9, "text": "X"},
+    )
+    assert response.status_code == 404
+
+
+async def test_delete_contact_comment(client):
+    create_resp = await client.post(
+        "/crm/contacts", json={"telegram_user_id": 10, "name": "Аня"}
+    )
+    contact_id = create_resp.json()["id"]
+    add_resp = await client.post(
+        f"/crm/contacts/{contact_id}/comments",
+        json={"telegram_user_id": 10, "text": "X"},
+    )
+    comment_id = add_resp.json()["id"]
+
+    delete_resp = await client.delete(
+        f"/crm/comments/{comment_id}", params={"telegram_user_id": 10}
+    )
+    assert delete_resp.status_code == 204
+
+    list_resp = await client.get(
+        f"/crm/contacts/{contact_id}/comments", params={"telegram_user_id": 10}
+    )
+    assert list_resp.json() == []
+
+
+async def test_delete_missing_comment_returns_404(client):
+    response = await client.delete(
+        "/crm/comments/9999", params={"telegram_user_id": 10}
+    )
+    assert response.status_code == 404

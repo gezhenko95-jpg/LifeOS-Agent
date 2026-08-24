@@ -4,10 +4,10 @@
 Единственное место, где выполняются SQL-запросы к таблице `contacts`.
 """
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.repository import BaseRepository
-from app.crm.models import Contact
+from app.crm.models import Contact, ContactComment
 
 
 class ContactRepository(BaseRepository[Contact]):
@@ -23,3 +23,31 @@ class ContactRepository(BaseRepository[Contact]):
         )
         result = await self._session.execute(query)
         return list(result.scalars().all())
+
+
+class ContactCommentRepository(BaseRepository[ContactComment]):
+    """Доступ к таблице `contact_comments`. Отдельный класс от
+    ContactRepository — разные модели (ADR-005), прямая копия
+    TaskCommentRepository (app/tasks/repository.py)."""
+
+    model = ContactComment
+
+    async def list_by_contact(self, contact_id: int) -> list[ContactComment]:
+        query = (
+            select(ContactComment)
+            .where(ContactComment.contact_id == contact_id)
+            .order_by(ContactComment.created_at)
+        )
+        result = await self._session.execute(query)
+        return list(result.scalars().all())
+
+    async def count_by_contacts(self, contact_ids: list[int]) -> dict[int, int]:
+        if not contact_ids:
+            return {}
+        query = (
+            select(ContactComment.contact_id, func.count())
+            .where(ContactComment.contact_id.in_(contact_ids))
+            .group_by(ContactComment.contact_id)
+        )
+        result = await self._session.execute(query)
+        return {contact_id: count for contact_id, count in result.all()}

@@ -16,8 +16,8 @@ from app.ai.client import AIClient
 from app.assistant.repository import AssistantRepository
 from app.assistant.service import AssistantService
 from app.conversation.engine import ConversationEngine
-from app.crm.repository import ContactRepository
-from app.crm.service import ContactService
+from app.crm.repository import ContactCommentRepository, ContactRepository
+from app.crm.service import ContactCommentService, ContactService
 from app.digest.repository import DigestRepository
 from app.digest.scraper import get_channel_scraper
 from app.digest.service import DigestService
@@ -90,6 +90,12 @@ def build_focus_service(session: AsyncSession) -> FocusSessionService:
 
 def build_contact_service(session: AsyncSession) -> ContactService:
     return ContactService(ContactRepository(session))
+
+
+def build_contact_comment_service(session: AsyncSession) -> ContactCommentService:
+    return ContactCommentService(
+        ContactCommentRepository(session), ContactRepository(session)
+    )
 
 
 def build_mood_service(session: AsyncSession) -> MoodService:

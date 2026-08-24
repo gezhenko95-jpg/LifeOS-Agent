@@ -37,6 +37,23 @@ class TaskRepository(BaseRepository[Task]):
         result = await self._session.execute(query)
         return list(result.scalars().all())
 
+    async def list_by_contact(
+        self, telegram_user_id: int, contact_id: int
+    ) -> list[Task]:
+        """Задачи, связанные с контактом CRM — обратная сторона
+        Task.contact_id (отчёт владельца 24.08, вечер #6, волна 3:
+        "нажимая на человека хочу видеть какие задачи с ним связаны")."""
+        query = (
+            select(Task)
+            .where(
+                Task.telegram_user_id == telegram_user_id,
+                Task.contact_id == contact_id,
+            )
+            .order_by(Task.created_at)
+        )
+        result = await self._session.execute(query)
+        return list(result.scalars().all())
+
     async def list_subtasks(self, telegram_user_id: int, parent_id: int) -> list[Task]:
         """Дочерние задачи родителя `parent_id` — сам родитель фильтрует
         по владельцу отдельно (owned_or_none в сервисе), здесь только

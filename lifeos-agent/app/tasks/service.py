@@ -135,6 +135,13 @@ class TaskService:
     async def list_subtasks(self, telegram_user_id: int, parent_id: int) -> list[Task]:
         return await self._repository.list_subtasks(telegram_user_id, parent_id)
 
+    async def list_tasks_for_contact(
+        self, telegram_user_id: int, contact_id: int
+    ) -> list[Task]:
+        """Задачи, привязанные к контакту CRM — обратный просмотр
+        Task.contact_id со стороны карточки человека."""
+        return await self._repository.list_by_contact(telegram_user_id, contact_id)
+
     async def count_subtasks_by_parents(
         self, telegram_user_id: int, parent_ids: list[int]
     ) -> dict[int, int]:

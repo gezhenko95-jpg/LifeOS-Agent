@@ -5,7 +5,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Integer, String, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -71,4 +71,27 @@ class Contact(Base):
         nullable=False,
         server_default=func.now(),
         comment="Когда контакт заведён",
+    )
+
+
+class ContactComment(Base):
+    """Комментарий к контакту — лог из нескольких записей, не одна
+    перезаписываемая заметка (`notes` остаётся короткой закреплённой
+    пометкой). Прямая копия TaskComment (app/tasks/models.py) — отчёт
+    владельца 24.08, вечер #6, волна 3."""
+
+    __tablename__ = "contact_comments"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
+
+    contact_id: Mapped[int] = mapped_column(
+        ForeignKey("contacts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    telegram_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    text: Mapped[str] = mapped_column(String(1000), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )

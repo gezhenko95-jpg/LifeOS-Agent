@@ -624,3 +624,15 @@ async def test_update_task_clear_contact(repository):
     updated = await service.update_task(1, task_id=1, clear_contact=True)
 
     assert updated.contact_id is None
+
+
+async def test_list_tasks_for_contact_delegates_to_repository(repository):
+    repository.list_by_contact.return_value = [
+        Task(id=1, telegram_user_id=1, title="Позвонить", contact_id=7)
+    ]
+    service = TaskService(repository)
+
+    tasks = await service.list_tasks_for_contact(1, contact_id=7)
+
+    assert len(tasks) == 1
+    repository.list_by_contact.assert_awaited_once_with(1, 7)

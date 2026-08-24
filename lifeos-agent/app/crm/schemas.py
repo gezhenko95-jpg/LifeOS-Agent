@@ -32,6 +32,10 @@ class ContactUpdate(BaseModel):
 
 
 class ContactRead(BaseModel):
+    """subtask_count/comment_count по образцу TaskRead — task_count и
+    comment_count не колонки Contact, считаются пачкой и проставляются в
+    app/api/crm.py после model_validate (см. _with_counts в tasks.py)."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -43,4 +47,21 @@ class ContactRead(BaseModel):
     tags: Optional[str] = None
     nudge_after_days: Optional[int] = None
     last_contact_at: datetime
+    created_at: datetime
+    task_count: int = 0
+    comment_count: int = 0
+
+
+class ContactCommentCreate(BaseModel):
+    telegram_user_id: int
+    text: str = Field(min_length=1, max_length=1000)
+
+
+class ContactCommentRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    contact_id: int
+    telegram_user_id: int
+    text: str
     created_at: datetime

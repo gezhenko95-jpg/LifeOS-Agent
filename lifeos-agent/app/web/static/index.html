@@ -577,6 +577,18 @@
   .task-panel-col ul.item-list li button.secondary { padding: 0 6px; flex: none; }
   .task-panel-done { text-decoration: line-through; opacity: 0.6; }
   .task-panel-col .add-form { margin-top: 6px; }
+  /* Задача в панели контакта — открывает редактор задачи, но не
+     самостоятельное действие вроде ✓/✕, поэтому не боксовая кнопка. */
+  .link-like {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--accent);
+    text-decoration: underline;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+  }
 
   /* Ряд из 5 кнопок задачи (▶✎✓✕▾) — раньше были плоскими соседями
      .item-title/.meta в одном flex-контейнере ul.item-list li, поэтому
@@ -1189,6 +1201,10 @@
      наоборот, потому что скрытые editor-row всё равно рендерились. */
   .editor-row[hidden] { display: none; }
   .editor-row label { color: var(--muted); font-size: 0.85rem; min-width: 110px; }
+  /* Короткая подсказка "как правильно заполнить" под нетривиальным
+     полем редактора — не полноценный .item-note (тот для описания в
+     списке), своя приглушённая строка без верхнего отступа. */
+  .editor-box .hint { margin: -4px 0 0; color: var(--muted); font-size: 0.76rem; line-height: 1.3; }
   .editor-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
   /* Описание в списке — второй строкой, приглушённое. */
   .item-note {
@@ -2812,10 +2828,12 @@
       <label for="editorTags">Теги</label>
       <input id="editorTags" placeholder="работа, друзья" />
     </div>
+    <p class="hint" id="editorTagsHint" hidden>Через запятую — используются как метка в списке, не влияют на нэджи.</p>
     <div class="editor-row" id="editorNudgeRow">
       <label for="editorNudge">Нэдж "давно не писал" через, дней</label>
       <input id="editorNudge" type="number" min="1" placeholder="30 (по умолчанию)" />
     </div>
+    <p class="hint" id="editorNudgeHint" hidden>Пусто — берётся общий порог 30 дней; для близких людей стоит поставить меньше.</p>
     <div class="editor-actions">
       <button type="button" id="editorSave">Сохранить</button>
       <button type="button" class="secondary" id="editorComplete" hidden>✓ Выполнить</button>
@@ -4452,6 +4470,39 @@ function parseBirthdayInput(raw) {
 // каждое открытие редактора.
 let lastContacts = [];
 
+// Раскрытые панели "Задачи/Комментарии" контакта — тот же приём, что
+// expandedTaskPanels у задач: переживают перерисовку списка.
+const expandedContactPanels = new Set();
+
+async function renderContactPanel(contactId) {
+  const panel = document.querySelector(`[data-contact-panel-for="${contactId}"]`);
+  if (!panel) return;
+  const id = getUserId();
+  const [tasks, comments] = await Promise.all([
+    api(`/crm/contacts/${contactId}/tasks?telegram_user_id=${encodeURIComponent(id)}`),
+    api(`/crm/contacts/${contactId}/comments?telegram_user_id=${encodeURIComponent(id)}`),
+  ]);
+  const tasksHtml = tasks.length
+    ? tasks.map((t) => `<li><button type="button" class="link-like" data-action="open-contact-task" data-id="${t.id}">${t.status === "completed" ? "✓ " : "· "}${escapeHtml(t.title)}</button></li>`).join("")
+    : '<li class="empty">Связанных задач нет</li>';
+  const commentsHtml = comments.length
+    ? comments.map((c) => `<li><span>${escapeHtml(c.text)}</span><span class="meta">${new Date(c.created_at).toLocaleDateString("ru-RU")}</span></li>`).join("")
+    : '<li class="empty">Комментариев нет</li>';
+  panel.innerHTML = `
+    <div class="task-panel-col">
+      <h4>📋 Задачи</h4>
+      <ul class="item-list">${tasksHtml}</ul>
+    </div>
+    <div class="task-panel-col">
+      <h4>💬 Комментарии</h4>
+      <ul class="item-list">${commentsHtml}</ul>
+      <form class="add-form contact-comment-form" data-contact-id="${contactId}">
+        <input type="text" placeholder="Комментарий" required />
+        <button type="submit">+</button>
+      </form>
+    </div>`;
+}
+
 async function loadContacts() {
   const id = getUserId();
   const list = document.getElementById("contactsList");
@@ -4482,18 +4533,31 @@ async function loadContacts() {
     const tags = c.tags
       ? ` <span class="task-badge task-badge-contact">${escapeHtml(c.tags)}</span>`
       : "";
+    const commentBadge = c.comment_count
+      ? `<button type="button" class="task-badge" data-action="toggle-contact-panel" data-id="${c.id}">💬 ${c.comment_count}</button>`
+      : "";
+    const expanded = expandedContactPanels.has(c.id);
     return `
     <li${overdue ? ' class="over-budget"' : ""}>
       <span class="item-title">${overdue ? "⚠️ " : ""}${escapeHtml(c.name)}${tags}
         ${c.notes ? `<span class="item-note">${escapeHtml(c.notes)}</span>` : ""}
+        ${commentBadge ? `<span class="task-badges">${commentBadge}</span>` : ""}
       </span>
       <span class="meta">Писал(а): ${since}${birthday}</span>
-      <button class="secondary" data-action="edit" data-kind="contact" data-id="${c.id}" title="Изменить">✎</button>
-      <button data-action="contact-done" data-id="${c.id}" title="Написал(а)">👋</button>
-      <button class="danger" data-action="delete-contact" data-id="${c.id}">✕</button>
+      <span class="task-actions">
+        <button class="secondary" data-action="edit" data-kind="contact" data-id="${c.id}" title="Изменить">✎</button>
+        <button data-action="contact-done" data-id="${c.id}" title="Написал(а)">👋</button>
+        <button class="danger" data-action="delete-contact" data-id="${c.id}">✕</button>
+        <button class="secondary" data-action="toggle-contact-panel" data-id="${c.id}" title="Задачи и комментарии">${expanded ? "▴" : "▾"}</button>
+      </span>
+      <div class="task-panel" data-contact-panel-for="${c.id}" ${expanded ? "" : "hidden"}></div>
     </li>
   `;
   }).join("");
+  for (const contactId of expandedContactPanels) {
+    if (contacts.some((c) => c.id === contactId)) await renderContactPanel(contactId);
+    else expandedContactPanels.delete(contactId);
+  }
 }
 
 document.getElementById("contactsForm").addEventListener("submit", async (e) => {
@@ -4526,7 +4590,52 @@ document.getElementById("contactsList").addEventListener("click", async (e) => {
       method: "DELETE",
     });
     await loadContacts();
+  } else if (btn.dataset.action === "toggle-contact-panel") {
+    const cid = Number(btn.dataset.id);
+    const panel = document.querySelector(`[data-contact-panel-for="${cid}"]`);
+    const toggleBtn = e.target.closest("li").querySelector('[data-action="toggle-contact-panel"]:not(.task-badge)');
+    if (expandedContactPanels.has(cid)) {
+      expandedContactPanels.delete(cid);
+      if (panel) panel.hidden = true;
+      if (toggleBtn) toggleBtn.textContent = "▾";
+    } else {
+      expandedContactPanels.add(cid);
+      if (panel) panel.hidden = false;
+      if (toggleBtn) toggleBtn.textContent = "▴";
+      await renderContactPanel(cid);
+    }
+  } else if (btn.dataset.action === "open-contact-task") {
+    // openEditor("task", id) ищет задачу в lastTasks (список активных
+    // верхнеуровневых) с фолбэком на lastCompletedTasks — связанная
+    // задача может быть подзадачей или просто вне обоих кэшей, тогда
+    // клик молча ничего не делал бы. Подмешиваем в lastTasks, если там
+    // ещё нет — тот же приём, что список задач применяет к своему кэшу.
+    const taskId = Number(btn.dataset.id);
+    if (!lastTasks.some((t) => t.id === taskId) && !lastCompletedTasks.some((t) => t.id === taskId)) {
+      const contactId = Number(e.target.closest("[data-contact-panel-for]").dataset.contactPanelFor);
+      const tasks = await api(`/crm/contacts/${contactId}/tasks?telegram_user_id=${getUserId()}`);
+      const task = tasks.find((t) => t.id === taskId);
+      if (task) lastTasks = [...lastTasks, task];
+    }
+    openEditor("task", taskId);
   }
+});
+
+document.getElementById("contactsList").addEventListener("submit", async (e) => {
+  const form = e.target.closest(".contact-comment-form");
+  if (!form) return;
+  e.preventDefault();
+  const contactId = form.dataset.contactId;
+  const input = form.querySelector("input");
+  const text = input.value.trim();
+  if (!text) return;
+  await api(`/crm/contacts/${contactId}/comments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ telegram_user_id: Number(getUserId()), text }),
+  });
+  input.value = "";
+  await renderContactPanel(Number(contactId));
 });
 
 // --- Настроение (specs/019-mood-tracker.md) ----------------------------
@@ -4794,6 +4903,8 @@ function openEditor(kind, id) {
   const nudgeRow = document.getElementById("editorNudgeRow");
   tagsRow.hidden = kind !== "contact";
   nudgeRow.hidden = kind !== "contact";
+  document.getElementById("editorTagsHint").hidden = kind !== "contact";
+  document.getElementById("editorNudgeHint").hidden = kind !== "contact";
   if (kind === "contact") {
     document.getElementById("editorTags").value = item.tags || "";
     document.getElementById("editorNudge").value = item.nudge_after_days || "";
