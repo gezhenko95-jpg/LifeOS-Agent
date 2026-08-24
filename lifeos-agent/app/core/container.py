@@ -44,12 +44,15 @@ from app.watchlist.service import WatchlistService
 
 
 def build_task_service(session: AsyncSession) -> TaskService:
-    # contact_repository — валидирует владение contact_id при связке
-    # задачи с человеком (specs/022-tasks-v2.md). Прямая сборка
+    # contact_repository/habit_repository — валидируют владение contact_id/
+    # habit_id при связке задачи с человеком/привычкой (specs/022-tasks-v2.md,
+    # отчёт владельца 24.08 вечер #6). Прямая сборка
     # TaskService(TaskRepository(session)) в нескольких местах jobs.py/
     # handlers.py/callbacks.py (A-3, ещё не отрефакторено) этой проверки
     # не получает — существующий, не новый trade-off.
-    return TaskService(TaskRepository(session), ContactRepository(session))
+    return TaskService(
+        TaskRepository(session), ContactRepository(session), HabitRepository(session)
+    )
 
 
 def build_task_comment_service(session: AsyncSession) -> TaskCommentService:

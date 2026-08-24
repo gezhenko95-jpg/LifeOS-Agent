@@ -71,6 +71,7 @@ async def create_task(
             color=payload.color,
             parent_id=payload.parent_id,
             contact_id=payload.contact_id,
+            habit_id=payload.habit_id,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -205,6 +206,8 @@ async def update_task(
             color=payload.color,
             contact_id=payload.contact_id,
             clear_contact=payload.clear_contact,
+            habit_id=payload.habit_id,
+            clear_habit=payload.clear_habit,
         )
     except ValueError as exc:
         raise HTTPException(

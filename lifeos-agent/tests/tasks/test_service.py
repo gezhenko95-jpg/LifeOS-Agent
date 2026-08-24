@@ -636,3 +636,65 @@ async def test_list_tasks_for_contact_delegates_to_repository(repository):
 
     assert len(tasks) == 1
     repository.list_by_contact.assert_awaited_once_with(1, 7)
+
+
+# --- Привязка к привычке (отчёт владельца 24.08, вечер #6, волна 4) ---------
+# Прямая копия блока тестов contact_id выше.
+
+
+async def test_create_task_with_habit_id_no_validator_configured(repository):
+    """TaskService(repository) без habit_repository — старый вызов,
+    привязка проходит без проверки владения (см. __init__)."""
+    service = TaskService(repository)
+
+    task = await service.create_task(telegram_user_id=1, title="Пробежка", habit_id=5)
+
+    assert task.habit_id == 5
+
+
+async def test_create_task_with_habit_id_validated_success(repository):
+    habits = AsyncMock()
+    habits.get_by_id.return_value = SimpleNamespace(id=5, telegram_user_id=1)
+    service = TaskService(repository, habit_repository=habits)
+
+    task = await service.create_task(telegram_user_id=1, title="Пробежка", habit_id=5)
+
+    assert task.habit_id == 5
+
+
+async def test_create_task_with_unknown_habit_id_raises(repository):
+    habits = AsyncMock()
+    habits.get_by_id.return_value = None
+    service = TaskService(repository, habit_repository=habits)
+
+    with pytest.raises(ValueError):
+        await service.create_task(telegram_user_id=1, title="Пробежка", habit_id=99)
+
+
+async def test_create_task_with_someone_elses_habit_id_raises(repository):
+    habits = AsyncMock()
+    habits.get_by_id.return_value = SimpleNamespace(id=5, telegram_user_id=2)
+    service = TaskService(repository, habit_repository=habits)
+
+    with pytest.raises(ValueError):
+        await service.create_task(telegram_user_id=1, title="Пробежка", habit_id=5)
+
+
+async def test_update_task_sets_habit_id(repository):
+    task = Task(id=1, telegram_user_id=1, title="Задача")
+    repository.get_by_id.return_value = task
+    service = TaskService(repository)
+
+    updated = await service.update_task(1, task_id=1, habit_id=7)
+
+    assert updated.habit_id == 7
+
+
+async def test_update_task_clear_habit(repository):
+    task = Task(id=1, telegram_user_id=1, title="Задача", habit_id=7)
+    repository.get_by_id.return_value = task
+    service = TaskService(repository)
+
+    updated = await service.update_task(1, task_id=1, clear_habit=True)
+
+    assert updated.habit_id is None

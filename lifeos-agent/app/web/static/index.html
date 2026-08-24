@@ -2824,6 +2824,13 @@
         <option value="">не связана</option>
       </select>
     </div>
+    <div class="editor-row" id="editorHabitRow">
+      <label for="editorHabit">Привычка</label>
+      <select id="editorHabit">
+        <option value="">не связана</option>
+      </select>
+    </div>
+    <p class="hint" id="editorHabitHint" hidden>Привязка — просто напоминание, где искать связь; выполнение задачи не отмечает привычку автоматически.</p>
     <div class="editor-row" id="editorTagsRow">
       <label for="editorTags">Теги</label>
       <input id="editorTags" placeholder="работа, друзья" />
@@ -3935,6 +3942,10 @@ function taskRow(task) {
     const contact = lastContacts.find((c) => c.id === task.contact_id);
     if (contact) badges.push(`<span class="task-badge task-badge-contact">👤 ${escapeHtml(contact.name)}</span>`);
   }
+  if (task.habit_id) {
+    const habit = lastHabits.find((h) => h.id === task.habit_id);
+    if (habit) badges.push(`<span class="task-badge task-badge-contact">🔁 ${escapeHtml(habit.title)}</span>`);
+  }
   const expanded = expandedTaskPanels.has(task.id);
   return `
     <li>
@@ -4891,6 +4902,19 @@ function openEditor(kind, id) {
     select.value = item.contact_id ? String(item.contact_id) : "";
   }
 
+  const habitRow = document.getElementById("editorHabitRow");
+  habitRow.hidden = kind !== "task";
+  document.getElementById("editorHabitHint").hidden = kind !== "task";
+  if (kind === "task") {
+    const select = document.getElementById("editorHabit");
+    select.innerHTML =
+      '<option value="">не связана</option>' +
+      lastHabits
+        .map((h) => `<option value="${h.id}">${escapeHtml(h.title)}</option>`)
+        .join("");
+    select.value = item.habit_id ? String(item.habit_id) : "";
+  }
+
   const reminderRow = document.getElementById("editorReminderRow");
   reminderRow.hidden = kind !== "habit";
   if (kind === "habit") {
@@ -4952,6 +4976,9 @@ async function saveEditor() {
       const contactValue = document.getElementById("editorContact").value;
       if (contactValue) body.contact_id = Number(contactValue);
       else body.clear_contact = true;
+      const habitValue = document.getElementById("editorHabit").value;
+      if (habitValue) body.habit_id = Number(habitValue);
+      else body.clear_habit = true;
     }
     if (editorTarget.kind === "habit") {
       const time = document.getElementById("editorReminder").value;

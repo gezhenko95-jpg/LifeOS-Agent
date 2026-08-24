@@ -126,6 +126,13 @@ class Task(Base):
         comment="Связанный контакт CRM (NULL — не связана)",
     )
 
+    habit_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("habits.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="Связанная привычка (NULL — не связана) — та же схема, что contact_id",
+    )
+
 
 class TaskComment(Base):
     """Комментарий к задаче — лог из нескольких записей, не одна

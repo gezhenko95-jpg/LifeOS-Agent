@@ -11,6 +11,7 @@ from typing import Optional
 
 from app.core.ownership import owned_or_none
 from app.crm.repository import ContactRepository
+from app.habits.repository import HabitRepository
 from app.tasks.models import Task, TaskComment
 from app.tasks.repository import TaskCommentRepository, TaskRepository
 
@@ -50,6 +51,7 @@ class TaskService:
         self,
         repository: TaskRepository,
         contact_repository: Optional[ContactRepository] = None,
+        habit_repository: Optional[HabitRepository] = None,
     ) -> None:
         self._repository = repository
         # Опционально (как ai_client у ConversationEngine) — валидирует
@@ -57,6 +59,10 @@ class TaskService:
         # без него по-прежнему работают, просто без этой проверки
         # (тот же trade-off, что уже принят проектом для A-1, AUDIT.md).
         self._contacts = contact_repository
+        # habit_repository — та же опциональная валидация владения, но
+        # для habit_id (отчёт владельца 24.08, вечер #6: "привязать
+        # привычку" к задаче) — прямая копия приёма с contact_repository.
+        self._habits = habit_repository
 
     async def create_task(
         self,
@@ -69,6 +75,7 @@ class TaskService:
         color: Optional[str] = None,
         parent_id: Optional[int] = None,
         contact_id: Optional[int] = None,
+        habit_id: Optional[int] = None,
     ) -> Task:
         title = title.strip()
         if not title:
@@ -81,6 +88,8 @@ class TaskService:
             raise ValueError(f"Неизвестная периодичность: {recurrence}")
         if contact_id is not None:
             await self._check_contact_owned(telegram_user_id, contact_id)
+        if habit_id is not None:
+            await self._check_habit_owned(telegram_user_id, habit_id)
 
         if parent_id is not None:
             parent = owned_or_none(
@@ -116,6 +125,7 @@ class TaskService:
             color=(color or "").strip().lower() or None,
             parent_id=parent_id,
             contact_id=contact_id,
+            habit_id=habit_id,
         )
         return await self._repository.add(task)
 
@@ -131,6 +141,15 @@ class TaskService:
         )
         if contact is None:
             raise ValueError("Контакт не найден")
+
+    async def _check_habit_owned(self, telegram_user_id: int, habit_id: int) -> None:
+        """Пропускается молча, если сервис собран без habit_repository —
+        прямая копия _check_contact_owned."""
+        if self._habits is None:
+            return
+        habit = owned_or_none(await self._habits.get_by_id(habit_id), telegram_user_id)
+        if habit is None:
+            raise ValueError("Привычка не найдена")
 
     async def list_subtasks(self, telegram_user_id: int, parent_id: int) -> list[Task]:
         return await self._repository.list_subtasks(telegram_user_id, parent_id)
@@ -185,6 +204,8 @@ class TaskService:
         color: Optional[str] = None,
         contact_id: Optional[int] = None,
         clear_contact: bool = False,
+        habit_id: Optional[int] = None,
+        clear_habit: bool = False,
     ) -> Optional[Task]:
         if priority is not None and priority not in _PRIORITY_ORDER:
             raise ValueError(f"Неизвестный приоритет: {priority}")
@@ -192,6 +213,8 @@ class TaskService:
             raise ValueError(f"Неизвестная периодичность: {recurrence}")
         if contact_id is not None:
             await self._check_contact_owned(telegram_user_id, contact_id)
+        if habit_id is not None:
+            await self._check_habit_owned(telegram_user_id, habit_id)
 
         task = owned_or_none(
             await self._repository.get_by_id(task_id), telegram_user_id
@@ -226,6 +249,10 @@ class TaskService:
             task.contact_id = None
         elif contact_id is not None:
             task.contact_id = contact_id
+        if clear_habit:
+            task.habit_id = None
+        elif habit_id is not None:
+            task.habit_id = habit_id
 
         saved = await self._repository.save(task)
         if was_active and status == COMPLETED:
