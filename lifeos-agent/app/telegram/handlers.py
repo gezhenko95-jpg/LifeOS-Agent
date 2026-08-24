@@ -27,7 +27,12 @@ from app.conversation.parser import (
     parse_intent,
 )
 from app.core.config import get_settings
-from app.core.container import build_contact_service, build_digest_service, build_engine
+from app.core.container import (
+    build_contact_service,
+    build_digest_service,
+    build_engine,
+    build_task_comment_service,
+)
 from app.db.session import AsyncSessionLocal
 from app.digest.scraper import ChannelScrapeError
 from app.drive.client import get_drive_client
@@ -86,6 +91,8 @@ from app.telegram.pending_input import (
     HABIT_ADD,
     JOURNAL_SEARCH,
     TASK_ADD,
+    TASK_COMMENT_ADD,
+    TASK_SUBTASK_ADD,
     WATCHLIST_ADD,
     clear_pending,
     pop_pending,
@@ -393,6 +400,14 @@ async def _consume_pending_input(
     if pending.kind == CONTACT_ADD:
         await _create_contact_from_text(update, telegram_user_id, text)
         return True
+    if pending.kind == TASK_SUBTASK_ADD and pending.task_id is not None:
+        await _create_subtask_from_text(update, telegram_user_id, pending.task_id, text)
+        return True
+    if pending.kind == TASK_COMMENT_ADD and pending.task_id is not None:
+        await _add_task_comment_from_text(
+            update, telegram_user_id, pending.task_id, text
+        )
+        return True
     return False
 
 
@@ -468,6 +483,50 @@ async def _create_contact_from_text(
     await update.message.reply_text(
         f"📇 Новый контакт: «{contact.name}»{birthday_note}"
     )
+
+
+async def _create_subtask_from_text(
+    update: Update, telegram_user_id: int, parent_id: int, text: str
+) -> None:
+    """«📎» под конкретной задачей (см. app/telegram/callbacks.py::
+    _handle_task_action, action "a") — название целиком, без разбора
+    даты/приоритета (тот же приём, что у привычки): кнопка уже сказала,
+    что это подзадача этой конкретной задачи."""
+    if update.message is None:
+        return
+
+    async with AsyncSessionLocal() as session:
+        service = TaskService(TaskRepository(session))
+        try:
+            task = await service.create_task(
+                telegram_user_id, text.strip(), parent_id=parent_id
+            )
+        except ValueError as exc:
+            await update.message.reply_text(str(exc))
+            return
+
+    await update.message.reply_text(f"📎 Подзадача добавлена: «{task.title}»")
+
+
+async def _add_task_comment_from_text(
+    update: Update, telegram_user_id: int, task_id: int, text: str
+) -> None:
+    """«💬» под конкретной задачей — комментарий целиком, без разбора."""
+    if update.message is None:
+        return
+
+    async with AsyncSessionLocal() as session:
+        service = build_task_comment_service(session)
+        try:
+            comment = await service.add_comment(telegram_user_id, task_id, text)
+        except ValueError as exc:
+            await update.message.reply_text(str(exc))
+            return
+
+    if comment is None:
+        await update.message.reply_text("Задача больше не существует.")
+        return
+    await update.message.reply_text("💬 Комментарий добавлен.")
 
 
 async def _add_watchlist_item_from_text(
@@ -702,7 +761,14 @@ async def _send_tasks_keyboard(update: Update) -> None:
     async with AsyncSessionLocal() as session:
         service = TaskService(TaskRepository(session))
         tasks = await service.list_active_tasks(telegram_user_id)
-        text, markup = build_tasks_message(tasks)
+        task_ids = [t.id for t in tasks]
+        subtask_counts = await service.count_subtasks_by_parents(
+            telegram_user_id, task_ids
+        )
+        comment_counts = await build_task_comment_service(session).count_by_tasks(
+            task_ids
+        )
+        text, markup = build_tasks_message(tasks, subtask_counts, comment_counts)
 
     await update.message.reply_text(
         text, reply_markup=markup, parse_mode=ParseMode.HTML

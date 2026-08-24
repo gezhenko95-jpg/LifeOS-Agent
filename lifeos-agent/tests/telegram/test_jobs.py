@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.digest.models import Digest
+from app.habits.models import Habit
 from app.telegram import jobs
 
 
@@ -137,3 +138,47 @@ async def test_send_finance_report_job_no_owner_does_nothing(monkeypatch):
     await jobs.send_finance_report_job(context)
 
     context.bot.send_message.assert_not_awaited()
+
+
+async def test_midday_checkin_includes_habit_list_text(no_db, monkeypatch):
+    """Раньше текст со списком привычек (build_habits_message) выбрасывался
+    (`_, markup = ...`) — уходил только общий вопрос + кнопки с голыми
+    номерами "1"/"2" без подписей, на что они отвечают (баг с реального
+    использования). Список должен быть виден в самом сообщении."""
+    monkeypatch.setattr(jobs, "get_settings", _owner_settings)
+    habit = Habit(id=1, telegram_user_id=1, title="Чтение")
+    service = AsyncMock()
+    service.list_active_habits.return_value = [habit]
+    service.get_streaks_bulk.return_value = {1: 3}
+    monkeypatch.setattr(jobs, "HabitService", lambda repository: service)
+    monkeypatch.setattr(jobs, "HabitRepository", lambda session: None)
+    monkeypatch.setattr(jobs, "PendingPromptRepository", lambda session: AsyncMock())
+
+    context = _context()
+    await jobs.send_midday_checkin_job(context)
+
+    context.bot.send_message.assert_awaited_once()
+    _, kwargs = context.bot.send_message.call_args
+    assert "Чтение" in kwargs["text"]
+    assert "Как проходит твой день" in kwargs["text"]
+    assert kwargs["parse_mode"] is not None
+    callbacks = [
+        b.callback_data for row in kwargs["reply_markup"].inline_keyboard for b in row
+    ]
+    assert "h|d|1" in callbacks
+
+
+async def test_midday_checkin_no_habits_sends_plain_question(no_db, monkeypatch):
+    monkeypatch.setattr(jobs, "get_settings", _owner_settings)
+    service = AsyncMock()
+    service.list_active_habits.return_value = []
+    monkeypatch.setattr(jobs, "HabitService", lambda repository: service)
+    monkeypatch.setattr(jobs, "HabitRepository", lambda session: None)
+    monkeypatch.setattr(jobs, "PendingPromptRepository", lambda session: AsyncMock())
+
+    context = _context()
+    await jobs.send_midday_checkin_job(context)
+
+    context.bot.send_message.assert_awaited_once()
+    _, kwargs = context.bot.send_message.call_args
+    assert kwargs["text"] == jobs._MIDDAY_TEXT_NO_HABITS

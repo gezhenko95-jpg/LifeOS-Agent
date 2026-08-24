@@ -111,10 +111,20 @@ def test_tasks_message_shows_title_in_text_not_only_in_buttons():
     text, markup = build_tasks_message([_task(1)])
 
     assert "Купить молоко" in text
-    assert _callback_data(markup) == ["t|c|1", "t|d|1", "t|m"]
+    assert _callback_data(markup) == [
+        "t|c|1",
+        "t|d|1",
+        "t|i|1",
+        "t|a|1",
+        "t|k|1",
+        "t|m",
+    ]
     assert [b.text for row in markup.inline_keyboard for b in row] == [
         "✅ 1",
         "🗑 1",
+        "▶ 1",
+        "📎 1",
+        "💬 1",
         "◀️ Назад",
     ]
 
@@ -123,7 +133,19 @@ def test_tasks_message_numbers_match_between_text_and_buttons():
     text, markup = build_tasks_message([_task(7), _task(8, title="Позвонить")])
 
     assert "<b>1</b>" in text and "<b>2</b>" in text
-    assert _callback_data(markup) == ["t|c|7", "t|c|8", "t|d|7", "t|d|8", "t|m"]
+    assert _callback_data(markup) == [
+        "t|c|7",
+        "t|c|8",
+        "t|d|7",
+        "t|d|8",
+        "t|i|7",
+        "t|i|8",
+        "t|a|7",
+        "t|a|8",
+        "t|k|7",
+        "t|k|8",
+        "t|m",
+    ]
 
 
 def test_tasks_message_high_priority_marker():
@@ -149,7 +171,7 @@ def test_tasks_message_caps_at_max_items_but_says_so():
     что их нет."""
     text, markup = build_tasks_message([_task(i) for i in range(1, 15)])
 
-    assert len(_callback_data(markup)) == 21  # 10 задач × 2 действия + «Назад»
+    assert len(_callback_data(markup)) == 51  # 10 задач × 5 действий + «Назад»
     assert "ещё 4" in text
 
 

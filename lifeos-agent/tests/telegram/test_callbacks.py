@@ -11,6 +11,8 @@ from app.goals.models import Goal
 from app.habits.models import Habit
 from app.mood.models import MoodEntry
 from app.tasks.models import Task
+from app.tasks.repository import TaskCommentRepository, TaskRepository
+from app.tasks.service import TaskCommentService
 from app.telegram.callbacks import (
     _handle_contact_action,
     _handle_digest_action,
@@ -170,6 +172,63 @@ async def test_task_complete_missing_task_no_reward(session):
     text, _ = await _handle_task_action(session, "c", "999999", 1, _context())
 
     assert "🪙" not in text
+
+
+# --- Подзадачи/комментарии/"в работе" (specs/022-tasks-v2.md) --------------
+
+
+async def test_task_action_i_toggles_in_progress(session):
+    task = await _add_task(session)
+    assert task.in_progress is False
+
+    text, markup = await _handle_task_action(session, "i", str(task.id), 1, _context())
+
+    assert "▶" in text
+    callbacks = [b.callback_data for row in markup.inline_keyboard for b in row]
+    assert f"t|i|{task.id}" in callbacks
+
+
+async def test_task_action_a_asks_for_subtask_name(session):
+    task = await _add_task(session)
+    context = _context()
+
+    text, markup = await _handle_task_action(session, "a", str(task.id), 1, context)
+
+    assert "одзадач" in text
+    assert context.user_data["pending_input"].kind == "task_subtask_add"
+    assert context.user_data["pending_input"].task_id == task.id
+
+
+async def test_task_action_k_asks_for_comment_text(session):
+    task = await _add_task(session)
+    context = _context()
+
+    text, markup = await _handle_task_action(session, "k", str(task.id), 1, context)
+
+    assert "омментари" in text
+    assert context.user_data["pending_input"].kind == "task_comment_add"
+    assert context.user_data["pending_input"].task_id == task.id
+
+
+async def test_tasks_list_shows_subtask_and_comment_badges(session):
+    parent = await _add_task(session)
+    child = Task(
+        telegram_user_id=1, title="Подзадача", status="active", parent_id=parent.id
+    )
+    session.add(child)
+    await session.commit()
+    comment_service = TaskCommentService(
+        TaskCommentRepository(session), TaskRepository(session)
+    )
+    await comment_service.add_comment(1, parent.id, "Первый шаг")
+
+    # "i" (переключить "в работе") — одно из действий, что перерисовывают
+    # ВЕСЬ список (в отличие от "p"/"w", которые отвечают подтверждением
+    # по одной задаче, см. _quick_action_result).
+    text, _ = await _handle_task_action(session, "i", str(parent.id), 1, _context())
+
+    assert "📎1" in text
+    assert "💬1" in text
 
 
 async def _add_habit(session, **kwargs) -> Habit:

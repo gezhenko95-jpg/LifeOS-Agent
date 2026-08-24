@@ -47,6 +47,11 @@ d — дайджесты, f — финансы, c — контакты (личн
   t|c|{id} / t|d|{id} — задача: выполнить / удалить
   t|p|{id} / t|w|{id} — задача: сделать важной / поставить дату на завтра
     (быстрые кнопки под подтверждением создания, см. handlers.py)
+  t|i|{id} — переключить "в работе" (task.in_progress, независимо от
+    lifecycle-статуса)
+  t|a|{id} — добавить подзадачу к {id} (бот ждёт следующее сообщение —
+    название, см. pending_input.py::TASK_SUBTASK_ADD)
+  t|k|{id} — добавить комментарий к {id} (аналогично, TASK_COMMENT_ADD)
   h|d|{id} / h|x|{id} — привычка: отметить сегодня / удалить
   g|u|{id} / g|p|{id} / g|c|{id} / g|x|{id} — цель: +10% / -10% /
     завершить / удалить
@@ -209,22 +214,38 @@ def build_main_menu() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
-def build_tasks_message(tasks: list[Task]) -> tuple[str, InlineKeyboardMarkup]:
+def build_tasks_message(
+    tasks: list[Task],
+    subtask_counts: dict[int, int] | None = None,
+    comment_counts: dict[int, int] | None = None,
+) -> tuple[str, InlineKeyboardMarkup]:
+    """subtask_counts/comment_counts — {task_id: N}, считаются пачкой на
+    список вызывающим кодом (см. app/tasks/repository.py::
+    count_subtasks_by_parents), не колонки Task. По умолчанию пустые —
+    старые вызовы без подзадач/комментариев не ломаются."""
     if not tasks:
         return (
             "📋 <b>Задачи</b>\n\nПусто — и это нормально. "
             "Напишите, что нужно сделать, и я запомню.",
             InlineKeyboardMarkup([]),
         )
+    subtask_counts = subtask_counts or {}
+    comment_counts = comment_counts or {}
 
     shown = tasks[:_MAX_ITEMS]
     lines = ["📋 <b>Задачи</b>", ""]
     for index, task in enumerate(shown, start=1):
         priority = "❗ " if task.priority == "high" else ""
         recurrence = " 🔁" if task.recurrence else ""
+        in_progress = "▶ " if task.in_progress else ""
+        badges = ""
+        if subtask_counts.get(task.id):
+            badges += f" 📎{subtask_counts[task.id]}"
+        if comment_counts.get(task.id):
+            badges += f" 💬{comment_counts[task.id]}"
         lines.append(
-            f"<b>{index}</b>  {task_status_emoji(task)} "
-            f"{priority}{_esc(task.title)}{recurrence}"
+            f"<b>{index}</b>  {task_status_emoji(task)} {in_progress}"
+            f"{priority}{_esc(task.title)}{recurrence}{badges}"
         )
         if task.due_date:
             lines.append(f"      <i>{format_due_human(task.due_date)}</i>")
@@ -232,9 +253,16 @@ def build_tasks_message(tasks: list[Task]) -> tuple[str, InlineKeyboardMarkup]:
 
     lines.append(_DIVIDER)
     lines.append(_build_tasks_summary(tasks, len(shown)))
+    lines.append(
+        "<i>▶ — в работе (переключить кнопкой), 📎 — добавить подзадачу, "
+        "💬 — добавить комментарий</i>"
+    )
 
     rows = _numbered_action_rows(shown, "t|c", "✅")
     rows += _numbered_action_rows(shown, "t|d", "🗑")
+    rows += _numbered_action_rows(shown, "t|i", "▶")
+    rows += _numbered_action_rows(shown, "t|a", "📎")
+    rows += _numbered_action_rows(shown, "t|k", "💬")
     rows.append(_back_to_section("t"))
     return "\n".join(lines), InlineKeyboardMarkup(rows)
 

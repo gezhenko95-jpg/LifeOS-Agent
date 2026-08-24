@@ -229,3 +229,155 @@ async def test_stats_zero_when_nothing_completed(client):
 
     assert response.status_code == 200
     assert response.json()["completed_this_week"] == 0
+
+
+# --- Подзадачи/эпики (specs/022-tasks-v2.md) --------------------------------
+
+
+async def test_create_subtask_and_list_it(client):
+    parent = await client.post("/tasks", json={"telegram_user_id": 10, "title": "Эпик"})
+    parent_id = parent.json()["id"]
+
+    child = await client.post(
+        "/tasks",
+        json={"telegram_user_id": 10, "title": "Подзадача", "parent_id": parent_id},
+    )
+    assert child.status_code == 201
+    assert child.json()["parent_id"] == parent_id
+
+    subtasks = await client.get(
+        f"/tasks/{parent_id}/subtasks", params={"telegram_user_id": 10}
+    )
+    assert subtasks.status_code == 200
+    assert len(subtasks.json()) == 1
+    assert subtasks.json()[0]["title"] == "Подзадача"
+
+
+async def test_subtasks_excluded_from_top_level_list_but_counted(client):
+    parent = await client.post("/tasks", json={"telegram_user_id": 11, "title": "Эпик"})
+    parent_id = parent.json()["id"]
+    await client.post(
+        "/tasks",
+        json={"telegram_user_id": 11, "title": "Подзадача", "parent_id": parent_id},
+    )
+
+    tasks = await client.get("/tasks", params={"telegram_user_id": 11})
+
+    assert len(tasks.json()) == 1
+    assert tasks.json()[0]["id"] == parent_id
+    assert tasks.json()[0]["subtask_count"] == 1
+
+
+async def test_create_task_with_unknown_parent_returns_400(client):
+    response = await client.post(
+        "/tasks",
+        json={"telegram_user_id": 12, "title": "Подзадача", "parent_id": 9999},
+    )
+    assert response.status_code == 400
+
+
+# --- "В работе" --------------------------------------------------------
+
+
+async def test_toggle_in_progress(client):
+    create_resp = await client.post(
+        "/tasks", json={"telegram_user_id": 13, "title": "Задача"}
+    )
+    task_id = create_resp.json()["id"]
+    assert create_resp.json()["in_progress"] is False
+
+    on = await client.post(
+        f"/tasks/{task_id}/in-progress", params={"telegram_user_id": 13}
+    )
+    assert on.status_code == 200
+    assert on.json()["in_progress"] is True
+
+    off = await client.post(
+        f"/tasks/{task_id}/in-progress", params={"telegram_user_id": 13}
+    )
+    assert off.json()["in_progress"] is False
+
+
+async def test_toggle_in_progress_missing_task_returns_404(client):
+    response = await client.post(
+        "/tasks/9999/in-progress", params={"telegram_user_id": 13}
+    )
+    assert response.status_code == 404
+
+
+# --- Комментарии ---------------------------------------------------------
+
+
+async def test_add_and_list_comments(client):
+    create_resp = await client.post(
+        "/tasks", json={"telegram_user_id": 14, "title": "Задача"}
+    )
+    task_id = create_resp.json()["id"]
+
+    add_resp = await client.post(
+        f"/tasks/{task_id}/comments",
+        json={"telegram_user_id": 14, "text": "Начал работать"},
+    )
+    assert add_resp.status_code == 201
+    assert add_resp.json()["text"] == "Начал работать"
+
+    list_resp = await client.get(
+        f"/tasks/{task_id}/comments", params={"telegram_user_id": 14}
+    )
+    assert list_resp.status_code == 200
+    assert len(list_resp.json()) == 1
+
+
+async def test_add_comment_to_missing_task_returns_404(client):
+    response = await client.post(
+        "/tasks/9999/comments", json={"telegram_user_id": 14, "text": "Привет"}
+    )
+    assert response.status_code == 404
+
+
+async def test_delete_comment(client):
+    create_resp = await client.post(
+        "/tasks", json={"telegram_user_id": 15, "title": "Задача"}
+    )
+    task_id = create_resp.json()["id"]
+    add_resp = await client.post(
+        f"/tasks/{task_id}/comments",
+        json={"telegram_user_id": 15, "text": "Комментарий"},
+    )
+    comment_id = add_resp.json()["id"]
+
+    delete_resp = await client.delete(
+        f"/tasks/comments/{comment_id}", params={"telegram_user_id": 15}
+    )
+    assert delete_resp.status_code == 204
+
+    list_resp = await client.get(
+        f"/tasks/{task_id}/comments", params={"telegram_user_id": 15}
+    )
+    assert list_resp.json() == []
+
+
+async def test_task_list_includes_comment_count(client):
+    create_resp = await client.post(
+        "/tasks", json={"telegram_user_id": 16, "title": "Задача"}
+    )
+    task_id = create_resp.json()["id"]
+    await client.post(
+        f"/tasks/{task_id}/comments",
+        json={"telegram_user_id": 16, "text": "Раз"},
+    )
+    await client.post(
+        f"/tasks/{task_id}/comments",
+        json={"telegram_user_id": 16, "text": "Два"},
+    )
+
+    tasks = await client.get("/tasks", params={"telegram_user_id": 16})
+
+    assert tasks.json()[0]["comment_count"] == 2
+
+
+async def test_delete_missing_comment_returns_404(client):
+    response = await client.delete(
+        "/tasks/comments/9999", params={"telegram_user_id": 15}
+    )
+    assert response.status_code == 404

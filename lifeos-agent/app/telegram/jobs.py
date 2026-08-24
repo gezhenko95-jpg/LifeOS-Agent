@@ -174,15 +174,21 @@ async def send_midday_checkin_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         streaks = await habit_service.get_streaks_bulk(
             telegram_user_id, [h.id for h in habits]
         )
-        _, markup = build_habits_message(habits, streaks)
+        habits_text, markup = build_habits_message(habits, streaks)
         await PendingPromptRepository(session).upsert(
             telegram_user_id, "journal", _MIDDAY_TEXT
         )
 
+    # Раньше текст со списком привычек (в котором и есть номера "1", "2",
+    # на которые ссылаются кнопки под сообщением) выбрасывался — уходил
+    # только общий вопрос "Как проходит твой день?" + кнопки с голыми
+    # номерами без подписей, на что именно они отвечают. Список
+    # добавлен HTML — parse_mode нужен, иначе <b>1</b> уедет как текст.
     await context.bot.send_message(
         chat_id=telegram_user_id,
-        text=_MIDDAY_TEXT,
+        text=f"{_MIDDAY_TEXT}\n\n{habits_text}",
         reply_markup=markup,
+        parse_mode=ParseMode.HTML,
     )
 
 

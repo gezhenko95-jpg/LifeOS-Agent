@@ -20,6 +20,7 @@ class TaskCreate(BaseModel):
     recurrence: Optional[str] = None
     description: Optional[str] = Field(default=None, max_length=500)
     color: Optional[str] = Field(default=None, max_length=20)
+    parent_id: Optional[int] = None
 
 
 class TaskUpdate(BaseModel):
@@ -41,7 +42,13 @@ class TaskStats(BaseModel):
 
 
 class TaskRead(BaseModel):
-    """Представление задачи в ответах API."""
+    """Представление задачи в ответах API.
+
+    subtask_count/comment_count не колонки Task — считаются пачкой на
+    весь список (см. app/tasks/repository.py::count_subtasks_by_parents),
+    поэтому не заполняются автоматически через from_attributes и
+    проставляются в app/api/tasks.py после model_validate.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -55,4 +62,23 @@ class TaskRead(BaseModel):
     priority: str
     recurrence: Optional[str]
     completed_at: Optional[datetime]
+    created_at: datetime
+    in_progress: bool = False
+    parent_id: Optional[int] = None
+    subtask_count: int = 0
+    comment_count: int = 0
+
+
+class TaskCommentCreate(BaseModel):
+    telegram_user_id: int
+    text: str = Field(min_length=1, max_length=1000)
+
+
+class TaskCommentRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    task_id: int
+    telegram_user_id: int
+    text: str
     created_at: datetime

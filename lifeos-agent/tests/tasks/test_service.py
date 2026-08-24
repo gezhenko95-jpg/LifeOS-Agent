@@ -62,7 +62,9 @@ async def test_list_active_tasks(repository):
     tasks = await service.list_active_tasks(1)
 
     assert len(tasks) == 1
-    repository.list_by_user.assert_awaited_once_with(1, status="active")
+    repository.list_by_user.assert_awaited_once_with(
+        1, status="active", top_level_only=True
+    )
 
 
 async def test_complete_task_by_title_found(repository):
@@ -426,3 +428,107 @@ async def test_update_task_invalid_recurrence_raises(repository):
 
     with pytest.raises(ValueError):
         await service.update_task(1, task_id=1, recurrence="yearly")
+
+
+# --- Подзадачи/эпики (specs/022-tasks-v2.md) --------------------------------
+
+
+async def test_create_task_with_parent_id_sets_it(repository):
+    parent = Task(id=1, telegram_user_id=1, title="Эпик", status="active")
+    repository.get_by_id.return_value = parent
+    service = TaskService(repository)
+
+    await service.create_task(telegram_user_id=1, title="Подзадача", parent_id=1)
+
+    created = repository.add.await_args.args[0]
+    assert created.parent_id == 1
+
+
+async def test_create_task_with_unknown_parent_id_raises(repository):
+    repository.get_by_id.return_value = None
+    service = TaskService(repository)
+
+    with pytest.raises(ValueError):
+        await service.create_task(telegram_user_id=1, title="Подзадача", parent_id=99)
+
+
+async def test_create_task_with_someone_elses_parent_id_raises(repository):
+    parent = Task(id=1, telegram_user_id=2, title="Чужой эпик", status="active")
+    repository.get_by_id.return_value = parent
+    service = TaskService(repository)
+
+    with pytest.raises(ValueError):
+        await service.create_task(telegram_user_id=1, title="Подзадача", parent_id=1)
+
+
+async def test_create_task_under_a_subtask_raises():
+    """Иерархия плоская — два уровня максимум, у подзадачи не может
+    быть своих подзадач (specs/022-tasks-v2.md)."""
+    repository = AsyncMock()
+    subtask = Task(id=2, telegram_user_id=1, title="Уже подзадача", parent_id=1)
+    repository.get_by_id.return_value = subtask
+    service = TaskService(repository)
+
+    with pytest.raises(ValueError):
+        await service.create_task(telegram_user_id=1, title="Внучка", parent_id=2)
+
+
+async def test_list_subtasks_delegates_to_repository(repository):
+    repository.list_subtasks.return_value = [Task(telegram_user_id=1, title="A")]
+    service = TaskService(repository)
+
+    subtasks = await service.list_subtasks(1, parent_id=5)
+
+    assert len(subtasks) == 1
+    repository.list_subtasks.assert_awaited_once_with(1, 5)
+
+
+async def test_count_subtasks_by_parents_delegates_to_repository(repository):
+    repository.count_subtasks_by_parents.return_value = {5: 2}
+    service = TaskService(repository)
+
+    counts = await service.count_subtasks_by_parents(1, [5])
+
+    assert counts == {5: 2}
+
+
+# --- "В работе" (in_progress) -----------------------------------------------
+
+
+async def test_toggle_in_progress_flips_flag(repository):
+    task = Task(id=1, telegram_user_id=1, title="Задача", in_progress=False)
+    repository.get_by_id.return_value = task
+    service = TaskService(repository)
+
+    updated = await service.toggle_in_progress(1, task_id=1)
+
+    assert updated.in_progress is True
+
+
+async def test_toggle_in_progress_flips_back(repository):
+    task = Task(id=1, telegram_user_id=1, title="Задача", in_progress=True)
+    repository.get_by_id.return_value = task
+    service = TaskService(repository)
+
+    updated = await service.toggle_in_progress(1, task_id=1)
+
+    assert updated.in_progress is False
+
+
+async def test_toggle_in_progress_missing_task_returns_none(repository):
+    repository.get_by_id.return_value = None
+    service = TaskService(repository)
+
+    result = await service.toggle_in_progress(1, task_id=1)
+
+    assert result is None
+
+
+async def test_toggle_in_progress_someone_elses_task_returns_none(repository):
+    task = Task(id=1, telegram_user_id=2, title="Чужая", in_progress=False)
+    repository.get_by_id.return_value = task
+    service = TaskService(repository)
+
+    result = await service.toggle_in_progress(1, task_id=1)
+
+    assert result is None

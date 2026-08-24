@@ -472,6 +472,47 @@
     letter-spacing: normal;
     color: var(--muted);
   }
+  /* Бейджи подзадач/комментариев в строке задачи — сами кнопки (не
+     span), чтобы разворачивать панель тапом и по бейджу, не только по
+     шеврону. */
+  .task-badges { display: inline-flex; gap: 4px; margin-left: 6px; }
+  .task-badge {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: none;
+    border-radius: 999px;
+    padding: 1px 7px;
+    font-size: 0.72rem;
+    cursor: pointer;
+  }
+  /* "В работе" — та же кнопка-иконка, что ✎/✓/✕, но с заливкой
+     акцентом, когда включена (иначе состояние не отличить от обычной
+     неактивной кнопки в ряду). */
+  button.secondary.active-toggle {
+    background: var(--accent);
+    color: var(--accent-text);
+    border-color: var(--accent);
+  }
+  /* flex-basis:100% — .item-list li уже flex-wrap, но панель должна
+     ВСЕГДА уйти на свою строку целиком, а не встать рядом с последней
+     кнопкой, если после неё осталось место. */
+  .task-panel {
+    flex-basis: 100%;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+    padding: 10px;
+    border-radius: var(--radius-control);
+    background: var(--accent-soft);
+  }
+  .task-panel[hidden] { display: none; }
+  .task-panel-col { flex: 1; min-width: 180px; }
+  .task-panel-col h4 { margin: 0 0 6px; font-size: 0.78rem; color: var(--muted); }
+  .task-panel-col ul.item-list li { padding: 4px 0; font-size: 0.85rem; }
+  .task-panel-done { text-decoration: line-through; opacity: 0.6; }
+  .task-panel-col .add-form { margin-top: 6px; }
+
   ul.item-list { list-style: none; margin: 0; padding: 0; }
   ul.item-list li {
     display: flex;
@@ -3606,6 +3647,10 @@ document.getElementById("claimButton").addEventListener("click", async () => {
 
 // ---- Tasks ----
 
+// Раскрытые панели подзадач/комментариев переживают перерисовку списка
+// (после ✓/✕ соседней задачи) — id задачи, а не индекс DOM-узла.
+const expandedTaskPanels = new Set();
+
 async function loadTasks() {
   const id = getUserId();
   const list = document.getElementById("taskList");
@@ -3619,19 +3664,67 @@ async function loadTasks() {
   }
   list.innerHTML = tasks.map((task) => {
     const status = dueStatus(task.due_date);
+    const badges = [];
+    if (task.subtask_count) badges.push(`<button type="button" class="task-badge" data-action="toggle-panel" data-id="${task.id}">📎 ${task.subtask_count}</button>`);
+    if (task.comment_count) badges.push(`<button type="button" class="task-badge" data-action="toggle-panel" data-id="${task.id}">💬 ${task.comment_count}</button>`);
+    const expanded = expandedTaskPanels.has(task.id);
     return `
     <li>
       <span class="status-dot ${status}" title="${status}"></span>
       <span class="item-title ${task.priority === "high" ? "high" : ""}">
-        ${task.priority === "high" ? "❗ " : ""}${escapeHtml(task.title)}
+        ${task.in_progress ? "▶ " : ""}${task.priority === "high" ? "❗ " : ""}${escapeHtml(task.title)}
         ${task.description ? `<span class="item-note">${escapeHtml(task.description)}</span>` : ""}
+        ${badges.length ? `<span class="task-badges">${badges.join("")}</span>` : ""}
       </span>
       <span class="meta ${status === "overdue" ? "overdue" : ""}">${formatDueHuman(task.due_date)}</span>
+      <button class="secondary ${task.in_progress ? "active-toggle" : ""}" data-action="toggle-in-progress" data-id="${task.id}" title="В работе">▶</button>
       <button class="secondary" data-action="edit" data-kind="task" data-id="${task.id}" title="Изменить">✎</button>
       <button class="secondary" data-action="complete-task" data-id="${task.id}">✓</button>
       <button class="danger" data-action="delete-task" data-id="${task.id}">✕</button>
+      <button class="secondary" data-action="toggle-panel" data-id="${task.id}" title="Подзадачи и комментарии">${expanded ? "▴" : "▾"}</button>
+      <div class="task-panel" data-panel-for="${task.id}" ${expanded ? "" : "hidden"}></div>
     </li>`;
   }).join("");
+  for (const taskId of expandedTaskPanels) {
+    if (tasks.some((t) => t.id === taskId)) await renderTaskPanel(taskId);
+    else expandedTaskPanels.delete(taskId);
+  }
+}
+
+/** Панель подзадач+комментариев одной задачи — подгружается лениво,
+    только при раскрытии (не тянуть 2 запроса на КАЖДУЮ задачу списка,
+    когда 9 из 10 панелей никто не откроет). */
+async function renderTaskPanel(taskId) {
+  const panel = document.querySelector(`[data-panel-for="${taskId}"]`);
+  if (!panel) return;
+  const id = getUserId();
+  const [subtasks, comments] = await Promise.all([
+    api(`/tasks/${taskId}/subtasks?telegram_user_id=${encodeURIComponent(id)}`),
+    api(`/tasks/${taskId}/comments?telegram_user_id=${encodeURIComponent(id)}`),
+  ]);
+  const subtasksHtml = subtasks.length
+    ? subtasks.map((s) => `<li class="${s.status === "completed" ? "task-panel-done" : ""}">${s.status === "completed" ? "✓ " : "· "}${escapeHtml(s.title)}</li>`).join("")
+    : '<li class="empty">Подзадач нет</li>';
+  const commentsHtml = comments.length
+    ? comments.map((c) => `<li><span>${escapeHtml(c.text)}</span><span class="meta">${new Date(c.created_at).toLocaleDateString("ru-RU")}</span></li>`).join("")
+    : '<li class="empty">Комментариев нет</li>';
+  panel.innerHTML = `
+    <div class="task-panel-col">
+      <h4>📎 Подзадачи</h4>
+      <ul class="item-list">${subtasksHtml}</ul>
+      <form class="add-form task-subtask-form" data-parent-id="${taskId}">
+        <input type="text" placeholder="Название подзадачи" required />
+        <button type="submit">+</button>
+      </form>
+    </div>
+    <div class="task-panel-col">
+      <h4>💬 Комментарии</h4>
+      <ul class="item-list">${commentsHtml}</ul>
+      <form class="add-form task-comment-form" data-task-id="${taskId}">
+        <input type="text" placeholder="Комментарий" required />
+        <button type="submit">+</button>
+      </form>
+    </div>`;
 }
 
 document.getElementById("taskForm").addEventListener("submit", async (e) => {
@@ -3666,6 +3759,60 @@ document.getElementById("taskList").addEventListener("click", async (e) => {
     await api(`/tasks/${taskId}?telegram_user_id=${getUserId()}`, {
       method: "DELETE",
     });
+    await loadTasks();
+  } else if (btn.dataset.action === "toggle-in-progress") {
+    await api(`/tasks/${taskId}/in-progress?telegram_user_id=${getUserId()}`, {
+      method: "POST",
+    });
+    await loadTasks();
+  } else if (btn.dataset.action === "toggle-panel") {
+    const id = Number(taskId);
+    if (expandedTaskPanels.has(id)) {
+      expandedTaskPanels.delete(id);
+      const panel = document.querySelector(`[data-panel-for="${id}"]`);
+      if (panel) panel.hidden = true;
+      const toggleBtn = e.target.closest("li").querySelector('[data-action="toggle-panel"]:not(.task-badge)');
+      if (toggleBtn) toggleBtn.textContent = "▾";
+    } else {
+      expandedTaskPanels.add(id);
+      const panel = document.querySelector(`[data-panel-for="${id}"]`);
+      if (panel) panel.hidden = false;
+      const toggleBtn = e.target.closest("li").querySelector('[data-action="toggle-panel"]:not(.task-badge)');
+      if (toggleBtn) toggleBtn.textContent = "▴";
+      await renderTaskPanel(id);
+    }
+  }
+});
+
+document.getElementById("taskList").addEventListener("submit", async (e) => {
+  const id = getUserId();
+  if (e.target.classList.contains("task-subtask-form")) {
+    e.preventDefault();
+    const form = e.target;
+    const input = form.querySelector("input");
+    const title = input.value.trim();
+    if (!title) return;
+    const parentId = form.dataset.parentId;
+    await api("/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ telegram_user_id: Number(id), title, parent_id: Number(parentId) }),
+    });
+    input.value = "";
+    await loadTasks();
+  } else if (e.target.classList.contains("task-comment-form")) {
+    e.preventDefault();
+    const form = e.target;
+    const input = form.querySelector("input");
+    const text = input.value.trim();
+    if (!text) return;
+    const taskId = form.dataset.taskId;
+    await api(`/tasks/${taskId}/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ telegram_user_id: Number(id), text }),
+    });
+    input.value = "";
     await loadTasks();
   }
 });

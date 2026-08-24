@@ -10,8 +10,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from app.core.ownership import owned_or_none
-from app.tasks.models import Task
-from app.tasks.repository import TaskRepository
+from app.tasks.models import Task, TaskComment
+from app.tasks.repository import TaskCommentRepository, TaskRepository
 
 ACTIVE = "active"
 # Палитра меток календаря. Имена, а не HEX: цвета берутся из
@@ -57,6 +57,7 @@ class TaskService:
         recurrence: Optional[str] = None,
         description: Optional[str] = None,
         color: Optional[str] = None,
+        parent_id: Optional[int] = None,
     ) -> Task:
         title = title.strip()
         if not title:
@@ -67,6 +68,22 @@ class TaskService:
             raise ValueError(f"Неизвестный цвет: {color}")
         if recurrence is not None and recurrence not in _RECURRENCE_INTERVALS:
             raise ValueError(f"Неизвестная периодичность: {recurrence}")
+
+        if parent_id is not None:
+            parent = owned_or_none(
+                await self._repository.get_by_id(parent_id), telegram_user_id
+            )
+            if parent is None:
+                raise ValueError("Родительская задача не найдена")
+            if parent.parent_id is not None:
+                # Иерархия плоская — два уровня максимум (эпик → подзадача).
+                # Подзадача подзадачи усложнила бы и UI, и рекурсивное
+                # каскадное удаление без реальной пользы для одного
+                # пользователя (specs/022-tasks-v2.md).
+                raise ValueError(
+                    "У подзадачи не может быть своих подзадач — "
+                    "добавьте её к верхней задаче"
+                )
 
         if recurrence is not None and due_date is None:
             # "каждый день"/"каждый месяц" без конкретной даты (в отличие
@@ -84,11 +101,37 @@ class TaskService:
             recurrence=recurrence,
             description=(description or "").strip() or None,
             color=(color or "").strip().lower() or None,
+            parent_id=parent_id,
         )
         return await self._repository.add(task)
 
+    async def list_subtasks(self, telegram_user_id: int, parent_id: int) -> list[Task]:
+        return await self._repository.list_subtasks(telegram_user_id, parent_id)
+
+    async def count_subtasks_by_parents(
+        self, telegram_user_id: int, parent_ids: list[int]
+    ) -> dict[int, int]:
+        return await self._repository.count_subtasks_by_parents(
+            telegram_user_id, parent_ids
+        )
+
+    async def toggle_in_progress(
+        self, telegram_user_id: int, task_id: int
+    ) -> Optional[Task]:
+        """Переключить отметку "в работе". Не трогает lifecycle-статус —
+        задача остаётся active/completed, чем была."""
+        task = owned_or_none(
+            await self._repository.get_by_id(task_id), telegram_user_id
+        )
+        if task is None:
+            return None
+        task.in_progress = not task.in_progress
+        return await self._repository.save(task)
+
     async def list_active_tasks(self, telegram_user_id: int) -> list[Task]:
-        tasks = await self._repository.list_by_user(telegram_user_id, status=ACTIVE)
+        tasks = await self._repository.list_by_user(
+            telegram_user_id, status=ACTIVE, top_level_only=True
+        )
         tasks.sort(key=lambda task: _PRIORITY_ORDER.get(task.priority, 1))
         return tasks
 
@@ -249,3 +292,56 @@ class TaskService:
         return await self._repository.list_completed_between(
             telegram_user_id, since, until
         )
+
+
+class TaskCommentService:
+    """Комментарии к задаче — отдельный сервис (ADR-005), но с проверкой
+    владения через TaskRepository: у комментария своя telegram_user_id
+    (совпадает с задачей, отдельное поле — на случай будущей
+    мультиарендности, см. MULTIUSER.md), но авторитетна принадлежность
+    именно ЗАДАЧИ, не комментария."""
+
+    def __init__(
+        self, repository: TaskCommentRepository, task_repository: TaskRepository
+    ) -> None:
+        self._repository = repository
+        self._tasks = task_repository
+
+    async def add_comment(
+        self, telegram_user_id: int, task_id: int, text: str
+    ) -> Optional[TaskComment]:
+        text = text.strip()
+        if not text:
+            raise ValueError("Комментарий не может быть пустым")
+        task = owned_or_none(await self._tasks.get_by_id(task_id), telegram_user_id)
+        if task is None:
+            return None
+        comment = TaskComment(
+            task_id=task_id, telegram_user_id=telegram_user_id, text=text
+        )
+        return await self._repository.add(comment)
+
+    async def list_comments(
+        self, telegram_user_id: int, task_id: int
+    ) -> list[TaskComment]:
+        task = owned_or_none(await self._tasks.get_by_id(task_id), telegram_user_id)
+        if task is None:
+            return []
+        return await self._repository.list_by_task(task_id)
+
+    async def count_by_tasks(self, task_ids: list[int]) -> dict[int, int]:
+        return await self._repository.count_by_tasks(task_ids)
+
+    async def delete_comment(
+        self, telegram_user_id: int, comment_id: int
+    ) -> Optional[TaskComment]:
+        comment = await self._repository.get_by_id(comment_id)
+        if comment is None:
+            return None
+        task = owned_or_none(
+            await self._tasks.get_by_id(comment.task_id), telegram_user_id
+        )
+        if task is None:
+            return None
+        await self._repository.delete(comment)
+        return comment

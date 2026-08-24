@@ -20,6 +20,7 @@ from app.core.container import (
     build_finance_service,
     build_mood_service,
     build_rewards_service,
+    build_task_comment_service,
 )
 from app.db.session import AsyncSessionLocal
 from app.goals.repository import GoalRepository
@@ -69,6 +70,8 @@ from app.telegram.pending_input import (
     HABIT_ADD,
     JOURNAL_SEARCH,
     TASK_ADD,
+    TASK_COMMENT_ADD,
+    TASK_SUBTASK_ADD,
     WATCHLIST_ADD,
     PendingInput,
     set_pending,
@@ -141,6 +144,8 @@ _ASK_FINANCE_INCOME = "💰 <b>Сколько получили?</b>\n\nПрос�
 _ASK_CONTACT = (
     "📇 <b>Кого добавляем?</b>\n\nИмя, и если хотите — день рождения: " "«Аня 14.09»."
 )
+_ASK_TASK_SUBTASK = "📎 <b>Название подзадачи?</b>\n\nКоротко, как обычная задача."
+_ASK_TASK_COMMENT = "💬 <b>Что написать в комментарии?</b>"
 
 logger = logging.getLogger(__name__)
 
@@ -301,6 +306,19 @@ async def _handle_task_action(
         )
         return _quick_action_result(task)
 
+    if action == "a":
+        set_pending(
+            context.user_data,
+            PendingInput(TASK_SUBTASK_ADD, task_id=int(item_id)),
+        )
+        return _ASK_TASK_SUBTASK, InlineKeyboardMarkup([])
+    if action == "k":
+        set_pending(
+            context.user_data,
+            PendingInput(TASK_COMMENT_ADD, task_id=int(item_id)),
+        )
+        return _ASK_TASK_COMMENT, InlineKeyboardMarkup([])
+
     reward = ""
     if action == "c":
         completed = await service.update_task(
@@ -310,8 +328,13 @@ async def _handle_task_action(
             reward = await _reward_line(session, telegram_user_id)
     elif action == "d":
         await service.delete_task(telegram_user_id, int(item_id))
+    elif action == "i":
+        await service.toggle_in_progress(telegram_user_id, int(item_id))
     tasks = await service.list_active_tasks(telegram_user_id)
-    text, markup = build_tasks_message(tasks)
+    task_ids = [t.id for t in tasks]
+    subtask_counts = await service.count_subtasks_by_parents(telegram_user_id, task_ids)
+    comment_counts = await build_task_comment_service(session).count_by_tasks(task_ids)
+    text, markup = build_tasks_message(tasks, subtask_counts, comment_counts)
     return text + reward, markup
 
 

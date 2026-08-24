@@ -35,14 +35,18 @@ from app.proactive.repository import PendingPromptRepository
 from app.proactive.service import PendingPromptService
 from app.rewards.repository import RewardsRepository
 from app.rewards.service import RewardsService
-from app.tasks.repository import TaskRepository
-from app.tasks.service import TaskService
+from app.tasks.repository import TaskCommentRepository, TaskRepository
+from app.tasks.service import TaskCommentService, TaskService
 from app.watchlist.repository import WatchlistRepository
 from app.watchlist.service import WatchlistService
 
 
 def build_task_service(session: AsyncSession) -> TaskService:
     return TaskService(TaskRepository(session))
+
+
+def build_task_comment_service(session: AsyncSession) -> TaskCommentService:
+    return TaskCommentService(TaskCommentRepository(session), TaskRepository(session))
 
 
 def build_habit_service(session: AsyncSession) -> HabitService:

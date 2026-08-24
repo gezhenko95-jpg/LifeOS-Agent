@@ -5,7 +5,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import BigInteger, DateTime, String, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -94,4 +94,40 @@ class Task(Base):
         DateTime(timezone=True),
         nullable=True,
         comment="Момент завершения задачи (NULL — ещё не завершена)",
+    )
+
+    in_progress: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        comment='Отметка "в работе" — независима от lifecycle-статуса (status)',
+    )
+
+    parent_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+        comment="Родительская задача (подзадача/эпик), NULL — верхний уровень",
+    )
+
+
+class TaskComment(Base):
+    """Комментарий к задаче — лог из нескольких записей, не одна
+    перезаписываемая заметка (см. specs/022-tasks-v2.md)."""
+
+    __tablename__ = "task_comments"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
+
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    telegram_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    text: Mapped[str] = mapped_column(String(1000), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )

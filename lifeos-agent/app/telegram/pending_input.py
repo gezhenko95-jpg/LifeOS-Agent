@@ -40,6 +40,10 @@ DIGEST_CHANNEL = "digest_channel"
 FINANCE_EXPENSE_ADD = "finance_expense_add"
 FINANCE_INCOME_ADD = "finance_income_add"
 CONTACT_ADD = "contact_add"
+# t|a / t|k (см. keyboards.py) — подзадача/комментарий к КОНКРЕТНОЙ
+# задаче, отсюда task_id в контексте (как digest_id у DIGEST_CHANNEL).
+TASK_SUBTASK_ADD = "task_subtask_add"
+TASK_COMMENT_ADD = "task_comment_add"
 
 _KEY = "pending_input"
 
@@ -49,6 +53,8 @@ class PendingInput:
     kind: str
     # id дайджеста для DIGEST_CHANNEL; остальным видам контекст не нужен.
     digest_id: Optional[int] = None
+    # id задачи для TASK_SUBTASK_ADD/TASK_COMMENT_ADD.
+    task_id: Optional[int] = None
 
 
 def set_pending(user_data: Optional[dict[str, Any]], pending: PendingInput) -> None:
