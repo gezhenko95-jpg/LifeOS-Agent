@@ -1244,9 +1244,12 @@
   .editor-row[hidden] { display: none; }
   .editor-row label { color: var(--muted); font-size: 0.85rem; min-width: 110px; }
   /* Короткая подсказка "как правильно заполнить" под нетривиальным
-     полем редактора — не полноценный .item-note (тот для описания в
-     списке), своя приглушённая строка без верхнего отступа. */
-  .editor-box .hint { margin: -4px 0 0; color: var(--muted); font-size: 0.76rem; line-height: 1.3; }
+     полем — не полноценный .item-note (тот для описания в списке), своя
+     приглушённая строка. Общий класс — используется и в редакторе
+     (.editor-box .hint без верхнего отступа, сразу под строкой), и
+     отдельно в карточках (форма долгов и т.п.). */
+  .hint { margin: 4px 0 0; color: var(--muted); font-size: 0.76rem; line-height: 1.3; }
+  .editor-box .hint { margin-top: -4px; }
   .editor-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
   /* Описание в списке — второй строкой, приглушённое. */
   .item-note {
@@ -3047,9 +3050,12 @@
     <form class="add-form" id="debtForm">
       <input type="text" id="debtName" placeholder="Название долга" required />
       <input type="number" id="debtAmount" placeholder="Сумма" min="1" required />
-      <input type="date" id="debtDueDate" title="Срок закрытия (необязательно)" />
+      <input type="date" id="debtDueDate" title="Срок закрытия долга целиком (необязательно)" />
+      <input type="number" id="debtMonthlyPayment" placeholder="Платёж в мес. (необяз.)" min="1" />
+      <input type="date" id="debtNextPaymentDue" title="Дата следующего платежа (необязательно)" />
       <button type="submit">Добавить</button>
     </form>
+    <p class="hint">"Платёж в мес." и дата следующего платежа — план рассрочки, необязателен; заполни, если хочешь видеть график факт/план и не пропускать срок очередного платежа.</p>
     <ul class="item-list" id="debtList"></ul>
 
     <h3>Аналитика — по месяцам</h3>
@@ -4418,11 +4424,18 @@ document.getElementById("financeList").addEventListener("click", async (e) => {
 
 // --- Долги (specs/017-finance.md, довесок) -----------------------------
 
+// Кэш последнего списка долгов — форме добавления нужен id только что
+// созданного долга для второго запроса (план рассрочки), панели платежей
+// незачем перезапрашивать /finance/debts ради данных, которые уже есть.
+let lastDebts = [];
+const expandedDebtPanels = new Set();
+
 async function loadDebts() {
   const id = getUserId();
   const list = document.getElementById("debtList");
-  if (!id) { list.innerHTML = ""; return; }
+  if (!id) { list.innerHTML = ""; lastDebts = []; return; }
   const debts = await api(`/finance/debts?telegram_user_id=${encodeURIComponent(id)}`);
+  lastDebts = debts;
   if (!debts.length) {
     list.innerHTML = '<li class="empty">Долгов нет — и пусть не будет.</li>';
     return;
@@ -4432,19 +4445,73 @@ async function loadDebts() {
     const due = d.due_date
       ? ` · срок ${new Date(d.due_date).toLocaleDateString("ru-RU")}`
       : "";
+    const plan = d.monthly_payment
+      ? ` · план ${d.monthly_payment.toLocaleString("ru-RU")} ₽/мес${d.next_payment_due ? `, след. ${new Date(d.next_payment_due).toLocaleDateString("ru-RU")}` : ""}`
+      : "";
     const pct = Math.round((1 - d.remaining_amount / d.total_amount) * 100);
+    const expanded = expandedDebtPanels.has(d.id);
     return `
     <li>
       <span class="item-title">${closed ? "✅ " : ""}${escapeHtml(d.name)}</span>
       <span class="progress-bar"><span style="width:${pct}%"></span></span>
-      <span class="meta">${d.remaining_amount.toLocaleString("ru-RU")} / ${d.total_amount.toLocaleString("ru-RU")} ₽${due}</span>
-      ${closed ? "" : `
-      <input type="number" class="progress-input" placeholder="Платёж" min="1" data-debt-id="${d.id}" />
-      <button class="secondary" data-action="pay-debt" data-id="${d.id}">✓</button>
-      `}
-      <button class="danger" data-action="delete-debt" data-id="${d.id}">✕</button>
+      <span class="meta">${d.remaining_amount.toLocaleString("ru-RU")} / ${d.total_amount.toLocaleString("ru-RU")} ₽${due}${plan}</span>
+      <span class="task-actions">
+        ${closed ? "" : `
+        <input type="number" class="progress-input" placeholder="Платёж" min="1" data-debt-id="${d.id}" />
+        <button class="secondary" data-action="pay-debt" data-id="${d.id}">✓</button>
+        `}
+        <button class="secondary" data-action="toggle-debt-panel" data-id="${d.id}" title="План и история платежей">${expanded ? "▴" : "▾"}</button>
+        <button class="danger" data-action="delete-debt" data-id="${d.id}">✕</button>
+      </span>
+      <div class="task-panel" data-debt-panel-for="${d.id}" ${expanded ? "" : "hidden"}></div>
     </li>`;
   }).join("");
+  for (const debtId of expandedDebtPanels) {
+    if (debts.some((d) => d.id === debtId)) await renderDebtPanel(debtId);
+    else expandedDebtPanels.delete(debtId);
+  }
+}
+
+async function renderDebtPanel(debtId) {
+  const panel = document.querySelector(`[data-debt-panel-for="${debtId}"]`);
+  if (!panel) return;
+  const id = getUserId();
+  const debt = lastDebts.find((d) => d.id === debtId);
+  const payments = await api(`/finance/debts/${debtId}/payments?telegram_user_id=${encodeURIComponent(id)}`);
+  const historyHtml = payments.length
+    ? renderDebtPaymentBars(payments)
+    : '<p class="empty">Платежей пока не было</p>';
+  panel.innerHTML = `
+    <div class="task-panel-col">
+      <h4>📈 История платежей</h4>
+      ${historyHtml}
+    </div>
+    <div class="task-panel-col">
+      <h4>📅 План рассрочки</h4>
+      <form class="add-form debt-plan-form" data-debt-id="${debtId}">
+        <input type="number" name="monthly_payment" placeholder="Платёж в мес." min="1" value="${debt?.monthly_payment || ""}" />
+        <input type="date" name="next_payment_due" value="${debt?.next_payment_due ? debt.next_payment_due.slice(0, 10) : ""}" />
+        <button type="submit">Сохранить</button>
+      </form>
+      <p class="hint">Пусто в обоих полях — план снимается, останется только остаток/срок.</p>
+    </div>`;
+}
+
+// Те же .fa-bar, что у "Итоги недели"/финансовой аналитики — столбик на
+// каждый фактический платёж, высота от максимального платежа в истории.
+function renderDebtPaymentBars(payments) {
+  const maxValue = Math.max(1, ...payments.map((p) => p.amount));
+  const rows = payments.map((p) => {
+    const pct = Math.round((p.amount / maxValue) * 100);
+    const when = new Date(p.paid_at).toLocaleDateString("ru-RU");
+    return `
+    <div class="fa-row">
+      <span class="fa-label">${when}</span>
+      <span class="fa-bars"><span class="fa-bar fa-bar-income" style="width:${pct}%"></span></span>
+      <span class="fa-net meta">${p.amount.toLocaleString("ru-RU")} ₽</span>
+    </div>`;
+  });
+  return `<div class="finance-analytics">${rows.join("")}</div>`;
 }
 
 document.getElementById("debtForm").addEventListener("submit", async (e) => {
@@ -4453,6 +4520,8 @@ document.getElementById("debtForm").addEventListener("submit", async (e) => {
   const name = document.getElementById("debtName").value.trim();
   const totalAmount = Number(document.getElementById("debtAmount").value);
   const dueDateRaw = document.getElementById("debtDueDate").value;
+  const monthlyPaymentRaw = document.getElementById("debtMonthlyPayment").value;
+  const nextPaymentDueRaw = document.getElementById("debtNextPaymentDue").value;
   if (!name || !totalAmount) return;
   const body = { telegram_user_id: Number(id), name, total_amount: totalAmount };
   if (dueDateRaw) body.due_date = new Date(dueDateRaw + "T00:00:00").toISOString();
@@ -4465,6 +4534,26 @@ document.getElementById("debtForm").addEventListener("submit", async (e) => {
   document.getElementById("debtAmount").value = "";
   document.getElementById("debtDueDate").value = "";
   await loadDebts();
+  // План рассрочки — отдельный PATCH после создания (POST /finance/debts
+  // сам план не принимает, та же схема, что у DebtUpdate): проще один
+  // маленький второй запрос, чем раздувать DebtCreate необязательными
+  // полями плана ради экономии одного round-trip при добавлении.
+  if (monthlyPaymentRaw || nextPaymentDueRaw) {
+    const created = lastDebts.find((d) => d.name === name && d.total_amount === totalAmount);
+    if (created) {
+      const planBody = {};
+      if (monthlyPaymentRaw) planBody.monthly_payment = Number(monthlyPaymentRaw);
+      if (nextPaymentDueRaw) planBody.next_payment_due = new Date(nextPaymentDueRaw + "T00:00:00").toISOString();
+      await api(`/finance/debts/${created.id}?telegram_user_id=${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(planBody),
+      });
+      document.getElementById("debtMonthlyPayment").value = "";
+      document.getElementById("debtNextPaymentDue").value = "";
+      await loadDebts();
+    }
+  }
 });
 
 document.getElementById("debtList").addEventListener("click", async (e) => {
@@ -4486,7 +4575,43 @@ document.getElementById("debtList").addEventListener("click", async (e) => {
       body: JSON.stringify({ telegram_user_id: Number(id), amount }),
     });
     await loadDebts();
+  } else if (btn.dataset.action === "toggle-debt-panel") {
+    const debtId = Number(btn.dataset.id);
+    const panel = document.querySelector(`[data-debt-panel-for="${debtId}"]`);
+    const toggleBtn = e.target.closest("li").querySelector('[data-action="toggle-debt-panel"]');
+    if (expandedDebtPanels.has(debtId)) {
+      expandedDebtPanels.delete(debtId);
+      if (panel) panel.hidden = true;
+      if (toggleBtn) toggleBtn.textContent = "▾";
+    } else {
+      expandedDebtPanels.add(debtId);
+      if (panel) panel.hidden = false;
+      if (toggleBtn) toggleBtn.textContent = "▴";
+      await renderDebtPanel(debtId);
+    }
   }
+});
+
+document.getElementById("debtList").addEventListener("submit", async (e) => {
+  const form = e.target.closest(".debt-plan-form");
+  if (!form) return;
+  e.preventDefault();
+  const id = getUserId();
+  const debtId = form.dataset.debtId;
+  const monthlyRaw = form.elements.monthly_payment.value;
+  const nextDueRaw = form.elements.next_payment_due.value;
+  const body = {};
+  if (monthlyRaw) body.monthly_payment = Number(monthlyRaw);
+  else body.clear_monthly_payment = true;
+  if (nextDueRaw) body.next_payment_due = new Date(nextDueRaw + "T00:00:00").toISOString();
+  else body.clear_next_payment_due = true;
+  await api(`/finance/debts/${debtId}?telegram_user_id=${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  await loadDebts();
+  showToast("План сохранён");
 });
 
 // --- Аналитика (specs/017-finance.md, довесок) --------------------------

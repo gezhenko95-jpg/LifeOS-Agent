@@ -21,7 +21,11 @@ from app.crm.service import ContactCommentService, ContactService
 from app.digest.repository import DigestRepository
 from app.digest.scraper import get_channel_scraper
 from app.digest.service import DigestService
-from app.finance.repository import DebtRepository, FinanceRepository
+from app.finance.repository import (
+    DebtPaymentRepository,
+    DebtRepository,
+    FinanceRepository,
+)
 from app.finance.service import DebtService, FinanceService
 from app.focus.repository import FocusSessionRepository
 from app.focus.service import FocusSessionService
@@ -84,7 +88,7 @@ def build_finance_service(session: AsyncSession) -> FinanceService:
 
 
 def build_debt_service(session: AsyncSession) -> DebtService:
-    return DebtService(DebtRepository(session))
+    return DebtService(DebtRepository(session), DebtPaymentRepository(session))
 
 
 def build_focus_service(session: AsyncSession) -> FocusSessionService:

@@ -20,9 +20,14 @@ from app.finance.models import (
     INCOME,
     MANDATORY_CATEGORIES,
     Debt,
+    DebtPayment,
     Transaction,
 )
-from app.finance.repository import DebtRepository, FinanceRepository
+from app.finance.repository import (
+    DebtPaymentRepository,
+    DebtRepository,
+    FinanceRepository,
+)
 
 _KINDS = {INCOME, EXPENSE}
 
@@ -230,8 +235,17 @@ class DebtService:
     сервис от FinanceService (ADR-005) — своя модель, свой жизненный
     цикл (остаток уменьшается платежами, не разовая запись)."""
 
-    def __init__(self, repository: DebtRepository) -> None:
+    def __init__(
+        self,
+        repository: DebtRepository,
+        payment_repository: Optional[DebtPaymentRepository] = None,
+    ) -> None:
         self._repository = repository
+        # Опционально (тот же приём, что contact_repository у TaskService) —
+        # без него record_payment по-прежнему двигает remaining_amount, но
+        # не пишет лог, list_payments возвращает пусто. Существующие тесты
+        # DebtService(repository) без второго аргумента не ломаются.
+        self._payments = payment_repository
 
     async def add_debt(
         self,
@@ -272,6 +286,62 @@ class DebtService:
         # (частая ситуация: округление в большую сторону последним
         # платежом), а не превращает Debt в "должны нам".
         debt.remaining_amount = max(0, debt.remaining_amount - amount)
+        saved = await self._repository.save(debt)
+        if self._payments is not None:
+            await self._payments.add(DebtPayment(debt_id=debt_id, amount=amount))
+        return saved
+
+    async def list_payments(
+        self, telegram_user_id: int, debt_id: int
+    ) -> list[DebtPayment]:
+        """История платежей для графика на /ui — пусто, если долг чужой
+        или сервис собран без payment_repository (см. __init__)."""
+        debt = owned_or_none(
+            await self._repository.get_by_id(debt_id), telegram_user_id
+        )
+        if debt is None or self._payments is None:
+            return []
+        return await self._payments.list_by_debt(debt_id)
+
+    async def update_debt(
+        self,
+        telegram_user_id: int,
+        debt_id: int,
+        due_date: Optional[datetime] = None,
+        clear_due_date: bool = False,
+        monthly_payment: Optional[int] = None,
+        clear_monthly_payment: bool = False,
+        next_payment_due: Optional[datetime] = None,
+        clear_next_payment_due: bool = False,
+    ) -> Optional[Debt]:
+        """План рассрочки — оба поля необязательные и независимые от
+        due_date (срок закрытия ВСЕГО долга) и от remaining_amount
+        (двигается только платежами). Дата следующего платежа не
+        пересчитывается сама — владелец двигает её вручную здесь же
+        (см. комментарий у Debt.next_payment_due, осознанно не строим
+        авто-scheduler для v1)."""
+        if monthly_payment is not None and monthly_payment <= 0:
+            raise ValueError("Ежемесячный платёж должен быть положительным")
+
+        debt = owned_or_none(
+            await self._repository.get_by_id(debt_id), telegram_user_id
+        )
+        if debt is None:
+            return None
+
+        if clear_due_date:
+            debt.due_date = None
+        elif due_date is not None:
+            debt.due_date = due_date
+        if clear_monthly_payment:
+            debt.monthly_payment = None
+        elif monthly_payment is not None:
+            debt.monthly_payment = monthly_payment
+        if clear_next_payment_due:
+            debt.next_payment_due = None
+        elif next_payment_due is not None:
+            debt.next_payment_due = next_payment_due
+
         return await self._repository.save(debt)
 
     async def delete_debt(self, telegram_user_id: int, debt_id: int) -> Optional[Debt]:

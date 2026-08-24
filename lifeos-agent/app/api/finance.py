@@ -19,7 +19,9 @@ from app.finance.models import CATEGORIES, Transaction
 from app.finance.schemas import (
     DebtCreate,
     DebtPayment,
+    DebtPaymentRead,
     DebtRead,
+    DebtUpdate,
     FinanceSummaryRead,
     MonthSummaryRead,
     TransactionCreate,
@@ -174,6 +176,45 @@ async def pay_debt(
             status_code=status.HTTP_404_NOT_FOUND, detail="Долг не найден"
         )
     return DebtRead.model_validate(debt)
+
+
+@router.patch("/debts/{debt_id}", response_model=DebtRead)
+async def update_debt(
+    debt_id: int,
+    telegram_user_id: int,
+    payload: DebtUpdate,
+    service: DebtService = Depends(get_debt_service),
+) -> DebtRead:
+    try:
+        debt = await service.update_debt(
+            telegram_user_id=telegram_user_id,
+            debt_id=debt_id,
+            due_date=payload.due_date,
+            clear_due_date=payload.clear_due_date,
+            monthly_payment=payload.monthly_payment,
+            clear_monthly_payment=payload.clear_monthly_payment,
+            next_payment_due=payload.next_payment_due,
+            clear_next_payment_due=payload.clear_next_payment_due,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+    if debt is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Долг не найден"
+        )
+    return DebtRead.model_validate(debt)
+
+
+@router.get("/debts/{debt_id}/payments", response_model=list[DebtPaymentRead])
+async def list_debt_payments(
+    debt_id: int,
+    telegram_user_id: int,
+    service: DebtService = Depends(get_debt_service),
+) -> list[DebtPaymentRead]:
+    payments = await service.list_payments(telegram_user_id, debt_id)
+    return [DebtPaymentRead.model_validate(p) for p in payments]
 
 
 @router.delete("/debts/{debt_id}", status_code=status.HTTP_204_NO_CONTENT)

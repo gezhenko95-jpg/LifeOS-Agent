@@ -13,7 +13,7 @@ from datetime import datetime
 from sqlalchemy import asc, desc, select
 
 from app.core.repository import BaseRepository
-from app.finance.models import Debt, Transaction
+from app.finance.models import Debt, DebtPayment, Transaction
 
 
 class FinanceRepository(BaseRepository[Transaction]):
@@ -68,6 +68,22 @@ class DebtRepository(BaseRepository[Debt]):
             select(Debt)
             .where(Debt.telegram_user_id == telegram_user_id)
             .order_by(Debt.due_date.is_(None), asc(Debt.due_date), Debt.created_at)
+        )
+        result = await self._session.execute(query)
+        return list(result.scalars().all())
+
+
+class DebtPaymentRepository(BaseRepository[DebtPayment]):
+    """Доступ к таблице `debt_payments`. Отдельный класс от DebtRepository
+    (ADR-005) — прямая копия TaskCommentRepository."""
+
+    model = DebtPayment
+
+    async def list_by_debt(self, debt_id: int) -> list[DebtPayment]:
+        query = (
+            select(DebtPayment)
+            .where(DebtPayment.debt_id == debt_id)
+            .order_by(DebtPayment.paid_at)
         )
         result = await self._session.execute(query)
         return list(result.scalars().all())

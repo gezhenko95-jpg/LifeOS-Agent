@@ -7,7 +7,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Integer, String, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -139,6 +139,43 @@ class Debt(Base):
         DateTime(timezone=True), nullable=True, comment="Срок закрытия"
     )
 
+    monthly_payment: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="План рассрочки — ежемесячный платёж в рублях (NULL — нет плана, "
+        "только остаток/срок закрытия). Владелец задаёт вручную, дата следующего "
+        "платежа не пересчитывается автоматически — см. next_payment_due.",
+    )
+
+    next_payment_due: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Дата следующего платежа по плану — двигается только вручную "
+        "при редактировании, не автосдвигом после каждого платежа",
+    )
+
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class DebtPayment(Base):
+    """Лог фактических платежей по долгу — прямая копия TaskComment.
+    DebtService.record_payment пишет сюда каждую оплату ПОМИМО того, что
+    уменьшает Debt.remaining_amount — без этой таблицы история платежей
+    (для графика) не восстановима, `remaining_amount` знает только
+    текущий итог, не то, как он туда пришёл."""
+
+    __tablename__ = "debt_payments"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
+
+    debt_id: Mapped[int] = mapped_column(
+        ForeignKey("debts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    paid_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

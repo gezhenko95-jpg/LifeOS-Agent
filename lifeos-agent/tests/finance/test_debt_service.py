@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.finance.models import Debt
+from app.finance.models import Debt, DebtPayment
 from app.finance.service import DebtService
 
 NOW = datetime.now(timezone.utc)
@@ -141,3 +141,133 @@ async def test_list_debts_delegates_to_repository(repository):
 
     assert len(result) == 1
     repository.list_by_user.assert_awaited_once_with(1)
+
+
+# --- Лог платежей + план рассрочки (отчёт владельца 24.08, вечер #6, волна 7)
+
+
+@pytest.fixture
+def payment_repository():
+    repo = AsyncMock()
+    repo.add.side_effect = lambda p: p
+    return repo
+
+
+async def test_record_payment_without_payment_repository_still_reduces_remaining(
+    repository,
+):
+    """DebtService(repository) без второго аргумента — старый вызов,
+    платёж по-прежнему проходит, просто без лога (см. __init__)."""
+    debt = _debt(id=1, remaining_amount=100000)
+    repository.get_by_id.return_value = debt
+    service = DebtService(repository)
+
+    updated = await service.record_payment(1, 1, 30000)
+
+    assert updated.remaining_amount == 70000
+
+
+async def test_record_payment_logs_to_payment_repository(
+    repository, payment_repository
+):
+    debt = _debt(id=1, remaining_amount=100000)
+    repository.get_by_id.return_value = debt
+    service = DebtService(repository, payment_repository)
+
+    await service.record_payment(1, 1, 30000)
+
+    payment_repository.add.assert_awaited_once()
+    logged = payment_repository.add.await_args.args[0]
+    assert logged.debt_id == 1
+    assert logged.amount == 30000
+
+
+async def test_list_payments_delegates_to_payment_repository(
+    repository, payment_repository
+):
+    debt = _debt(id=1)
+    repository.get_by_id.return_value = debt
+    payment_repository.list_by_debt.return_value = [DebtPayment(debt_id=1, amount=5000)]
+    service = DebtService(repository, payment_repository)
+
+    payments = await service.list_payments(1, 1)
+
+    assert len(payments) == 1
+    payment_repository.list_by_debt.assert_awaited_once_with(1)
+
+
+async def test_list_payments_wrong_owner_returns_empty(repository, payment_repository):
+    debt = _debt(id=1, telegram_user_id=2)
+    repository.get_by_id.return_value = debt
+    service = DebtService(repository, payment_repository)
+
+    payments = await service.list_payments(1, 1)
+
+    assert payments == []
+    payment_repository.list_by_debt.assert_not_awaited()
+
+
+async def test_list_payments_without_payment_repository_returns_empty(repository):
+    debt = _debt(id=1)
+    repository.get_by_id.return_value = debt
+    service = DebtService(repository)
+
+    payments = await service.list_payments(1, 1)
+
+    assert payments == []
+
+
+async def test_update_debt_sets_monthly_payment(repository):
+    debt = _debt(id=1)
+    repository.get_by_id.return_value = debt
+    service = DebtService(repository)
+
+    updated = await service.update_debt(1, debt_id=1, monthly_payment=15000)
+
+    assert updated.monthly_payment == 15000
+
+
+async def test_update_debt_non_positive_monthly_payment_raises(repository):
+    service = DebtService(repository)
+
+    with pytest.raises(ValueError):
+        await service.update_debt(1, debt_id=1, monthly_payment=0)
+
+
+async def test_update_debt_clears_monthly_payment(repository):
+    debt = _debt(id=1, monthly_payment=15000)
+    repository.get_by_id.return_value = debt
+    service = DebtService(repository)
+
+    updated = await service.update_debt(1, debt_id=1, clear_monthly_payment=True)
+
+    assert updated.monthly_payment is None
+
+
+async def test_update_debt_sets_next_payment_due(repository):
+    debt = _debt(id=1)
+    repository.get_by_id.return_value = debt
+    service = DebtService(repository)
+
+    updated = await service.update_debt(1, debt_id=1, next_payment_due=NOW)
+
+    assert updated.next_payment_due == NOW
+
+
+async def test_update_debt_missing_returns_none(repository):
+    repository.get_by_id.return_value = None
+    service = DebtService(repository)
+
+    result = await service.update_debt(1, debt_id=999, monthly_payment=1000)
+
+    assert result is None
+
+
+async def test_update_debt_wrong_owner_returns_none(repository):
+    debt = _debt(id=1, telegram_user_id=2)
+    repository.get_by_id.return_value = debt
+    service = DebtService(repository)
+
+    result = await service.update_debt(1, debt_id=1, monthly_payment=1000)
+
+    assert result is None

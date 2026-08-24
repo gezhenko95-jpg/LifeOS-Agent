@@ -90,6 +90,29 @@ class DebtPayment(BaseModel):
     amount: int = Field(gt=0)
 
 
+class DebtUpdate(BaseModel):
+    """План рассрочки (specs/017, довесок волна 7) — due_date/monthly_payment/
+    next_payment_due все независимы и все необязательные, каждое со своим
+    clear-флагом (тот же приём, что clear_contact у задач: None значит "не
+    трогать", а не "сбросить")."""
+
+    due_date: Optional[datetime] = None
+    clear_due_date: bool = False
+    monthly_payment: Optional[int] = Field(default=None, gt=0)
+    clear_monthly_payment: bool = False
+    next_payment_due: Optional[datetime] = None
+    clear_next_payment_due: bool = False
+
+
+class DebtPaymentRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    debt_id: int
+    amount: int
+    paid_at: datetime
+
+
 class DebtRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -99,4 +122,6 @@ class DebtRead(BaseModel):
     total_amount: int
     remaining_amount: int
     due_date: Optional[datetime] = None
+    monthly_payment: Optional[int] = None
+    next_payment_due: Optional[datetime] = None
     created_at: datetime

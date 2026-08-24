@@ -116,3 +116,93 @@ async def test_delete_debt(client):
 
     list_resp = await client.get("/finance/debts", params={"telegram_user_id": 4})
     assert list_resp.json() == []
+
+
+# --- Лог платежей + план рассрочки (отчёт владельца 24.08, вечер #6, волна 7)
+
+
+async def test_pay_debt_logs_payment_history(client):
+    create_resp = await client.post(
+        "/finance/debts",
+        json={"telegram_user_id": 5, "name": "Рассрочка", "total_amount": 10000},
+    )
+    debt_id = create_resp.json()["id"]
+
+    await client.post(
+        f"/finance/debts/{debt_id}/payment",
+        json={"telegram_user_id": 5, "amount": 4000},
+    )
+    await client.post(
+        f"/finance/debts/{debt_id}/payment",
+        json={"telegram_user_id": 5, "amount": 2000},
+    )
+
+    response = await client.get(
+        f"/finance/debts/{debt_id}/payments", params={"telegram_user_id": 5}
+    )
+    assert response.status_code == 200
+    amounts = [p["amount"] for p in response.json()]
+    assert amounts == [4000, 2000]
+
+
+async def test_debt_payments_empty_before_any_payment(client):
+    create_resp = await client.post(
+        "/finance/debts",
+        json={"telegram_user_id": 5, "name": "Долг", "total_amount": 1000},
+    )
+    debt_id = create_resp.json()["id"]
+
+    response = await client.get(
+        f"/finance/debts/{debt_id}/payments", params={"telegram_user_id": 5}
+    )
+    assert response.json() == []
+
+
+async def test_update_debt_sets_monthly_payment_plan(client):
+    create_resp = await client.post(
+        "/finance/debts",
+        json={"telegram_user_id": 6, "name": "Долг", "total_amount": 12000},
+    )
+    debt_id = create_resp.json()["id"]
+
+    response = await client.patch(
+        f"/finance/debts/{debt_id}",
+        params={"telegram_user_id": 6},
+        json={
+            "monthly_payment": 1000,
+            "next_payment_due": "2026-09-01T00:00:00Z",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["monthly_payment"] == 1000
+    assert body["next_payment_due"].startswith("2026-09-01")
+
+
+async def test_update_debt_clears_plan(client):
+    create_resp = await client.post(
+        "/finance/debts",
+        json={"telegram_user_id": 6, "name": "Долг", "total_amount": 12000},
+    )
+    debt_id = create_resp.json()["id"]
+    await client.patch(
+        f"/finance/debts/{debt_id}",
+        params={"telegram_user_id": 6},
+        json={"monthly_payment": 1000},
+    )
+
+    response = await client.patch(
+        f"/finance/debts/{debt_id}",
+        params={"telegram_user_id": 6},
+        json={"clear_monthly_payment": True},
+    )
+    assert response.json()["monthly_payment"] is None
+
+
+async def test_update_missing_debt_returns_404(client):
+    response = await client.patch(
+        "/finance/debts/9999",
+        params={"telegram_user_id": 6},
+        json={"monthly_payment": 1000},
+    )
+    assert response.status_code == 404
