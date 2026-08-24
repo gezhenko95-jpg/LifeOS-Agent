@@ -37,6 +37,24 @@
     --heading-transform: none;
     --heading-spacing: normal;
   }
+  /* Шрифт из настроек — только у "Обычного" оформления (:not([data-skin])):
+     у скинов типографика — часть задуманного образа (designs/003 и
+     т.п.), отдельный переключатель её не трогает. Используем шрифты,
+     уже загруженные ниже для скинов (Comfortaa/Pixelify Sans — те же
+     @font-face, не новые файлы), кроме serif — это системный Georgia,
+     без сети. */
+  :root[data-font="rounded"]:not([data-skin]) {
+    --font-body: "Comfortaa", "Trebuchet MS", "Segoe UI", sans-serif;
+    --font-display: "Comfortaa", "Trebuchet MS", "Segoe UI", sans-serif;
+  }
+  :root[data-font="serif"]:not([data-skin]) {
+    --font-body: Georgia, "Times New Roman", serif;
+    --font-display: Georgia, "Times New Roman", serif;
+  }
+  :root[data-font="pixel"]:not([data-skin]) {
+    --font-body: "Pixelify Sans", "Courier New", monospace;
+    --font-display: "Pixelify Sans", "Courier New", monospace;
+  }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #0f1114;
@@ -2674,6 +2692,20 @@
       </select>
     </div>
 
+    <!-- Шрифт — только у "Обычного" оформления: у остальных скинов
+         типографика — часть задуманного образа (см. designs/003 и т.п.),
+         подменять её отдельным переключателем значило бы спорить с
+         дизайном скина. Работает только когда skinSelect = "Обычное". -->
+    <div class="id-bar">
+      <span>Шрифт:</span>
+      <select id="fontSelect">
+        <option value="default">Системный</option>
+        <option value="rounded">Круглый</option>
+        <option value="serif">Классический</option>
+        <option value="pixel">Пиксельный</option>
+      </select>
+    </div>
+
     <!-- Персонаж — НЕ косметика устройства (в отличие от скина выше):
          хранится на сервере per telegram_user_id (specs/020-butler-
          personas.md) и меняет голос AI-сообщений в самом боте, поэтому
@@ -3474,6 +3506,29 @@ function repaintIcons() {
 document.getElementById("skinSelect").addEventListener("change", (e) => {
   localStorage.setItem(SKIN_KEY, e.target.value);
   applySkin(e.target.value);
+});
+
+// --- Шрифт — только у "Обычного" оформления (см. HTML-комментарий у
+// fontSelect) ------------------------------------------------------
+const FONT_KEY = "lifeos_font";
+
+function getActiveFont() {
+  return localStorage.getItem(FONT_KEY) || "default";
+}
+
+function applyFont(fontId) {
+  if (fontId === "default") {
+    document.documentElement.removeAttribute("data-font");
+  } else {
+    document.documentElement.setAttribute("data-font", fontId);
+  }
+  const select = document.getElementById("fontSelect");
+  if (select) select.value = fontId;
+}
+
+document.getElementById("fontSelect").addEventListener("change", (e) => {
+  localStorage.setItem(FONT_KEY, e.target.value);
+  applyFont(e.target.value);
 });
 
 // --- Персонаж (specs/020-butler-personas.md) --------------------------
@@ -5691,6 +5746,7 @@ async function loadAll() {
 
 applyTab(getActiveTab());
 applySkin(getActiveSkin());
+applyFont(getActiveFont());
 renderStaticIcons();
 setupCollapsibleCards();
 renderCalendar();
