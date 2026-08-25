@@ -638,7 +638,9 @@
      элементами строки (кнопки-пилюли складывались в лесенку). Тот же
      приём flex-basis:100%, что у .task-panel чуть выше — ряд кнопок
      либо помещается целиком, либо целиком уходит на свою строку, но
-     кнопки внутри него не расползаются поодиночке. */
+     кнопки внутри него не расползаются поодиночке.
+     Используется контактами/целями — задачи переехали на .task-row*
+     ниже (вариант 3 "перегрузки интерфейса", живая проверка 25.08). */
   .task-actions {
     display: flex;
     align-items: center;
@@ -651,6 +653,56 @@
     .task-actions { flex-basis: auto; justify-content: flex-start; }
   }
   .task-actions button { flex: none; }
+
+  /* Задачи: строка = превью (заголовок+срок+✓), всё остальное — по клику
+     в .task-details (см. taskRow()/toggleTaskRow в <script>). Первый
+     домен варианта 3 из "перегрузки интерфейса" (живая проверка 25.08) —
+     остальные (контакты/цели/долги) пока на старом .task-actions, см.
+     HANDOFF.md "Что осталось" перед тем, как тиражировать дальше. */
+  .task-row-main {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex: 1 1 200px;
+    min-width: 0;
+    cursor: pointer;
+  }
+  .task-row-quick {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: none;
+  }
+  .task-details {
+    flex-basis: 100%;
+    margin-top: 4px;
+  }
+  .task-details[hidden] { display: none; }
+  .task-panel-actions {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .task-panel-actions button { flex: none; }
+  /* Свайп влево — тот же язык, что done-flash: короткая, не назойливая
+     обратная связь, не отдельная библиотека жестов ради одного жеста. */
+  .task-row-main.swiping { transition: none; }
+  .task-row-main.swipe-snap { transition: transform 0.18s ease; }
+  .task-row-swipe-hint {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 14px;
+    background: color-mix(in srgb, var(--ok) 20%, transparent);
+    border-radius: 8px;
+    color: var(--ok);
+    font-size: 1.1rem;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .task-row { position: relative; }
 
   /* Подзаголовок группы внутри списка задач ("⚠️ Просрочено (N)" /
      "Остальные") — своя строка, без рамки/фона обычного li и без
@@ -4173,23 +4225,38 @@ function taskRow(task) {
     if (goal) badges.push(`<span class="task-badge task-badge-contact">🎯 ${escapeHtml(goal.title)}</span>`);
   }
   const expanded = expandedTaskPanels.has(task.id);
+  // Вариант 3 из трёх, что владелец выбрал на "перегрузку интерфейса"
+  // кнопками (живая проверка 25.08): строка = превью (заголовок + срок +
+  // одно частое действие ✓), всё остальное (▶✎✕, подзадачи, комментарии)
+  // — в .task-details, разворачивается кликом по самой строке (не только
+  // по шеврону) — расширение уже существовавшего .task-panel toggle на
+  // всю строку, а не новый паттерн с нуля. Свайп влево по .task-row-main
+  // (см. attachSwipeToComplete) — тот же ✓, что и кнопка, доп. способ на
+  // мобильном.
   return `
-    <li>
-      <span class="status-dot ${status}" title="${status}"></span>
-      <span class="item-title ${task.priority === "high" ? "high" : ""}">
-        ${task.in_progress ? `<span class="in-progress-indicator" data-started-at="${task.in_progress_started_at || ""}"><span class="blink-dot" title="В работе"></span><span class="elapsed-time">--:--</span></span> ` : ""}${task.priority === "high" ? "❗ " : ""}${escapeHtml(task.title)}
-        ${task.description ? `<span class="item-note">${escapeHtml(task.description)}</span>` : ""}
-        ${badges.length ? `<span class="task-badges">${badges.join("")}</span>` : ""}
+    <li class="task-row">
+      <span class="task-row-swipe-hint" aria-hidden="true">✓ Выполнить</span>
+      <div class="task-row-main" data-action="toggle-row" data-id="${task.id}">
+        <span class="status-dot ${status}" title="${status}"></span>
+        <span class="item-title ${task.priority === "high" ? "high" : ""}">
+          ${task.in_progress ? `<span class="in-progress-indicator" data-started-at="${task.in_progress_started_at || ""}"><span class="blink-dot" title="В работе"></span><span class="elapsed-time">--:--</span></span> ` : ""}${task.priority === "high" ? "❗ " : ""}${escapeHtml(task.title)}
+          ${task.description ? `<span class="item-note">${escapeHtml(task.description)}</span>` : ""}
+          ${badges.length ? `<span class="task-badges">${badges.join("")}</span>` : ""}
+        </span>
+        <span class="meta ${status === "overdue" ? "overdue" : ""}">${formatDueHuman(task.due_date)}</span>
+      </div>
+      <span class="task-row-quick">
+        <button class="secondary" data-action="complete-task" data-id="${task.id}" title="Выполнить">✓</button>
+        <button class="secondary task-details-toggle" data-action="toggle-panel" data-id="${task.id}" title="Подробнее">${expanded ? "▴" : "▾"}</button>
       </span>
-      <span class="meta ${status === "overdue" ? "overdue" : ""}">${formatDueHuman(task.due_date)}</span>
-      <span class="task-actions">
-        <button class="secondary ${task.in_progress ? "active-toggle" : ""}" data-action="toggle-in-progress" data-id="${task.id}" title="В работе">▶</button>
-        <button class="secondary" data-action="edit" data-kind="task" data-id="${task.id}" title="Изменить">✎</button>
-        <button class="secondary" data-action="complete-task" data-id="${task.id}">✓</button>
-        <button class="danger" data-action="delete-task" data-id="${task.id}">✕</button>
-        <button class="secondary" data-action="toggle-panel" data-id="${task.id}" title="Подзадачи и комментарии">${expanded ? "▴" : "▾"}</button>
-      </span>
-      <div class="task-panel" data-panel-for="${task.id}" ${expanded ? "" : "hidden"}></div>
+      <div class="task-details" ${expanded ? "" : "hidden"}>
+        <span class="task-panel-actions">
+          <button class="secondary ${task.in_progress ? "active-toggle" : ""}" data-action="toggle-in-progress" data-id="${task.id}" title="В работе">▶</button>
+          <button class="secondary" data-action="edit" data-kind="task" data-id="${task.id}" title="Изменить">✎</button>
+          <button class="danger" data-action="delete-task" data-id="${task.id}">✕</button>
+        </span>
+        <div class="task-panel" data-panel-for="${task.id}"></div>
+      </div>
     </li>`;
 }
 
@@ -4288,7 +4355,32 @@ document.getElementById("taskForm").addEventListener("submit", async (e) => {
   await loadTasks();
 });
 
+/** Открыть/закрыть .task-details одной задачи — общая точка для клика по
+    строке, клика по шеврону и свайпа влево (см. attachSwipeToComplete
+    ниже вызывает эту же функцию для отдельного действия complete, но
+    сам toggle — только здесь, не дублируется). */
+async function toggleTaskRow(li, id) {
+  const details = li.querySelector(".task-details");
+  const chevron = li.querySelector(".task-details-toggle");
+  if (!details) return;
+  if (expandedTaskPanels.has(id)) {
+    expandedTaskPanels.delete(id);
+    details.hidden = true;
+    if (chevron) chevron.textContent = "▾";
+  } else {
+    expandedTaskPanels.add(id);
+    details.hidden = false;
+    if (chevron) chevron.textContent = "▴";
+    await renderTaskPanel(id);
+  }
+}
+
 document.getElementById("taskList").addEventListener("click", async (e) => {
+  const rowMain = e.target.closest('[data-action="toggle-row"]');
+  if (rowMain) {
+    await toggleTaskRow(rowMain.closest("li"), Number(rowMain.dataset.id));
+    return;
+  }
   const btn = e.target.closest("button");
   if (!btn) return;
   const taskId = btn.dataset.id;
@@ -4323,23 +4415,84 @@ document.getElementById("taskList").addEventListener("click", async (e) => {
     });
     await renderTaskPanel(Number(btn.dataset.parentId));
   } else if (btn.dataset.action === "toggle-panel") {
-    const id = Number(taskId);
-    if (expandedTaskPanels.has(id)) {
-      expandedTaskPanels.delete(id);
-      const panel = document.querySelector(`[data-panel-for="${id}"]`);
-      if (panel) panel.hidden = true;
-      const toggleBtn = e.target.closest("li").querySelector('[data-action="toggle-panel"]:not(.task-badge)');
-      if (toggleBtn) toggleBtn.textContent = "▾";
-    } else {
-      expandedTaskPanels.add(id);
-      const panel = document.querySelector(`[data-panel-for="${id}"]`);
-      if (panel) panel.hidden = false;
-      const toggleBtn = e.target.closest("li").querySelector('[data-action="toggle-panel"]:not(.task-badge)');
-      if (toggleBtn) toggleBtn.textContent = "▴";
-      await renderTaskPanel(id);
-    }
+    await toggleTaskRow(btn.closest("li"), Number(taskId));
   }
 });
+
+/** Свайп влево по строке задачи — то же действие ✓, что и кнопка,
+    дополнительный способ на мобильном (живая проверка 25.08: владелец
+    выбрал вариант 3 "перегрузки интерфейса" + попросил свайпы поверх
+    него). Не библиотека жестов — десяток строк touch-событий на весь
+    список разом (делегирование), не на каждую строку. Только влево, с
+    потолком -100px и порогом; вертикальный скролл отпускается сразу
+    (hysteresis 8px), чтобы не мешать обычной прокрутке списка. */
+function attachSwipeToComplete(listEl) {
+  const THRESHOLD = 70;
+  let active = null;
+
+  listEl.addEventListener(
+    "touchstart",
+    (e) => {
+      const main = e.target.closest(".task-row-main");
+      if (!main) return;
+      const touch = e.touches[0];
+      active = { main, startX: touch.clientX, startY: touch.clientY, dx: 0, horizontal: false };
+      main.classList.remove("swipe-snap");
+      main.classList.add("swiping");
+    },
+    { passive: true }
+  );
+
+  listEl.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!active) return;
+      const touch = e.touches[0];
+      const dx = touch.clientX - active.startX;
+      const dy = touch.clientY - active.startY;
+      if (!active.horizontal) {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+        active.horizontal = Math.abs(dx) > Math.abs(dy);
+        if (!active.horizontal) {
+          active = null; // вертикальный скролл — не наш жест, отпускаем
+          return;
+        }
+      }
+      e.preventDefault();
+      active.dx = Math.max(-100, Math.min(0, dx));
+      active.main.style.transform = `translateX(${active.dx}px)`;
+      const hint = active.main.closest("li")?.querySelector(".task-row-swipe-hint");
+      if (hint) hint.style.opacity = String(Math.min(1, Math.abs(active.dx) / THRESHOLD));
+    },
+    { passive: false }
+  );
+
+  listEl.addEventListener("touchend", async () => {
+    if (!active) return;
+    const { main, dx } = active;
+    const hint = main.closest("li")?.querySelector(".task-row-swipe-hint");
+    main.classList.remove("swiping");
+    main.classList.add("swipe-snap");
+    if (dx <= -THRESHOLD) {
+      const taskId = main.dataset.id;
+      main.style.transform = "translateX(-100%)";
+      active = null;
+      await flashAndReload(main, async () => {
+        await api(`/tasks/${taskId}?telegram_user_id=${getUserId()}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "completed" }),
+        });
+        await loadTasks();
+      });
+      return;
+    }
+    main.style.transform = "";
+    if (hint) hint.style.opacity = "0";
+    active = null;
+  });
+}
+attachSwipeToComplete(document.getElementById("taskList"));
 
 document.getElementById("taskList").addEventListener("submit", async (e) => {
   const id = getUserId();
