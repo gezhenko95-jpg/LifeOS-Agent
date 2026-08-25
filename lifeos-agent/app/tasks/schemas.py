@@ -23,6 +23,7 @@ class TaskCreate(BaseModel):
     parent_id: Optional[int] = None
     contact_id: Optional[int] = None
     habit_id: Optional[int] = None
+    goal_id: Optional[int] = None
 
 
 class TaskUpdate(BaseModel):
@@ -42,6 +43,8 @@ class TaskUpdate(BaseModel):
     clear_contact: bool = False
     habit_id: Optional[int] = None
     clear_habit: bool = False
+    goal_id: Optional[int] = None
+    clear_goal: bool = False
 
 
 class TaskStats(BaseModel):
@@ -79,6 +82,7 @@ class TaskRead(BaseModel):
     comment_count: int = 0
     contact_id: Optional[int] = None
     habit_id: Optional[int] = None
+    goal_id: Optional[int] = None
 
 
 class TaskCommentCreate(BaseModel):

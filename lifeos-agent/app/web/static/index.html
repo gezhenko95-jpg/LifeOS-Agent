@@ -499,13 +499,20 @@
     line-height: 1;
   }
   /* Расшифровка эмодзи — раньше была только в title (не видна без
-     наведения, бесполезна на телефоне). Подпись под кнопкой. */
+     наведения, бесполезна на телефоне). Подпись под кнопкой.
+     color: var(--muted) раньше был жёстко зашит — на нейтральной карточке
+     ок, но под groovy кнопки настроения красятся в --coral (см. общий
+     `button` в groovy-блоке ниже), и коричневатый --muted на розовом фоне
+     проваливал контраст ("не видно текст", живая проверка 25.08).
+     `inherit` + прозрачность следует за тем же --accent-text/--domain-text,
+     что уже подобран контрастным для фона самой кнопки в любом скине. */
   .mood-label {
     font-size: 0.6rem;
     font-weight: 500;
     text-transform: none;
     letter-spacing: normal;
-    color: var(--muted);
+    color: inherit;
+    opacity: 0.8;
   }
   /* График "Итоги недели" — HTML/CSS, не PNG-картинка с сервера (был
      matplotlib, тот же, что уходит в дайджест Telegram — PNG-роут
@@ -513,10 +520,15 @@
      Тот же визуальный язык, что .finance-analytics ниже — переключатель
      недель/типа данных над ним. */
   .weekly-chart-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
-  .segmented { display: inline-flex; border: var(--border-width) solid var(--border); border-radius: 999px; overflow: hidden; }
-  .segmented-btn { background: none; border: none; padding: 4px 10px; font-size: 0.78rem; color: var(--muted); cursor: pointer; }
+  .segmented { display: inline-flex; max-width: 100%; min-width: 0; border: var(--border-width) solid var(--border); border-radius: 999px; overflow: hidden; }
+  .segmented-btn { background: none; border: none; padding: 4px 10px; font-size: 0.78rem; color: var(--muted); cursor: pointer; min-width: 0; white-space: nowrap; }
   .segmented-btn.active { background: var(--accent); color: var(--accent-text); }
   .weekly-chart-html { margin-top: 8px; }
+  /* Задачи — тот же визуальный язык, что .mood-sparkline ниже (вертикальные
+     столбики), а не .fa-bar финансов: это два соседних переключателя одного
+     графика, они должны выглядеть одной семьёй, а не рядом-и-разными. */
+  .weekly-task-chart { display: flex; align-items: flex-end; gap: 3px; height: 70px; }
+  .weekly-task-chart-bar { flex: 1; min-width: 4px; max-width: 20px; border-radius: 3px 3px 0 0; background: var(--accent); }
   /* Привычки — мини-heatmap, ячейка = день (30 дней, как у PNG-версии). */
   .habit-heatmap { display: flex; flex-direction: column; gap: 6px; }
   .habit-heatmap-row { display: flex; align-items: center; gap: 8px; }
@@ -759,15 +771,25 @@
      двух цифр уже не помещалось, число обрезалось об край поля. Убираем
      нативные стрелки браузера (съедали ~18px) и даём полю честную
      ширину под три цифры (100%). */
-  input.progress-input {
+  input[type="number"].progress-input {
     width: 62px;
     text-align: center;
     -moz-appearance: textfield;
   }
-  input.progress-input::-webkit-inner-spin-button,
-  input.progress-input::-webkit-outer-spin-button {
+  input[type="number"].progress-input::-webkit-inner-spin-button,
+  input[type="number"].progress-input::-webkit-outer-spin-button {
     -webkit-appearance: none;
     margin: 0;
+  }
+  /* Прогресс цели — ползунок вместо ручного ввода числа (живая проверка
+     25.08: вводить точный процент руками было неудобно). accent-color —
+     нативная поддержка браузера красит трек/бегунок без кастомных
+     ::-webkit-slider-thumb стилей на каждый скин. */
+  .goal-progress-slider {
+    flex: 1 1 90px;
+    min-width: 70px;
+    max-width: 140px;
+    accent-color: var(--accent);
   }
   .shelf-group h3 {
     font-size: 0.78rem;
@@ -1039,15 +1061,18 @@
   }
   .cal-task.overdue { outline: 1px solid var(--overdue); }
   .cal-task.dragging { opacity: 0.45; }
-  /* Выполненные в этот день — зачёркнуты и приглушены, отдельно от
-     активных задач того же дня (см. loadCompletedForCalendar). Цветную
-     метку/приоритет намеренно не красим для done — тускло и так, лишний
-     цвет на зачёркнутом тексте только мешает читать. */
+  /* Выполненные в этот день — зачёркнуты, отдельно от активных задач того
+     же дня (см. loadCompletedForCalendar). Раньше был серый/приглушённый —
+     живая проверка 25.08 попросила зелёный (тот же .color-green, что и
+     ручная метка — не заводим третий оттенок зелёного в палитре). */
   .cal-task.done {
-    background: var(--border);
-    color: var(--muted);
+    background: #dcfce7;
+    color: #14532d;
     text-decoration: line-through;
-    opacity: 0.7;
+    opacity: 0.85;
+  }
+  @media (prefers-color-scheme: dark) {
+    .cal-task.done { background: #14351f; color: #bbf7d0; }
   }
   .cal-more { font-size: 0.68rem; color: var(--muted); }
   .cal-input {
@@ -1150,6 +1175,26 @@
     gap: 8px;
     flex-wrap: wrap;
   }
+  /* Название темы — сама кнопка-разворачиватель тела темы (список каналов
+     + форма добавления), тело свёрнуто по умолчанию: тем может быть
+     несколько, и видеть все паблики всех тем сразу шумно (то же соображение,
+     что уже привело к сворачиванию списка каналов >3 ниже). */
+  .digest-topic-toggle {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-weight: 700;
+    color: var(--text);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .digest-topic-toggle .digest-chevron { font-size: 0.7em; color: var(--muted); transition: transform 0.15s ease; }
+  .digest-topic-toggle[aria-expanded="true"] .digest-chevron { transform: rotate(180deg); }
+  .digest-body { margin-top: 8px; }
+  .digest-body[hidden] { display: none; }
   .digest-freq {
     flex: 1;
     min-width: 0;
@@ -1861,6 +1906,32 @@
     border-color: var(--ink);
   }
 
+  /* Тот же класс бага, что у .tab выше, но хуже: общий groovy `button`
+     (0,2,1) раздувал .segmented-btn (0,1,0) до полноразмерной 44px кнопки
+     с паддингом 22px — три сегмента переставали помещаться в карточку и
+     вылезали за край ("поплыла кнопка", живая проверка 25.08). Явный
+     оверрайд возвращает компактный вид переключателя. */
+  :root[data-skin="groovy"] .segmented-btn {
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    background: none;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: normal;
+    text-transform: none;
+    min-height: auto;
+    padding: 4px 10px;
+  }
+  :root[data-skin="groovy"] .segmented-btn:hover:not(:disabled) { transform: none; box-shadow: none; }
+  :root[data-skin="groovy"] .segmented-btn:active:not(:disabled) { transform: none; }
+  :root[data-skin="groovy"] .segmented-btn.active {
+    background: var(--accent);
+    color: var(--accent-text);
+  }
+
   :root[data-skin="groovy"] input,
   :root[data-skin="groovy"] select,
   :root[data-skin="groovy"] textarea {
@@ -1876,6 +1947,15 @@
   }
   :root[data-skin="groovy"] textarea { padding: 12px 16px; }
   :root[data-skin="groovy"] input::placeholder { color: var(--muted); }
+  /* Ползунок прогресса цели — общее groovy-правило `input` выше коробит
+     его рамкой/паддингом как текстовое поле; ползунку нужен голый трек. */
+  :root[data-skin="groovy"] input[type="range"] {
+    border: none;
+    border-radius: 0;
+    background: none;
+    padding: 0;
+    min-height: auto;
+  }
 
   :root[data-skin="groovy"] ul.item-list li {
     background: var(--paper-warm);
@@ -2560,6 +2640,13 @@
     font-weight: 600;
   }
   :root[data-skin="graffiti"] textarea { padding: 12px 16px; }
+  :root[data-skin="graffiti"] input[type="range"] {
+    border: none;
+    border-radius: 0;
+    background: none;
+    padding: 0;
+    min-height: auto;
+  }
   :root[data-skin="graffiti"] input::placeholder { color: var(--muted); }
 
   :root[data-skin="graffiti"] ul.item-list li {
@@ -2876,6 +2963,13 @@
       </select>
     </div>
     <p class="hint" id="editorHabitHint" hidden>Привязка — просто напоминание, где искать связь; выполнение задачи не отмечает привычку автоматически.</p>
+    <div class="editor-row" id="editorGoalRow">
+      <label for="editorGoal">Цель</label>
+      <select id="editorGoal">
+        <option value="">не связана</option>
+      </select>
+    </div>
+    <p class="hint" id="editorGoalHint" hidden>Привязка — просто напоминание, где искать связь; выполнение задачи не двигает прогресс цели автоматически.</p>
     <div class="editor-row" id="editorTagsRow">
       <label for="editorTags">Теги</label>
       <input id="editorTags" placeholder="работа, друзья" />
@@ -4011,6 +4105,10 @@ function taskRow(task) {
     const habit = lastHabits.find((h) => h.id === task.habit_id);
     if (habit) badges.push(`<span class="task-badge task-badge-contact">🔁 ${escapeHtml(habit.title)}</span>`);
   }
+  if (task.goal_id) {
+    const goal = lastGoals.find((g) => g.id === task.goal_id);
+    if (goal) badges.push(`<span class="task-badge task-badge-contact">🎯 ${escapeHtml(goal.title)}</span>`);
+  }
   const expanded = expandedTaskPanels.has(task.id);
   return `
     <li>
@@ -4294,9 +4392,9 @@ async function loadGoals() {
     <li>
       <span class="item-title">${escapeHtml(goal.title)}</span>
       <span class="progress-bar"><span style="width:${goal.progress}%"></span></span>
-      <span class="meta">${goal.progress}%</span>
-      <input type="number" min="0" max="100" step="5" value="${goal.progress}"
-             class="progress-input" data-action="progress-input" data-id="${goal.id}" />
+      <span class="meta goal-progress-value">${goal.progress}%</span>
+      <input type="range" min="0" max="100" step="5" value="${goal.progress}"
+             class="goal-progress-slider" data-action="progress-input" data-id="${goal.id}" />
       <button class="secondary" data-action="edit" data-kind="goal" data-id="${goal.id}" title="Изменить">✎</button>
       <button class="secondary" data-action="save-progress" data-id="${goal.id}">✓</button>
       <button class="danger" data-action="delete-goal" data-id="${goal.id}">✕</button>
@@ -4317,6 +4415,17 @@ document.getElementById("goalForm").addEventListener("submit", async (e) => {
   });
   document.getElementById("goalTitle").value = "";
   await loadGoals();
+});
+
+// Живой процент/полоска при перетаскивании ползунка — само значение
+// сохраняется по кнопке ✓ (тот же принцип "явное подтверждение", что и у
+// остальных inline-полей проекта), input тут только для обратной связи.
+document.getElementById("goalList").addEventListener("input", (e) => {
+  const slider = e.target.closest(".goal-progress-slider");
+  if (!slider) return;
+  const li = slider.closest("li");
+  li.querySelector(".progress-bar > span").style.width = `${slider.value}%`;
+  li.querySelector(".goal-progress-value").textContent = `${slider.value}%`;
 });
 
 document.getElementById("goalList").addEventListener("click", async (e) => {
@@ -5165,6 +5274,19 @@ function openEditor(kind, id) {
     select.value = item.habit_id ? String(item.habit_id) : "";
   }
 
+  const goalRow = document.getElementById("editorGoalRow");
+  goalRow.hidden = kind !== "task";
+  document.getElementById("editorGoalHint").hidden = kind !== "task";
+  if (kind === "task") {
+    const select = document.getElementById("editorGoal");
+    select.innerHTML =
+      '<option value="">не связана</option>' +
+      lastGoals
+        .map((g) => `<option value="${g.id}">${escapeHtml(g.title)}</option>`)
+        .join("");
+    select.value = item.goal_id ? String(item.goal_id) : "";
+  }
+
   const reminderRow = document.getElementById("editorReminderRow");
   reminderRow.hidden = kind !== "habit";
   if (kind === "habit") {
@@ -5229,6 +5351,9 @@ async function saveEditor() {
       const habitValue = document.getElementById("editorHabit").value;
       if (habitValue) body.habit_id = Number(habitValue);
       else body.clear_habit = true;
+      const goalValue = document.getElementById("editorGoal").value;
+      if (goalValue) body.goal_id = Number(goalValue);
+      else body.clear_goal = true;
     }
     if (editorTarget.kind === "habit") {
       const time = document.getElementById("editorReminder").value;
@@ -5567,13 +5692,26 @@ function renderDayHours() {
   const dayTasks = lastTasks.filter(
     (task) => task.due_date && dayKey(new Date(task.due_date)) === calSelectedDay
   );
+  // Выполненные задачи не приходят в lastTasks (см. loadCompletedForCalendar)
+  // и раньше вообще не попадали в разбивку по часам — клетка дня их
+  // показывала (зачёркнутыми), а раскрытая панель дня ниже — нет. Тот же
+  // источник дня, что уже используют клетки календаря (doneByDay в
+  // renderCalendar): день считается по completed_at, не due_date.
+  const dayCompleted = lastCompletedTasks.filter(
+    (task) => task.completed_at && dayKey(new Date(task.completed_at)) === calSelectedDay
+  );
 
   const rows = [];
   for (let hour = CAL_FIRST_HOUR; hour <= CAL_LAST_HOUR; hour++) {
     const atHour = dayTasks.filter(
       (task) => new Date(task.due_date).getHours() === hour
     );
-    const chips = atHour.map((task) => calTaskChip(task)).join("");
+    const doneAtHour = dayCompleted.filter(
+      (task) => new Date(task.completed_at).getHours() === hour
+    );
+    const chips =
+      atHour.map((task) => calTaskChip(task)).join("") +
+      doneAtHour.map((task) => calTaskChip(task, true)).join("");
     rows.push(
       '<div class="cal-hour' +
         (hour === calSelectedHour ? " selected" : "") +
@@ -6001,16 +6139,11 @@ function renderWeeklyTaskBars(points) {
     return '<p class="empty">За этот период задач не выполнялось.</p>';
   }
   const maxValue = Math.max(1, ...points.map((p) => p.count));
-  const rows = points.map((p) => {
-    const pct = Math.round((p.count / maxValue) * 100);
-    return `
-    <div class="fa-row">
-      <span class="fa-label">${escapeHtml(p.label)}</span>
-      <span class="fa-bars"><span class="fa-bar fa-bar-income" style="width:${pct}%"></span></span>
-      <span class="fa-net meta">${p.count}</span>
-    </div>`;
+  const bars = points.map((p) => {
+    const pct = Math.max(4, Math.round((p.count / maxValue) * 100));
+    return `<span class="weekly-task-chart-bar" style="height:${pct}%" title="${escapeHtml(p.label)} — ${p.count}"></span>`;
   });
-  return `<div class="finance-analytics">${rows.join("")}</div>`;
+  return `<div class="weekly-task-chart">${bars.join("")}</div>`;
 }
 
 function renderHabitHeatmap(rows) {
@@ -6081,6 +6214,9 @@ document.getElementById("saveUserId").addEventListener("click", async () => {
 // --- Дайджесты каналов (см. specs/015-digest-api.md) -----------------
 
 let lastDigests = [];
+// Темы, чьё тело (список каналов + форма) сейчас развёрнуто — по умолчанию
+// пусто, все темы свёрнуты, id попадают сюда по клику на название темы.
+let expandedDigests = new Set();
 
 const DIGEST_FREQUENCY_LABELS = {
   daily: "каждый день",
@@ -6118,17 +6254,21 @@ function renderDigests() {
       const toggle = collapsible
         ? `<button type="button" class="digest-channels-toggle" data-digest-id="${d.id}">Показать все каналы (${d.channels.length}) ▾</button>`
         : "";
+      const expanded = expandedDigests.has(d.id);
       return (
         `<div class="digest-topic">` +
-        `<div class="digest-head"><b>${escapeHtml(d.name)}</b>` +
+        `<div class="digest-head">` +
+        `<button type="button" class="digest-topic-toggle" data-digest-id="${d.id}" aria-expanded="${expanded}">` +
+        `<span class="digest-chevron">▾</span><b>${escapeHtml(d.name)}</b></button>` +
         `<span class="digest-freq">${DIGEST_FREQUENCY_LABELS[d.auto_frequency] || "по запросу"}</span>` +
         `<button class="secondary digest-send" data-digest-id="${d.id}">Прислать новое</button></div>` +
+        `<div class="digest-body"${expanded ? "" : " hidden"}>` +
         `<ul class="item-list${collapsible ? " collapsed" : ""}">${channels}</ul>` +
         toggle +
         `<form class="add-form digest-add-channel" data-digest-id="${d.id}">` +
         `<input type="text" placeholder="@канал или ссылка t.me" required />` +
         `<button type="submit">+ Канал</button></form>` +
-        `</div>`
+        `</div></div>`
       );
     })
     .join("");
@@ -6205,6 +6345,17 @@ document.getElementById("digestForm").addEventListener("submit", async (e) => {
 // Делегирование: темы и каналы перерисовываются целиком, поэтому вешать
 // обработчики на сами кнопки нельзя — они переживают одну перерисовку.
 document.getElementById("digestList").addEventListener("click", async (e) => {
+  const topicToggle = e.target.closest(".digest-topic-toggle");
+  if (topicToggle) {
+    const id = topicToggle.dataset.digestId;
+    const body = topicToggle.closest(".digest-head").nextElementSibling;
+    const nowExpanded = body.hidden;
+    body.hidden = !nowExpanded;
+    topicToggle.setAttribute("aria-expanded", String(nowExpanded));
+    if (nowExpanded) expandedDigests.add(id);
+    else expandedDigests.delete(id);
+    return;
+  }
   const toggle = e.target.closest(".digest-channels-toggle");
   if (toggle) {
     const list = toggle.previousElementSibling;

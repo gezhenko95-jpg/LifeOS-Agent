@@ -389,6 +389,65 @@ async def test_update_task_clears_habit(client):
     assert patch_resp.json()["habit_id"] is None
 
 
+# --- Привязка к цели (живая проверка 25.08) ---------------------------------
+# Прямая копия блока тестов habit_id выше.
+
+
+async def test_create_task_with_goal_id(client):
+    goal_resp = await client.post(
+        "/goals", json={"telegram_user_id": 23, "title": "Дописать книгу"}
+    )
+    goal_id = goal_resp.json()["id"]
+
+    task_resp = await client.post(
+        "/tasks",
+        json={"telegram_user_id": 23, "title": "Написать главу 3", "goal_id": goal_id},
+    )
+
+    assert task_resp.status_code == 201
+    assert task_resp.json()["goal_id"] == goal_id
+
+
+async def test_create_task_with_unknown_goal_id_returns_400(client):
+    response = await client.post(
+        "/tasks",
+        json={"telegram_user_id": 23, "title": "Написать главу", "goal_id": 9999},
+    )
+    assert response.status_code == 400
+
+
+async def test_create_task_with_someone_elses_goal_id_returns_400(client):
+    goal_resp = await client.post(
+        "/goals", json={"telegram_user_id": 24, "title": "Чужая цель"}
+    )
+    goal_id = goal_resp.json()["id"]
+
+    response = await client.post(
+        "/tasks",
+        json={"telegram_user_id": 23, "title": "Написать главу", "goal_id": goal_id},
+    )
+    assert response.status_code == 400
+
+
+async def test_update_task_clears_goal(client):
+    goal_resp = await client.post(
+        "/goals", json={"telegram_user_id": 25, "title": "Дописать книгу"}
+    )
+    goal_id = goal_resp.json()["id"]
+    task_resp = await client.post(
+        "/tasks",
+        json={"telegram_user_id": 25, "title": "Написать главу", "goal_id": goal_id},
+    )
+    task_id = task_resp.json()["id"]
+
+    patch_resp = await client.patch(
+        f"/tasks/{task_id}",
+        params={"telegram_user_id": 25},
+        json={"clear_goal": True},
+    )
+    assert patch_resp.json()["goal_id"] is None
+
+
 async def test_stats_zero_when_nothing_completed(client):
     response = await client.get("/tasks/stats", params={"telegram_user_id": 8})
 

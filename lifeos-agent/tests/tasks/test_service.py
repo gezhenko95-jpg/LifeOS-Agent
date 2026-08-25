@@ -698,3 +698,71 @@ async def test_update_task_clear_habit(repository):
     updated = await service.update_task(1, task_id=1, clear_habit=True)
 
     assert updated.habit_id is None
+
+
+# --- Привязка к цели (живая проверка 25.08) ---------------------------------
+# Прямая копия блока тестов habit_id выше.
+
+
+async def test_create_task_with_goal_id_no_validator_configured(repository):
+    """TaskService(repository) без goal_repository — старый вызов,
+    привязка проходит без проверки владения (см. __init__)."""
+    service = TaskService(repository)
+
+    task = await service.create_task(
+        telegram_user_id=1, title="Написать главу", goal_id=5
+    )
+
+    assert task.goal_id == 5
+
+
+async def test_create_task_with_goal_id_validated_success(repository):
+    goals = AsyncMock()
+    goals.get_by_id.return_value = SimpleNamespace(id=5, telegram_user_id=1)
+    service = TaskService(repository, goal_repository=goals)
+
+    task = await service.create_task(
+        telegram_user_id=1, title="Написать главу", goal_id=5
+    )
+
+    assert task.goal_id == 5
+
+
+async def test_create_task_with_unknown_goal_id_raises(repository):
+    goals = AsyncMock()
+    goals.get_by_id.return_value = None
+    service = TaskService(repository, goal_repository=goals)
+
+    with pytest.raises(ValueError):
+        await service.create_task(
+            telegram_user_id=1, title="Написать главу", goal_id=99
+        )
+
+
+async def test_create_task_with_someone_elses_goal_id_raises(repository):
+    goals = AsyncMock()
+    goals.get_by_id.return_value = SimpleNamespace(id=5, telegram_user_id=2)
+    service = TaskService(repository, goal_repository=goals)
+
+    with pytest.raises(ValueError):
+        await service.create_task(telegram_user_id=1, title="Написать главу", goal_id=5)
+
+
+async def test_update_task_sets_goal_id(repository):
+    task = Task(id=1, telegram_user_id=1, title="Задача")
+    repository.get_by_id.return_value = task
+    service = TaskService(repository)
+
+    updated = await service.update_task(1, task_id=1, goal_id=7)
+
+    assert updated.goal_id == 7
+
+
+async def test_update_task_clear_goal(repository):
+    task = Task(id=1, telegram_user_id=1, title="Задача", goal_id=7)
+    repository.get_by_id.return_value = task
+    service = TaskService(repository)
+
+    updated = await service.update_task(1, task_id=1, clear_goal=True)
+
+    assert updated.goal_id is None
