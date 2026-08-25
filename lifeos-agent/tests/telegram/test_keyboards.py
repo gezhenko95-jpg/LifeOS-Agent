@@ -442,10 +442,19 @@ def _mood_entry(id_, score=3, logged_at=None) -> MoodEntry:
     )
 
 
-def test_mood_prompt_keyboard_has_five_scores():
+def test_mood_prompt_keyboard_has_seven_scores():
+    """Шкала 1-7 (была 1-5, живая проверка 25.08)."""
     markup = build_mood_prompt_keyboard()
 
-    assert _callback_data(markup) == ["m|s|1", "m|s|2", "m|s|3", "m|s|4", "m|s|5"]
+    assert _callback_data(markup) == [
+        "m|s|1",
+        "m|s|2",
+        "m|s|3",
+        "m|s|4",
+        "m|s|5",
+        "m|s|6",
+        "m|s|7",
+    ]
 
 
 def test_mood_menu_has_scores_and_history_button():
@@ -457,6 +466,8 @@ def test_mood_menu_has_scores_and_history_button():
         "m|s|3",
         "m|s|4",
         "m|s|5",
+        "m|s|6",
+        "m|s|7",
         "m|l",
     ]
 
@@ -471,8 +482,8 @@ def test_mood_message_empty_shows_hint():
 def test_mood_message_shows_score_and_emoji():
     text, _ = build_mood_message([_mood_entry(1, score=4)])
 
-    assert "🙂" in text
-    assert "4/5" in text
+    assert "😐" in text
+    assert "4/7" in text
 
 
 def test_mood_message_caps_at_max_items_but_says_so():

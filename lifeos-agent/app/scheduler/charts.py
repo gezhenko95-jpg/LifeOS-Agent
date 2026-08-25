@@ -30,6 +30,7 @@ import numpy as np  # noqa: E402
 from matplotlib.colors import ListedColormap  # noqa: E402
 
 from app.habits.service import HabitService  # noqa: E402
+from app.mood.models import MAX_SCORE, MIN_SCORE  # noqa: E402
 from app.mood.service import MoodService  # noqa: E402
 from app.tasks.service import TaskService  # noqa: E402
 
@@ -177,8 +178,10 @@ def _draw_mood_chart(ax, mood_series: list[tuple[date, int]]) -> None:
     # Тонкая направляющая линия помогает глазу читать порядок точек по
     # времени, не претендуя на "тренд" (она того же цвета, но полупрозрачная).
     ax.plot(range(len(scores)), scores, color=_MOOD_COLOR, alpha=0.3, linewidth=1)
-    ax.set_ylim(0.5, 5.5)
-    ax.set_yticks([1, 2, 3, 4, 5])
+    # Границы по MIN_SCORE/MAX_SCORE, не жёстко 1-5 — шкала расширена до
+    # 1-7 (живая проверка 25.08).
+    ax.set_ylim(MIN_SCORE - 0.5, MAX_SCORE + 0.5)
+    ax.set_yticks(list(range(MIN_SCORE, MAX_SCORE + 1)))
     # Подписей по X не больше 8 — иначе даты слипаются в кашу на 30 точках.
     step = max(1, len(labels) // 8)
     ax.set_xticks(range(0, len(labels), step))

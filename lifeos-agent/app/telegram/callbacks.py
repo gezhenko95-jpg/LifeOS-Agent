@@ -32,7 +32,7 @@ from app.habits.templates import get_template
 from app.memory.models import MemoryType
 from app.memory.repository import MemoryRepository
 from app.memory.service import MemoryService
-from app.mood.models import SCORE_EMOJI
+from app.mood.models import MAX_SCORE, SCORE_EMOJI
 from app.proactive.repository import PendingPromptRepository
 from app.tasks.models import Task
 from app.tasks.repository import TaskRepository
@@ -555,7 +555,7 @@ async def _handle_mood_action(
         base_text = query.message.text if query.message is not None else ""
         emoji = SCORE_EMOJI.get(score, "")
         return (
-            f"{base_text}\n\n✅ Настроение: {emoji} ({score}/5).{reward}",
+            f"{base_text}\n\n✅ Настроение: {emoji} ({score}/{MAX_SCORE}).{reward}",
             InlineKeyboardMarkup([]),
         )
     if action == "x":

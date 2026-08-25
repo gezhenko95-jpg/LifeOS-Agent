@@ -486,18 +486,32 @@
      (grid-column: span 3) и min-content последней кнопки вылезал за
      скруглённый край карточки, обрезаясь визуально. Теперь при нехватке
      места ряд переносится на две строки вместо обрезки. */
-  .mood-picker { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .mood-picker { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
   .mood-picker button {
-    flex: 1 1 44px;
-    min-width: 44px;
+    flex: 1 1 40px;
+    min-width: 40px;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 2px;
-    font-size: 22px;
-    padding: 8px 4px;
+    padding: 8px 3px;
     line-height: 1;
   }
+  /* Свой набор SVG-лиц вместо эмодзи (живая проверка 25.08) — обводка
+     currentColor, тот же приём, что у .mood-label ниже: следует за
+     контрастным цветом текста кнопки, не за отдельной палитрой. */
+  .mood-icon {
+    width: 26px;
+    height: 26px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  /* Тот же moodFaceSvg(), что в пикере, но мельче — рядом с числом в
+     истории записей (#moodList), не отдельная крупная кнопка. */
+  .mood-entry-title .mood-icon { width: 16px; height: 16px; vertical-align: -3px; margin-right: 1px; }
   /* Расшифровка эмодзи — раньше была только в title (не видна без
      наведения, бесполезна на телефоне). Подпись под кнопкой.
      color: var(--muted) раньше был жёстко зашит — на нейтральной карточке
@@ -1932,6 +1946,14 @@
     color: var(--accent-text);
   }
 
+  /* Тот же класс бага ещё раз: общий groovy `button` (padding 0 22px,
+     min-height 44px) переопределял компактный .mood-picker button —
+     семь лиц в ряд не помещались бы в карточку. */
+  :root[data-skin="groovy"] .mood-picker button {
+    padding: 8px 3px;
+    min-height: auto;
+  }
+
   :root[data-skin="groovy"] input,
   :root[data-skin="groovy"] select,
   :root[data-skin="groovy"] textarea {
@@ -2648,6 +2670,13 @@
     min-height: auto;
   }
   :root[data-skin="graffiti"] input::placeholder { color: var(--muted); }
+  /* Тот же класс бага, что у groovy .mood-picker button выше — общий
+     graffiti `button` (padding 0 18px, min-height 40px) переопределял
+     компактный .mood-picker button. */
+  :root[data-skin="graffiti"] .mood-picker button {
+    padding: 8px 3px;
+    min-height: auto;
+  }
 
   :root[data-skin="graffiti"] ul.item-list li {
     background: var(--paper-warm);
@@ -3172,12 +3201,46 @@
 
   <section class="card" data-domain="mood">
     <h2 data-icon="mood">Настроение</h2>
+    <!-- Шкала 1-7 (была 1-5, живая проверка 25.08: "так себе"/"норм" почти
+         не отличались по ощущению). Эмодзи заменены на свой набор SVG-лиц —
+         тот же контурный язык, что ICON_LINE (открытые обводки currentColor,
+         не заливка): текст .mood-label раньше терял контраст на цветном фоне
+         кнопки (см. CSS), эмодзи той же кнопки — тоже цветные растровые
+         глифы, страдали бы тем же способом. currentColor решает и то, и
+         другое разом — иконка красится в тот же контрастный цвет, что уже
+         подобран для текста кнопки в любом скине. Различие между уровнями —
+         кривизна рта (плоская линия у "норм", глубже к краям шкалы) плюс
+         брови/глаза только на двух крайних уровнях (насуплен / "^_^") —
+         не восемь разных лиц с нуля, один параметризованный силуэт. -->
     <div class="mood-picker" id="moodPicker">
-      <button type="button" data-score="1" title="1/5 — плохо">😢<span class="mood-label">плохо</span></button>
-      <button type="button" data-score="2" title="2/5 — так себе">😕<span class="mood-label">так себе</span></button>
-      <button type="button" data-score="3" title="3/5 — норм">😐<span class="mood-label">норм</span></button>
-      <button type="button" data-score="4" title="4/5 — хорошо">🙂<span class="mood-label">хорошо</span></button>
-      <button type="button" data-score="5" title="5/5 — отлично">😄<span class="mood-label">отлично</span></button>
+      <button type="button" data-score="1" title="1/7 — ужасно">
+        <svg class="mood-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="11.5" r="8.2"/><path d="M6.6 7.4L9.4 8.6M17.4 7.4L14.6 8.6"/><circle cx="8.7" cy="9.8" r="1" fill="currentColor" stroke="none"/><circle cx="15.3" cy="9.8" r="1" fill="currentColor" stroke="none"/><path d="M8.2 15Q12 9.4 15.8 15"/></svg>
+        <span class="mood-label">ужасно</span>
+      </button>
+      <button type="button" data-score="2" title="2/7 — плохо">
+        <svg class="mood-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="11.5" r="8.2"/><circle cx="8.7" cy="9.6" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.3" cy="9.6" r="1.1" fill="currentColor" stroke="none"/><path d="M8.2 15Q12 11.2 15.8 15"/></svg>
+        <span class="mood-label">плохо</span>
+      </button>
+      <button type="button" data-score="3" title="3/7 — так себе">
+        <svg class="mood-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="11.5" r="8.2"/><circle cx="8.7" cy="9.6" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.3" cy="9.6" r="1.1" fill="currentColor" stroke="none"/><path d="M8.2 15Q12 13 15.8 15"/></svg>
+        <span class="mood-label">так себе</span>
+      </button>
+      <button type="button" data-score="4" title="4/7 — норм">
+        <svg class="mood-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="11.5" r="8.2"/><circle cx="8.7" cy="9.6" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.3" cy="9.6" r="1.1" fill="currentColor" stroke="none"/><path d="M8.2 15L15.8 15"/></svg>
+        <span class="mood-label">норм</span>
+      </button>
+      <button type="button" data-score="5" title="5/7 — неплохо">
+        <svg class="mood-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="11.5" r="8.2"/><circle cx="8.7" cy="9.6" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.3" cy="9.6" r="1.1" fill="currentColor" stroke="none"/><path d="M8.2 15Q12 16.6 15.8 15"/></svg>
+        <span class="mood-label">неплохо</span>
+      </button>
+      <button type="button" data-score="6" title="6/7 — хорошо">
+        <svg class="mood-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="11.5" r="8.2"/><circle cx="8.7" cy="9.6" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.3" cy="9.6" r="1.1" fill="currentColor" stroke="none"/><path d="M8.2 15Q12 18.4 15.8 15"/></svg>
+        <span class="mood-label">хорошо</span>
+      </button>
+      <button type="button" data-score="7" title="7/7 — отлично">
+        <svg class="mood-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="11.5" r="8.2"/><path d="M7.4 9.8Q8.7 8.4 10 9.8M14 9.8Q15.3 8.4 16.6 9.8"/><path d="M8.2 15Q12 20.2 15.8 15"/></svg>
+        <span class="mood-label">отлично</span>
+      </button>
     </div>
     <ul class="item-list" id="moodList"></ul>
   </section>
@@ -4965,7 +5028,26 @@ document.getElementById("contactsList").addEventListener("submit", async (e) => 
 
 // --- Настроение (specs/019-mood-tracker.md) ----------------------------
 
-const MOOD_EMOJI = { 1: "😢", 2: "😕", 3: "😐", 4: "🙂", 5: "😄" };
+// Шкала 1-7 (была 1-5, живая проверка 25.08). Кривизна рта — единственное,
+// что меняется между уровнями 2-6, брови/глаза только на двух крайних
+// (см. комментарий у #moodPicker в разметке) — параметризованный силуэт,
+// не семь лиц с нуля. Используется и для истории записей ниже (раньше
+// была отдельная MOOD_EMOJI на эмодзи — теперь тот же SVG, что в пикере).
+const MOOD_MAX_SCORE = 7;
+const MOOD_MOUTH_Y = { 1: 9.4, 2: 11.2, 3: 13, 5: 16.6, 6: 18.4, 7: 20.2 };
+function moodFaceSvg(score) {
+  const mouth =
+    score === 4
+      ? '<path d="M8.2 15L15.8 15"/>'
+      : `<path d="M8.2 15Q12 ${MOOD_MOUTH_Y[score] ?? 15} 15.8 15"/>`;
+  const eyes =
+    score === 1
+      ? '<path d="M6.6 7.4L9.4 8.6M17.4 7.4L14.6 8.6"/><circle cx="8.7" cy="9.8" r="1" fill="currentColor" stroke="none"/><circle cx="15.3" cy="9.8" r="1" fill="currentColor" stroke="none"/>'
+      : score === 7
+      ? '<path d="M7.4 9.8Q8.7 8.4 10 9.8M14 9.8Q15.3 8.4 16.6 9.8"/>'
+      : '<circle cx="8.7" cy="9.6" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.3" cy="9.6" r="1.1" fill="currentColor" stroke="none"/>';
+  return `<svg class="mood-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="11.5" r="8.2"/>${eyes}${mouth}</svg>`;
+}
 
 async function loadMood() {
   const id = getUserId();
@@ -4986,7 +5068,7 @@ async function loadMood() {
     });
     return `
     <li>
-      <span class="item-title">${MOOD_EMOJI[e.score] || ""} ${e.score}/5</span>
+      <span class="item-title mood-entry-title">${moodFaceSvg(e.score)} ${e.score}/${MOOD_MAX_SCORE}</span>
       <span class="meta">${when}</span>
       <button class="danger" data-action="delete-mood" data-id="${e.id}">✕</button>
     </li>
@@ -6160,8 +6242,8 @@ function renderMoodSparkline(points) {
   if (!points.length) return '<p class="empty">Отметок настроения за 30 дней нет.</p>';
   const ordered = [...points].sort((a, b) => a.date.localeCompare(b.date));
   const bars = ordered.map((p) => {
-    const pct = Math.round((p.score / 5) * 100);
-    return `<span class="mood-sparkline-bar" style="height:${pct}%" title="${p.date} — ${p.score}/5"></span>`;
+    const pct = Math.round((p.score / MOOD_MAX_SCORE) * 100);
+    return `<span class="mood-sparkline-bar" style="height:${pct}%" title="${p.date} — ${p.score}/${MOOD_MAX_SCORE}"></span>`;
   });
   return `<div class="mood-sparkline">${bars.join("")}</div>`;
 }

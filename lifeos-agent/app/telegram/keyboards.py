@@ -614,7 +614,7 @@ def build_mood_message(entries: list[MoodEntry]) -> tuple[str, InlineKeyboardMar
         when = entry.logged_at.strftime("%d.%m %H:%M")
         lines.append(
             f"<b>{index}</b>  {SCORE_EMOJI.get(entry.score, '')} "
-            f"{entry.score}/5 — {when}"
+            f"{entry.score}/{MAX_SCORE} — {when}"
         )
 
     lines.append(_DIVIDER)

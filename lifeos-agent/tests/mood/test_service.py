@@ -37,12 +37,13 @@ async def test_log_mood_persists_score(repository):
 
 
 async def test_log_mood_rejects_out_of_range_score(repository):
+    """Шкала 1-7 (была 1-5, живая проверка 25.08)."""
     service = MoodService(repository)
 
     with pytest.raises(ValueError):
         await service.log_mood(1, 0)
     with pytest.raises(ValueError):
-        await service.log_mood(1, 6)
+        await service.log_mood(1, 8)
 
 
 async def test_log_mood_empty_note_becomes_none(repository):

@@ -527,7 +527,16 @@ async def test_mood_menu(session):
 
     assert "Настроение" in text
     callbacks = [b.callback_data for row in markup.inline_keyboard for b in row]
-    assert callbacks == ["m|s|1", "m|s|2", "m|s|3", "m|s|4", "m|s|5", "m|l"]
+    assert callbacks == [
+        "m|s|1",
+        "m|s|2",
+        "m|s|3",
+        "m|s|4",
+        "m|s|5",
+        "m|s|6",
+        "m|s|7",
+        "m|l",
+    ]
 
 
 async def test_mood_action_s_logs_score_and_appends_to_original_text(session):
@@ -536,7 +545,7 @@ async def test_mood_action_s_logs_score_and_appends_to_original_text(session):
     )
 
     assert text.startswith("Как прошёл день?")
-    assert "4/5" in text
+    assert "4/7" in text
     assert "🪙" in text  # награда — "сделал"-действие
     assert len(markup.inline_keyboard) == 0  # кнопка снята, повторный тап невозможен
 
@@ -546,7 +555,7 @@ async def test_mood_action_l_lists_entries(session):
 
     text, markup = await _handle_mood_action(session, "l", "", 1, _query())
 
-    assert "5/5" in text
+    assert "5/7" in text
 
 
 async def test_mood_action_x_deletes_entry_without_reward(session):
