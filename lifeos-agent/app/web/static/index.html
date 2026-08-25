@@ -4375,6 +4375,42 @@ async function toggleTaskRow(li, id) {
   }
 }
 
+/** Общая точка входа для завершения задачи — и по кнопке ✓, и по свайпу
+    (attachSwipeToComplete ниже). Живая проверка 25.08: задача с двумя
+    незавершёнными подзадачами закрылась одним тапом по ✓, без вопросов —
+    владелец не хотел её закрывать. Теперь: подтверждение всегда, и
+    жёсткий блок (не просто предупреждение), если есть незавершённые
+    подзадачи — сначала закрыть их. Возвращает true, если задача реально
+    закрыта (вызывающая сторона решает, что делать дальше — свайп,
+    например, откатывает строку назад, если false). */
+async function completeTaskWithGuard(taskId, elForFlash) {
+  const id = Number(taskId);
+  const task = lastTasks.find((t) => t.id === id);
+  if (task && task.subtask_count) {
+    const subtasks = await api(
+      `/tasks/${taskId}/subtasks?telegram_user_id=${encodeURIComponent(getUserId())}`
+    );
+    const openCount = subtasks.filter((s) => s.status !== "completed").length;
+    if (openCount > 0) {
+      alert(
+        `Сначала выполните подзадачи (осталось ${openCount}) — потом можно закрыть саму задачу.`
+      );
+      return false;
+    }
+  }
+  const title = task ? task.title : "эту задачу";
+  if (!confirm(`Отметить «${title}» выполненной?`)) return false;
+  await flashAndReload(elForFlash, async () => {
+    await api(`/tasks/${taskId}?telegram_user_id=${getUserId()}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "completed" }),
+    });
+    await loadTasks();
+  });
+  return true;
+}
+
 document.getElementById("taskList").addEventListener("click", async (e) => {
   const rowMain = e.target.closest('[data-action="toggle-row"]');
   if (rowMain) {
@@ -4385,14 +4421,7 @@ document.getElementById("taskList").addEventListener("click", async (e) => {
   if (!btn) return;
   const taskId = btn.dataset.id;
   if (btn.dataset.action === "complete-task") {
-    await flashAndReload(btn, async () => {
-      await api(`/tasks/${taskId}?telegram_user_id=${getUserId()}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "completed" }),
-      });
-      await loadTasks();
-    });
+    await completeTaskWithGuard(taskId, btn);
   } else if (btn.dataset.action === "delete-task") {
     await api(`/tasks/${taskId}?telegram_user_id=${getUserId()}`, {
       method: "DELETE",
@@ -4473,23 +4502,18 @@ function attachSwipeToComplete(listEl) {
     const hint = main.closest("li")?.querySelector(".task-row-swipe-hint");
     main.classList.remove("swiping");
     main.classList.add("swipe-snap");
+    const taskId = main.dataset.id;
+    active = null;
     if (dx <= -THRESHOLD) {
-      const taskId = main.dataset.id;
-      main.style.transform = "translateX(-100%)";
-      active = null;
-      await flashAndReload(main, async () => {
-        await api(`/tasks/${taskId}?telegram_user_id=${getUserId()}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "completed" }),
-        });
-        await loadTasks();
-      });
-      return;
+      // completeTaskWithGuard может заблокировать (незавершённые
+      // подзадачи) или спросить подтверждение и получить отказ — в обоих
+      // случаях строка должна вернуться на место, а не остаться
+      // визуально "уехавшей" с задачей, которая на деле не закрылась.
+      const done = await completeTaskWithGuard(taskId, main);
+      if (done) return; // список перерисуется, строка исчезнет сама
     }
     main.style.transform = "";
     if (hint) hint.style.opacity = "0";
-    active = null;
   });
 }
 attachSwipeToComplete(document.getElementById("taskList"));
@@ -4594,6 +4618,14 @@ document.getElementById("habitList").addEventListener("click", async (e) => {
 
 // ---- Goals ----
 
+// Вариант 3 (живая проверка 25.08, подтверждено на задачах) — у целей
+// раньше вообще не было панели: ползунок и все три кнопки стояли в
+// строке всегда. Единого "быстрого" действия как ✓ у задачи или 👋 у
+// контакта нет — двигать прогресс без ползунка одним тапом нельзя,
+// поэтому в строке остаётся только превью (title+bar+%), все элементы
+// управления — в .task-details по клику.
+const expandedGoalPanels = new Set();
+
 async function loadGoals() {
   const id = getUserId();
   const list = document.getElementById("goalList");
@@ -4604,19 +4636,45 @@ async function loadGoals() {
     list.innerHTML = '<li class="empty">Активных целей нет.</li>';
     return;
   }
-  list.innerHTML = goals.map((goal) => `
+  list.innerHTML = goals.map((goal) => {
+    const expanded = expandedGoalPanels.has(goal.id);
+    return `
     <li>
-      <span class="item-title">${escapeHtml(goal.title)}</span>
-      <span class="progress-bar"><span style="width:${goal.progress}%"></span></span>
-      <span class="meta goal-progress-value">${goal.progress}%</span>
-      <input type="range" min="0" max="100" step="5" value="${goal.progress}"
-             class="goal-progress-slider" data-action="progress-input" data-id="${goal.id}" />
-      <button class="secondary" data-action="edit" data-kind="goal" data-id="${goal.id}" title="Изменить">✎</button>
-      <button class="secondary" data-action="save-progress" data-id="${goal.id}">✓</button>
-      <button class="danger" data-action="delete-goal" data-id="${goal.id}">✕</button>
-    </li>
-  `).join("");
+      <div class="task-row-main" data-action="toggle-row" data-id="${goal.id}">
+        <span class="item-title">${escapeHtml(goal.title)}</span>
+        <span class="progress-bar"><span style="width:${goal.progress}%"></span></span>
+        <span class="meta goal-progress-value">${goal.progress}%</span>
+      </div>
+      <span class="task-row-quick">
+        <button class="secondary task-details-toggle" data-action="toggle-panel" data-id="${goal.id}" title="Подробнее">${expanded ? "▴" : "▾"}</button>
+      </span>
+      <div class="task-details" ${expanded ? "" : "hidden"}>
+        <input type="range" min="0" max="100" step="5" value="${goal.progress}"
+               class="goal-progress-slider" data-action="progress-input" data-id="${goal.id}" />
+        <span class="task-panel-actions">
+          <button class="secondary" data-action="edit" data-kind="goal" data-id="${goal.id}" title="Изменить">✎</button>
+          <button class="secondary" data-action="save-progress" data-id="${goal.id}">✓</button>
+          <button class="danger" data-action="delete-goal" data-id="${goal.id}">✕</button>
+        </span>
+      </div>
+    </li>`;
+  }).join("");
   animateProgressBars(list);
+}
+
+function toggleGoalRow(li, id) {
+  const details = li.querySelector(".task-details");
+  const chevron = li.querySelector(".task-details-toggle");
+  if (!details) return;
+  if (expandedGoalPanels.has(id)) {
+    expandedGoalPanels.delete(id);
+    details.hidden = true;
+    if (chevron) chevron.textContent = "▾";
+  } else {
+    expandedGoalPanels.add(id);
+    details.hidden = false;
+    if (chevron) chevron.textContent = "▴";
+  }
 }
 
 document.getElementById("goalForm").addEventListener("submit", async (e) => {
@@ -4645,10 +4703,17 @@ document.getElementById("goalList").addEventListener("input", (e) => {
 });
 
 document.getElementById("goalList").addEventListener("click", async (e) => {
+  const rowMain = e.target.closest('[data-action="toggle-row"]');
+  if (rowMain) {
+    toggleGoalRow(rowMain.closest("li"), Number(rowMain.dataset.id));
+    return;
+  }
   const btn = e.target.closest("button");
   if (!btn) return;
   const goalId = btn.dataset.id;
-  if (btn.dataset.action === "save-progress") {
+  if (btn.dataset.action === "toggle-panel") {
+    toggleGoalRow(btn.closest("li"), Number(goalId));
+  } else if (btn.dataset.action === "save-progress") {
     const input = document.querySelector(`input[data-action="progress-input"][data-id="${goalId}"]`);
     await api(`/goals/${goalId}?telegram_user_id=${getUserId()}`, {
       method: "PATCH",
@@ -4780,20 +4845,29 @@ async function loadDebts() {
       : "";
     const pct = Math.round((1 - d.remaining_amount / d.total_amount) * 100);
     const expanded = expandedDebtPanels.has(d.id);
+    // Вариант 3 (живая проверка 25.08, подтверждено на задачах) — платёж
+    // остаётся снаружи как самое частое действие (тот же принцип, что ✓
+    // у задачи/👋 у контакта), ✕ и план/история — в .task-details.
     return `
     <li>
-      <span class="item-title">${closed ? "✅ " : ""}${escapeHtml(d.name)}</span>
-      <span class="progress-bar"><span style="width:${pct}%"></span></span>
-      <span class="meta">${d.remaining_amount.toLocaleString("ru-RU")} / ${d.total_amount.toLocaleString("ru-RU")} ₽${due}${plan}</span>
-      <span class="task-actions">
+      <div class="task-row-main" data-action="toggle-row" data-id="${d.id}">
+        <span class="item-title">${closed ? "✅ " : ""}${escapeHtml(d.name)}</span>
+        <span class="progress-bar"><span style="width:${pct}%"></span></span>
+        <span class="meta">${d.remaining_amount.toLocaleString("ru-RU")} / ${d.total_amount.toLocaleString("ru-RU")} ₽${due}${plan}</span>
+      </div>
+      <span class="task-row-quick">
         ${closed ? "" : `
         <input type="number" class="progress-input" placeholder="Платёж" min="1" data-debt-id="${d.id}" />
         <button class="secondary" data-action="pay-debt" data-id="${d.id}">✓</button>
         `}
-        <button class="secondary" data-action="toggle-debt-panel" data-id="${d.id}" title="План и история платежей">${expanded ? "▴" : "▾"}</button>
-        <button class="danger" data-action="delete-debt" data-id="${d.id}">✕</button>
+        <button class="secondary task-details-toggle" data-action="toggle-debt-panel" data-id="${d.id}" title="Подробнее">${expanded ? "▴" : "▾"}</button>
       </span>
-      <div class="task-panel" data-debt-panel-for="${d.id}" ${expanded ? "" : "hidden"}></div>
+      <div class="task-details" ${expanded ? "" : "hidden"}>
+        <span class="task-panel-actions">
+          <button class="danger" data-action="delete-debt" data-id="${d.id}">✕</button>
+        </span>
+        <div class="task-panel" data-debt-panel-for="${d.id}"></div>
+      </div>
     </li>`;
   }).join("");
   for (const debtId of expandedDebtPanels) {
@@ -4886,7 +4960,31 @@ document.getElementById("debtForm").addEventListener("submit", async (e) => {
   }
 });
 
+/** Открыть/закрыть .task-details одного долга — прямая копия
+    toggleTaskRow, свой Set/DOM-якорь (expandedDebtPanels /
+    data-debt-panel-for). */
+async function toggleDebtRow(li, id) {
+  const details = li.querySelector(".task-details");
+  const chevron = li.querySelector(".task-details-toggle");
+  if (!details) return;
+  if (expandedDebtPanels.has(id)) {
+    expandedDebtPanels.delete(id);
+    details.hidden = true;
+    if (chevron) chevron.textContent = "▾";
+  } else {
+    expandedDebtPanels.add(id);
+    details.hidden = false;
+    if (chevron) chevron.textContent = "▴";
+    await renderDebtPanel(id);
+  }
+}
+
 document.getElementById("debtList").addEventListener("click", async (e) => {
+  const rowMain = e.target.closest('[data-action="toggle-row"]');
+  if (rowMain) {
+    await toggleDebtRow(rowMain.closest("li"), Number(rowMain.dataset.id));
+    return;
+  }
   const btn = e.target.closest("button");
   if (!btn) return;
   const id = getUserId();
@@ -4906,19 +5004,7 @@ document.getElementById("debtList").addEventListener("click", async (e) => {
     });
     await loadDebts();
   } else if (btn.dataset.action === "toggle-debt-panel") {
-    const debtId = Number(btn.dataset.id);
-    const panel = document.querySelector(`[data-debt-panel-for="${debtId}"]`);
-    const toggleBtn = e.target.closest("li").querySelector('[data-action="toggle-debt-panel"]');
-    if (expandedDebtPanels.has(debtId)) {
-      expandedDebtPanels.delete(debtId);
-      if (panel) panel.hidden = true;
-      if (toggleBtn) toggleBtn.textContent = "▾";
-    } else {
-      expandedDebtPanels.add(debtId);
-      if (panel) panel.hidden = false;
-      if (toggleBtn) toggleBtn.textContent = "▴";
-      await renderDebtPanel(debtId);
-    }
+    await toggleDebtRow(btn.closest("li"), Number(btn.dataset.id));
   }
 });
 
@@ -5078,20 +5164,30 @@ async function loadContacts() {
       ? `<button type="button" class="task-badge" data-action="toggle-contact-panel" data-id="${c.id}">💬 ${c.comment_count}</button>`
       : "";
     const expanded = expandedContactPanels.has(c.id);
+    // Вариант 3 (живая проверка 25.08, подтверждено на задачах — "всё
+    // норм, делай для других") — строка = превью, ✎/✕ в .task-details.
+    // 👋 "Написал(а)" остаётся снаружи — самое частое действие контакта,
+    // тот же принцип, что ✓ у задачи.
     return `
     <li${overdue ? ' class="over-budget"' : ""}>
-      <span class="item-title">${overdue ? "⚠️ " : ""}${escapeHtml(c.name)}${tags}
-        ${c.notes ? `<span class="item-note">${escapeHtml(c.notes)}</span>` : ""}
-        ${commentBadge ? `<span class="task-badges">${commentBadge}</span>` : ""}
-      </span>
-      <span class="meta">Писал(а): ${since}${birthday}</span>
-      <span class="task-actions">
-        <button class="secondary" data-action="edit" data-kind="contact" data-id="${c.id}" title="Изменить">✎</button>
+      <div class="task-row-main" data-action="toggle-row" data-id="${c.id}">
+        <span class="item-title">${overdue ? "⚠️ " : ""}${escapeHtml(c.name)}${tags}
+          ${c.notes ? `<span class="item-note">${escapeHtml(c.notes)}</span>` : ""}
+          ${commentBadge ? `<span class="task-badges">${commentBadge}</span>` : ""}
+        </span>
+        <span class="meta">Писал(а): ${since}${birthday}</span>
+      </div>
+      <span class="task-row-quick">
         <button data-action="contact-done" data-id="${c.id}" title="Написал(а)">👋</button>
-        <button class="danger" data-action="delete-contact" data-id="${c.id}">✕</button>
-        <button class="secondary" data-action="toggle-contact-panel" data-id="${c.id}" title="Задачи и комментарии">${expanded ? "▴" : "▾"}</button>
+        <button class="secondary task-details-toggle" data-action="toggle-contact-panel" data-id="${c.id}" title="Подробнее">${expanded ? "▴" : "▾"}</button>
       </span>
-      <div class="task-panel" data-contact-panel-for="${c.id}" ${expanded ? "" : "hidden"}></div>
+      <div class="task-details" ${expanded ? "" : "hidden"}>
+        <span class="task-panel-actions">
+          <button class="secondary" data-action="edit" data-kind="contact" data-id="${c.id}" title="Изменить">✎</button>
+          <button class="danger" data-action="delete-contact" data-id="${c.id}">✕</button>
+        </span>
+        <div class="task-panel" data-contact-panel-for="${c.id}"></div>
+      </div>
     </li>
   `;
   }).join("");
@@ -5117,7 +5213,31 @@ document.getElementById("contactsForm").addEventListener("submit", async (e) => 
   await loadContacts();
 });
 
+/** Открыть/закрыть .task-details одного контакта — прямая копия
+    toggleTaskRow у задач, свой Set/DOM-якорь (expandedContactPanels /
+    data-contact-panel-for), поэтому не переиспользует ту же функцию. */
+async function toggleContactRow(li, id) {
+  const details = li.querySelector(".task-details");
+  const chevron = li.querySelector(".task-details-toggle");
+  if (!details) return;
+  if (expandedContactPanels.has(id)) {
+    expandedContactPanels.delete(id);
+    details.hidden = true;
+    if (chevron) chevron.textContent = "▾";
+  } else {
+    expandedContactPanels.add(id);
+    details.hidden = false;
+    if (chevron) chevron.textContent = "▴";
+    await renderContactPanel(id);
+  }
+}
+
 document.getElementById("contactsList").addEventListener("click", async (e) => {
+  const rowMain = e.target.closest('[data-action="toggle-row"]');
+  if (rowMain) {
+    await toggleContactRow(rowMain.closest("li"), Number(rowMain.dataset.id));
+    return;
+  }
   const btn = e.target.closest("button");
   if (!btn) return;
   const id = getUserId();
@@ -5132,19 +5252,7 @@ document.getElementById("contactsList").addEventListener("click", async (e) => {
     });
     await loadContacts();
   } else if (btn.dataset.action === "toggle-contact-panel") {
-    const cid = Number(btn.dataset.id);
-    const panel = document.querySelector(`[data-contact-panel-for="${cid}"]`);
-    const toggleBtn = e.target.closest("li").querySelector('[data-action="toggle-contact-panel"]:not(.task-badge)');
-    if (expandedContactPanels.has(cid)) {
-      expandedContactPanels.delete(cid);
-      if (panel) panel.hidden = true;
-      if (toggleBtn) toggleBtn.textContent = "▾";
-    } else {
-      expandedContactPanels.add(cid);
-      if (panel) panel.hidden = false;
-      if (toggleBtn) toggleBtn.textContent = "▴";
-      await renderContactPanel(cid);
-    }
+    await toggleContactRow(btn.closest("li"), Number(btn.dataset.id));
   } else if (btn.dataset.action === "open-contact-task") {
     // openEditor("task", id) ищет задачу в lastTasks (список активных
     // верхнеуровневых) с фолбэком на lastCompletedTasks — связанная
