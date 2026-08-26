@@ -40,6 +40,21 @@ async def test_includes_context_when_given():
     assert "люблю бегать по утрам" in messages[0]["content"]
 
 
+async def test_includes_history_when_given():
+    ai_client = AsyncMock()
+    ai_client.complete.return_value = "Ответ."
+
+    await generate_chat_reply(
+        "а второй вариант?",
+        Persona.BUTLER,
+        ai_client,
+        history="Пользователь: подскажи вариант отпуска\nТы: Сочи или Кавказ.",
+    )
+
+    messages = ai_client.complete.call_args.args[0]
+    assert "Сочи или Кавказ" in messages[0]["content"]
+
+
 async def test_returns_none_on_ai_error():
     ai_client = AsyncMock()
     ai_client.complete.side_effect = AIServiceError("boom")

@@ -7,11 +7,12 @@ import random
 from datetime import date
 from html import escape
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
-from app.ai.client import get_ai_client
+from app.ai.client import AIClient, get_ai_client
 from app.core.config import get_settings
 from app.core.container import (
     build_assistant_service,
@@ -41,6 +42,7 @@ from app.scheduler.evening_checkin import build_evening_checkin_text
 from app.scheduler.evening_reflection import build_evening_reflection_prompt
 from app.scheduler.finance_report import build_finance_report
 from app.scheduler.nudges import build_nudges
+from app.scheduler.persona_nudges import find_nudge_candidate, generate_nudge_text
 from app.scheduler.weekly_digest import build_weekly_digest
 from app.tasks.service import TaskService
 from app.telegram.keyboards import build_habits_message, build_mood_prompt_keyboard
@@ -63,6 +65,44 @@ _EVENING_GAP_CHANCE = 0.5
 # дайджест (через bot._SUNDAY), и send_digests_job (частота "weekly"),
 # а bot.py и так импортирует jobs.py — обратный импорт был бы циклом.
 SUNDAY_WEEKDAY = 6
+
+
+async def _maybe_append_persona_nudge(
+    session: AsyncSession,
+    ai_client: AIClient | None,
+    telegram_user_id: int,
+    habit_service: HabitService,
+    task_service: TaskService,
+    text: str,
+) -> str:
+    """Незапланированное сообщение персонажа (specs/027-butler-personas-
+    phase2.md, п.2) — довесок к дневному/вечернему чек-ину, не отдельная
+    джоба (см. app/scheduler/persona_nudges.py). Тихо возвращает text
+    без изменений, если сегодня нет повода, AI недоступен, AI не
+    ответил, или этот же повод уже отправляли на предыдущем сегодняшнем
+    слоте."""
+    if ai_client is None:
+        return text
+
+    assistant_service = build_assistant_service(session)
+    already_sent_key = await assistant_service.get_today_nudge_trigger(telegram_user_id)
+    candidate = await find_nudge_candidate(
+        telegram_user_id,
+        habit_service,
+        task_service,
+        exclude_trigger_key=already_sent_key,
+    )
+    if candidate is None:
+        return text
+
+    trigger_key, situation = candidate
+    persona = await assistant_service.get_persona(telegram_user_id)
+    nudge_text = await generate_nudge_text(ai_client, situation, persona)
+    if not nudge_text:
+        return text
+
+    await assistant_service.record_nudge_sent(telegram_user_id, trigger_key)
+    return f"{text}\n\n{nudge_text}"
 
 
 async def send_morning_briefing_job(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -161,16 +201,25 @@ async def send_midday_checkin_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     if not telegram_user_id:
         return
 
+    ai_client = get_ai_client(settings)
+
     async with AsyncSessionLocal() as session:
         habit_service = HabitService(HabitRepository(session))
+        task_service = build_task_service(session)
         habits = await habit_service.list_active_habits(telegram_user_id)
         if not habits:
             await PendingPromptRepository(session).upsert(
                 telegram_user_id, "journal", _MIDDAY_TEXT_NO_HABITS
             )
-            await context.bot.send_message(
-                chat_id=telegram_user_id, text=_MIDDAY_TEXT_NO_HABITS
+            text = await _maybe_append_persona_nudge(
+                session,
+                ai_client,
+                telegram_user_id,
+                habit_service,
+                task_service,
+                _MIDDAY_TEXT_NO_HABITS,
             )
+            await context.bot.send_message(chat_id=telegram_user_id, text=text)
             return
         streaks = await habit_service.get_streaks_bulk(
             telegram_user_id, [h.id for h in habits]
@@ -179,15 +228,24 @@ async def send_midday_checkin_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         await PendingPromptRepository(session).upsert(
             telegram_user_id, "journal", _MIDDAY_TEXT
         )
+        # Раньше текст со списком привычек (в котором и есть номера "1",
+        # "2", на которые ссылаются кнопки под сообщением) выбрасывался —
+        # уходил только общий вопрос "Как проходит твой день?" + кнопки с
+        # голыми номерами без подписей, на что именно они отвечают.
+        text = await _maybe_append_persona_nudge(
+            session,
+            ai_client,
+            telegram_user_id,
+            habit_service,
+            task_service,
+            f"{_MIDDAY_TEXT}\n\n{habits_text}",
+        )
 
-    # Раньше текст со списком привычек (в котором и есть номера "1", "2",
-    # на которые ссылаются кнопки под сообщением) выбрасывался — уходил
-    # только общий вопрос "Как проходит твой день?" + кнопки с голыми
-    # номерами без подписей, на что именно они отвечают. Список
-    # добавлен HTML — parse_mode нужен, иначе <b>1</b> уедет как текст.
+    # Список добавлен HTML — parse_mode нужен, иначе <b>1</b> уедет как
+    # текст.
     await context.bot.send_message(
         chat_id=telegram_user_id,
-        text=f"{_MIDDAY_TEXT}\n\n{habits_text}",
+        text=text,
         reply_markup=markup,
         parse_mode=ParseMode.HTML,
     )
@@ -217,6 +275,10 @@ async def send_evening_checkin_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             gap_question = await service.pick_gap_question_if_any(telegram_user_id)
             if gap_question:
                 text = f"{text}\n\n{gap_question}"
+
+        text = await _maybe_append_persona_nudge(
+            session, ai_client, telegram_user_id, habit_service, task_service, text
+        )
 
     await context.bot.send_message(
         chat_id=telegram_user_id, text=text, parse_mode=ParseMode.HTML

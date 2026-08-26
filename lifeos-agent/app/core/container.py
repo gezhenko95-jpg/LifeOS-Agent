@@ -16,6 +16,10 @@ from app.ai.client import AIClient
 from app.assistant.repository import AssistantRepository
 from app.assistant.service import AssistantService
 from app.conversation.engine import ConversationEngine
+from app.conversation.history import (
+    ConversationHistoryRepository,
+    ConversationHistoryService,
+)
 from app.crm.repository import ContactCommentRepository, ContactRepository
 from app.crm.service import ContactCommentService, ContactService
 from app.digest.repository import DigestRepository
@@ -117,6 +121,12 @@ def build_assistant_service(session: AsyncSession) -> AssistantService:
     return AssistantService(AssistantRepository(session))
 
 
+def build_conversation_history_service(
+    session: AsyncSession,
+) -> ConversationHistoryService:
+    return ConversationHistoryService(ConversationHistoryRepository(session))
+
+
 def build_digest_service(session: AsyncSession) -> DigestService:
     """Скрейпер отдаётся фабрикой, а не создаётся здесь: внутри — один
     httpx.AsyncClient на процесс (keep-alive, см. app/digest/scraper.py),
@@ -147,4 +157,5 @@ def build_engine(
         rewards_service=build_rewards_service(session),
         finance_service=build_finance_service(session),
         assistant_service=build_assistant_service(session),
+        conversation_history_service=build_conversation_history_service(session),
     )

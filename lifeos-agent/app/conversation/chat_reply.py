@@ -28,10 +28,19 @@ _TASK_INSTRUCTION = (
 )
 
 
-def _system_prompt(persona: Persona, context: str) -> str:
+def _system_prompt(persona: Persona, context: str, history: str) -> str:
     instruction = _TASK_INSTRUCTION
     if context:
         instruction = f"{instruction}\n\nКонтекст о пользователе:\n{context}"
+    if history:
+        # Отдельный блок, не смешан с "контекстом о пользователе" выше:
+        # это конкретные реплики ЭТОГО разговора (specs/027, п.1), не
+        # долгосрочные факты — модели нужно различать "что говорилось
+        # только что" от "что вообще известно о пользователе".
+        instruction = (
+            f"{instruction}\n\nНедавние реплики этого разговора "
+            f"(старые сверху):\n{history}"
+        )
     return build_insight_prompt(persona, instruction)
 
 
@@ -40,9 +49,10 @@ async def generate_chat_reply(
     persona: Persona,
     ai_client: AIClient,
     context: str = "",
+    history: str = "",
 ) -> str | None:
     messages = [
-        {"role": "system", "content": _system_prompt(persona, context)},
+        {"role": "system", "content": _system_prompt(persona, context, history)},
         {"role": "user", "content": text},
     ]
     try:

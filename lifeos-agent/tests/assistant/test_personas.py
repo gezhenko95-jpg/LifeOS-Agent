@@ -5,15 +5,28 @@ app/assistant/personas.py — характер-листы и сборка сис
 from app.assistant.personas import (
     DEFAULT_PERSONA,
     PERSONA_LABELS,
+    PERSONA_NAMES,
     Persona,
     build_insight_prompt,
     character_sheet,
+    persona_name,
 )
 
 
 def test_every_persona_has_a_label():
     for persona in Persona:
         assert persona in PERSONA_LABELS
+
+
+def test_every_persona_has_a_distinct_name():
+    assert len(set(PERSONA_NAMES.values())) == len(Persona)
+    for persona in Persona:
+        assert persona_name(persona) == PERSONA_NAMES[persona]
+
+
+def test_character_sheet_mentions_the_persona_name():
+    for persona in Persona:
+        assert persona_name(persona) in character_sheet(persona)
 
 
 def test_every_persona_has_a_distinct_character_sheet():

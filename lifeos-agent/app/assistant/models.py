@@ -3,9 +3,9 @@
 строка на пользователя, переключается только на /ui (не в боте).
 """
 
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import BigInteger, DateTime, String, func
+from sqlalchemy import BigInteger, Date, DateTime, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.assistant.personas import DEFAULT_PERSONA
@@ -43,4 +43,21 @@ class AssistantSettings(Base):
         server_default=func.now(),
         onupdate=func.now(),
         comment="Момент последнего переключения",
+    )
+
+    # Дедуп незапланированных сообщений персонажа (specs/027-butler-
+    # personas-phase2.md, п.2) — без этой пары один и тот же повод
+    # (например, оборванный стрик) слался бы на ОБОИХ дневных слотах,
+    # где проверяется триггер (день_since не меняется в течение дня).
+    last_nudge_sent_on: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
+        comment="Дата последнего незапланированного сообщения персонажа",
+    )
+
+    last_nudge_trigger: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        comment="Ключ триггера последнего незапланированного сообщения, "
+        "напр. habit_streak:12",
     )

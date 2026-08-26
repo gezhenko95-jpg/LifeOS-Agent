@@ -39,6 +39,13 @@ def assistant_service():
     return service
 
 
+@pytest.fixture
+def history_service():
+    service = AsyncMock()
+    service.format_recent.return_value = ""
+    return service
+
+
 async def test_chat_reply_used_when_ai_and_persona_available(
     task_service, habit_service, memory_service, assistant_service
 ):
@@ -182,3 +189,67 @@ async def test_chat_uses_active_persona_voice(
 
     messages = ai_client.complete.call_args.args[0]
     assert "тренер" in messages[0]["content"].lower()
+
+
+async def test_chat_reply_uses_recent_conversation_history(
+    task_service, habit_service, memory_service, assistant_service, history_service
+):
+    history_service.format_recent.return_value = (
+        "Пользователь: подскажи вариант отпуска\nТы: Сочи или Кавказ."
+    )
+    ai_client = AsyncMock()
+    ai_client.complete.return_value = "Кавказ дешевле в это время года."
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        ai_client=ai_client,
+        assistant_service=assistant_service,
+        conversation_history_service=history_service,
+    )
+
+    await engine.handle_message(1, "а второй вариант?")
+
+    messages = ai_client.complete.call_args.args[0]
+    assert "Сочи или Кавказ" in messages[0]["content"]
+
+
+async def test_chat_reply_records_both_sides_of_the_exchange(
+    task_service, habit_service, memory_service, assistant_service, history_service
+):
+    ai_client = AsyncMock()
+    ai_client.complete.return_value = "Кавказ дешевле."
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        ai_client=ai_client,
+        assistant_service=assistant_service,
+        conversation_history_service=history_service,
+    )
+
+    await engine.handle_message(1, "а второй вариант?")
+
+    history_service.record_exchange.assert_awaited_once_with(
+        1, "а второй вариант?", "Кавказ дешевле."
+    )
+
+
+async def test_chat_does_not_record_history_when_falling_back_to_task(
+    task_service, habit_service, memory_service, history_service
+):
+    """Без ассистента/AI разговор откатывается на создание задачи (см.
+    test_chat_falls_back_to_task_without_assistant_service) — записывать
+    в историю разговора в этом случае нечего, персонаж не отвечал."""
+    engine = ConversationEngine(
+        task_service,
+        habit_service,
+        memory_service,
+        ai_client=None,
+        assistant_service=None,
+        conversation_history_service=history_service,
+    )
+
+    await engine.handle_message(1, "как дела?")
+
+    history_service.record_exchange.assert_not_awaited()

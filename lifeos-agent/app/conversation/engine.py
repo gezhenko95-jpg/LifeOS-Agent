@@ -25,6 +25,7 @@ from app.ai.client import AIClient
 from app.assistant.service import AssistantService
 from app.conversation.ai_fallback import parse_intent_with_ai
 from app.conversation.chat_reply import generate_chat_reply
+from app.conversation.history import ConversationHistoryService
 from app.conversation.intent import Intent, ParsedIntent
 from app.conversation.parser import parse_intent
 from app.finance.models import CATEGORIES, EXPENSE, INCOME
@@ -155,6 +156,7 @@ class ConversationEngine:
         rewards_service: RewardsService | None = None,
         finance_service: FinanceService | None = None,
         assistant_service: AssistantService | None = None,
+        conversation_history_service: ConversationHistoryService | None = None,
     ) -> None:
         self._tasks = task_service
         self._habits = habit_service
@@ -166,6 +168,7 @@ class ConversationEngine:
         self._rewards = rewards_service
         self._finance = finance_service
         self._assistant = assistant_service
+        self._history = conversation_history_service
 
     async def _with_reward(
         self, telegram_user_id: int, result: EngineResult
@@ -434,10 +437,21 @@ class ConversationEngine:
         if self._ai_client is not None and self._assistant is not None:
             persona = await self._assistant.get_persona(telegram_user_id)
             context = await self._gather_chat_context(telegram_user_id)
+            history = (
+                await self._history.format_recent(telegram_user_id)
+                if self._history is not None
+                else ""
+            )
             reply = await generate_chat_reply(
-                text, persona, self._ai_client, context=context
+                text, persona, self._ai_client, context=context, history=history
             )
             if reply is not None:
+                if self._history is not None:
+                    # specs/027-butler-personas-phase2.md, п.1 — обе
+                    # стороны обмена, чтобы следующая реплика в этом же
+                    # разговоре могла сослаться на "второй вариант" из
+                    # ответа персонажа выше.
+                    await self._history.record_exchange(telegram_user_id, text, reply)
                 return EngineResult(reply)
 
         text_result, task = await self._add_task(

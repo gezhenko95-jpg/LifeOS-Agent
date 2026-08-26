@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.assistant.personas import Persona
 from app.digest.models import Digest
 from app.habits.models import Habit
 from app.telegram import jobs
@@ -146,6 +147,7 @@ async def test_midday_checkin_includes_habit_list_text(no_db, monkeypatch):
     номерами "1"/"2" без подписей, на что они отвечают (баг с реального
     использования). Список должен быть виден в самом сообщении."""
     monkeypatch.setattr(jobs, "get_settings", _owner_settings)
+    monkeypatch.setattr(jobs, "get_ai_client", lambda settings: None)
     habit = Habit(id=1, telegram_user_id=1, title="Чтение")
     service = AsyncMock()
     service.list_active_habits.return_value = [habit]
@@ -153,6 +155,7 @@ async def test_midday_checkin_includes_habit_list_text(no_db, monkeypatch):
     monkeypatch.setattr(jobs, "HabitService", lambda repository: service)
     monkeypatch.setattr(jobs, "HabitRepository", lambda session: None)
     monkeypatch.setattr(jobs, "PendingPromptRepository", lambda session: AsyncMock())
+    monkeypatch.setattr(jobs, "build_task_service", lambda session: AsyncMock())
 
     context = _context()
     await jobs.send_midday_checkin_job(context)
@@ -170,11 +173,13 @@ async def test_midday_checkin_includes_habit_list_text(no_db, monkeypatch):
 
 async def test_midday_checkin_no_habits_sends_plain_question(no_db, monkeypatch):
     monkeypatch.setattr(jobs, "get_settings", _owner_settings)
+    monkeypatch.setattr(jobs, "get_ai_client", lambda settings: None)
     service = AsyncMock()
     service.list_active_habits.return_value = []
     monkeypatch.setattr(jobs, "HabitService", lambda repository: service)
     monkeypatch.setattr(jobs, "HabitRepository", lambda session: None)
     monkeypatch.setattr(jobs, "PendingPromptRepository", lambda session: AsyncMock())
+    monkeypatch.setattr(jobs, "build_task_service", lambda session: AsyncMock())
 
     context = _context()
     await jobs.send_midday_checkin_job(context)
@@ -182,6 +187,151 @@ async def test_midday_checkin_no_habits_sends_plain_question(no_db, monkeypatch)
     context.bot.send_message.assert_awaited_once()
     _, kwargs = context.bot.send_message.call_args
     assert kwargs["text"] == jobs._MIDDAY_TEXT_NO_HABITS
+
+
+# --- Незапланированные сообщения персонажа (specs/027-butler-personas-phase2.md) --
+
+
+async def test_midday_checkin_appends_persona_nudge_when_ai_available(
+    no_db, monkeypatch
+):
+    monkeypatch.setattr(jobs, "get_settings", _owner_settings)
+    monkeypatch.setattr(jobs, "get_ai_client", lambda settings: AsyncMock())
+    service = AsyncMock()
+    service.list_active_habits.return_value = []
+    monkeypatch.setattr(jobs, "HabitService", lambda repository: service)
+    monkeypatch.setattr(jobs, "HabitRepository", lambda session: None)
+    monkeypatch.setattr(jobs, "PendingPromptRepository", lambda session: AsyncMock())
+    monkeypatch.setattr(jobs, "build_task_service", lambda session: AsyncMock())
+
+    assistant_service = AsyncMock()
+    assistant_service.get_today_nudge_trigger.return_value = None
+    assistant_service.get_persona.return_value = Persona.TRAINER
+    monkeypatch.setattr(
+        jobs, "build_assistant_service", lambda session: assistant_service
+    )
+    monkeypatch.setattr(
+        jobs,
+        "find_nudge_candidate",
+        AsyncMock(return_value=("habit_streak:1", "Стрик «Бег» прервался.")),
+    )
+    monkeypatch.setattr(
+        jobs, "generate_nudge_text", AsyncMock(return_value="Загляни в бота!")
+    )
+
+    context = _context()
+    await jobs.send_midday_checkin_job(context)
+
+    _, kwargs = context.bot.send_message.call_args
+    assert kwargs["text"] == f"{jobs._MIDDAY_TEXT_NO_HABITS}\n\nЗагляни в бота!"
+    assistant_service.record_nudge_sent.assert_awaited_once_with(1, "habit_streak:1")
+
+
+async def test_midday_checkin_no_nudge_when_no_candidate(no_db, monkeypatch):
+    monkeypatch.setattr(jobs, "get_settings", _owner_settings)
+    monkeypatch.setattr(jobs, "get_ai_client", lambda settings: AsyncMock())
+    service = AsyncMock()
+    service.list_active_habits.return_value = []
+    monkeypatch.setattr(jobs, "HabitService", lambda repository: service)
+    monkeypatch.setattr(jobs, "HabitRepository", lambda session: None)
+    monkeypatch.setattr(jobs, "PendingPromptRepository", lambda session: AsyncMock())
+    monkeypatch.setattr(jobs, "build_task_service", lambda session: AsyncMock())
+
+    assistant_service = AsyncMock()
+    assistant_service.get_today_nudge_trigger.return_value = None
+    monkeypatch.setattr(
+        jobs, "build_assistant_service", lambda session: assistant_service
+    )
+    monkeypatch.setattr(jobs, "find_nudge_candidate", AsyncMock(return_value=None))
+
+    context = _context()
+    await jobs.send_midday_checkin_job(context)
+
+    _, kwargs = context.bot.send_message.call_args
+    assert kwargs["text"] == jobs._MIDDAY_TEXT_NO_HABITS
+    assistant_service.record_nudge_sent.assert_not_awaited()
+
+
+async def test_midday_checkin_excludes_trigger_already_sent_today(no_db, monkeypatch):
+    """Второй сегодняшний слот не должен передать find_nudge_candidate
+    без exclude — иначе он бы заново нашёл тот же повод, отправленный
+    на первом слоте (см. app/scheduler/persona_nudges.py)."""
+    monkeypatch.setattr(jobs, "get_settings", _owner_settings)
+    monkeypatch.setattr(jobs, "get_ai_client", lambda settings: AsyncMock())
+    service = AsyncMock()
+    service.list_active_habits.return_value = []
+    monkeypatch.setattr(jobs, "HabitService", lambda repository: service)
+    monkeypatch.setattr(jobs, "HabitRepository", lambda session: None)
+    monkeypatch.setattr(jobs, "PendingPromptRepository", lambda session: AsyncMock())
+    monkeypatch.setattr(jobs, "build_task_service", lambda session: AsyncMock())
+
+    assistant_service = AsyncMock()
+    assistant_service.get_today_nudge_trigger.return_value = "habit_streak:1"
+    monkeypatch.setattr(
+        jobs, "build_assistant_service", lambda session: assistant_service
+    )
+    find_candidate = AsyncMock(return_value=None)
+    monkeypatch.setattr(jobs, "find_nudge_candidate", find_candidate)
+
+    context = _context()
+    await jobs.send_midday_checkin_job(context)
+
+    _, kwargs = find_candidate.call_args
+    assert kwargs["exclude_trigger_key"] == "habit_streak:1"
+
+
+async def test_midday_checkin_no_nudge_without_ai_client(no_db, monkeypatch):
+    monkeypatch.setattr(jobs, "get_settings", _owner_settings)
+    monkeypatch.setattr(jobs, "get_ai_client", lambda settings: None)
+    service = AsyncMock()
+    service.list_active_habits.return_value = []
+    monkeypatch.setattr(jobs, "HabitService", lambda repository: service)
+    monkeypatch.setattr(jobs, "HabitRepository", lambda session: None)
+    monkeypatch.setattr(jobs, "PendingPromptRepository", lambda session: AsyncMock())
+    monkeypatch.setattr(jobs, "build_task_service", lambda session: AsyncMock())
+    find_candidate = AsyncMock()
+    monkeypatch.setattr(jobs, "find_nudge_candidate", find_candidate)
+
+    context = _context()
+    await jobs.send_midday_checkin_job(context)
+
+    find_candidate.assert_not_awaited()
+
+
+async def test_evening_checkin_appends_persona_nudge(no_db, monkeypatch):
+    monkeypatch.setattr(jobs, "get_settings", _owner_settings)
+    monkeypatch.setattr(jobs, "get_ai_client", lambda settings: AsyncMock())
+    monkeypatch.setattr(
+        jobs, "build_evening_checkin_text", AsyncMock(return_value="Итоги дня.")
+    )
+    monkeypatch.setattr(jobs, "build_task_service", lambda session: AsyncMock())
+    monkeypatch.setattr(jobs, "HabitService", lambda repository: AsyncMock())
+    monkeypatch.setattr(jobs, "HabitRepository", lambda session: None)
+    # random.random() < _EVENING_GAP_CHANCE может добавить gap-вопрос —
+    # отключаем его для предсказуемости этого теста.
+    monkeypatch.setattr(jobs.random, "random", lambda: 1.0)
+
+    assistant_service = AsyncMock()
+    assistant_service.get_today_nudge_trigger.return_value = None
+    assistant_service.get_persona.return_value = Persona.BUTLER
+    monkeypatch.setattr(
+        jobs, "build_assistant_service", lambda session: assistant_service
+    )
+    monkeypatch.setattr(
+        jobs,
+        "find_nudge_candidate",
+        AsyncMock(return_value=("task_overdue:5", "Задача просрочена.")),
+    )
+    monkeypatch.setattr(
+        jobs, "generate_nudge_text", AsyncMock(return_value="Не забудь про отчёт.")
+    )
+
+    context = _context()
+    await jobs.send_evening_checkin_job(context)
+
+    _, kwargs = context.bot.send_message.call_args
+    assert kwargs["text"] == "Итоги дня.\n\nНе забудь про отчёт."
+    assistant_service.record_nudge_sent.assert_awaited_once_with(1, "task_overdue:5")
 
 
 # --- Фокус-сессии (specs/026-focus-sessions.md) -----------------------------
