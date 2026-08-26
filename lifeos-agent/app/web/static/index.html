@@ -1827,11 +1827,67 @@
   /* Тёмного варианта нет намеренно: это цельный образ, а не «светлая
      версия чего-то». */
 
-  /* Декоративные размытые пятна выключены: в референсе фон плоский
-     почти чёрный, а пятна давали бурый и зелёный подтёк по краям и
-     ломали контраст кремовых карточек. Размытие вообще чужое этому
-     стилю — здесь всё либо контур, либо плоская заливка. */
-  :root[data-skin="groovy"] .bg-blobs { display: none; }
+  /* Размытые круглые пятна (.bg-blobs > span) по-прежнему выключены —
+     блюр чужой этому стилю (см. решение ниже про декор). Но сам
+     контейнер .bg-blobs (fixed, во весь экран, z-index:-1) переиспользован
+     под пейзаж-фон вместо своей обычной роли: три уже нарисованных
+     PNG (decor-hill/decor-cloud-*/decor-stars, те же файлы, что и
+     угловой декор карточек выше) вместо CSS-текстуры или новой
+     иллюстрации — владелец выбрал этот вариант через impeccable-превью
+     (риск ниже, ассеты уже готовы). Статично, без дрейфа: контейнер на
+     весь экран, а не 70-90px угол карточки — там анимация будет
+     маячить на периферии зрения, а не «замечаться, только если смотреть
+     специально» (тот же принцип, что уже описан у groovy-drift). */
+  /* Четыре независимых слоя вместо одного свойства с четырьмя url() —
+     тот же приём, что уже используют .card::before/::after для углового
+     декора (один слой = один селектор), а не список через запятую:
+     проще независимо позиционировать и надёжнее в разных движках
+     рендеринга. Готовый контейнер .bg-blobs даёт два <span> — переиспользованы
+     под первые два слоя, ::before/::after контейнера — под оставшиеся два. */
+  :root[data-skin="groovy"] .bg-blobs {
+    display: block;
+  }
+  :root[data-skin="groovy"] .bg-blobs::before,
+  :root[data-skin="groovy"] .bg-blobs::after,
+  :root[data-skin="groovy"] .bg-blobs > span {
+    content: "";
+    position: absolute;
+    /* Сбрасывает background-color: var(--accent)/var(--ok) из базового
+       .bg-blobs > span (это заливка блоба-круга) — без явного transparent
+       она просвечивала сплошным пятном под/вокруг прозрачных PNG. */
+    background-color: transparent;
+    background-repeat: no-repeat;
+    filter: none;
+    opacity: 1;
+    border-radius: 0;
+    animation: none;
+  }
+  :root[data-skin="groovy"] .bg-blobs > span:nth-child(1) {
+    inset: auto 0 0 0;
+    height: 22vh;
+    background-image: url("skins/groovy/decor-hill.png");
+    background-size: 100% 100%;
+    background-position: bottom center;
+  }
+  :root[data-skin="groovy"] .bg-blobs > span:nth-child(2) {
+    top: 5vh; right: 8vw;
+    width: 200px; height: 130px;
+    background-image: url("skins/groovy/decor-cloud-big.png");
+    background-size: contain;
+  }
+  :root[data-skin="groovy"] .bg-blobs::before {
+    top: 13vh; left: 9vw;
+    width: 130px; height: 85px;
+    background-image: url("skins/groovy/decor-cloud-small.png");
+    background-size: contain;
+  }
+  :root[data-skin="groovy"] .bg-blobs::after {
+    top: 0; left: 0; right: 0;
+    height: 30vh;
+    background-image: url("skins/groovy/decor-stars.png");
+    background-repeat: repeat;
+    background-size: 320px auto;
+  }
 
   /* --- Цвет домена ---------------------------------------------------
      Один акцент на карточку, используется сразу в трёх местах: чип
@@ -2856,11 +2912,31 @@
   }
 
   /* Лого-леттеринг — граффити-тег вместо кольца, тот же приём, что у
-     groovy/japan. У graffiti.logo.png был текст «LIFEOS TRACKER» вместо
-     одного слова «LIFEOS» (нарушение промпта из designs/002) — файл
-     удалён из skins/graffiti/ до перегенерации, поэтому здесь ещё
-     кольцо .brand-mark, не картинка. Когда придёт чистый logo.png —
-     включить тем же .brand::before блоком, что у groovy/japan/pixel. */
+     groovy/japan/pixel. Перегенерированный logo.png (только слово
+     LIFEOS, альфа-канал проверен явно — getbbox()/getextrema(), не на
+     глаз, см. designs/002) даёт содержимое ~1.78:1 (355×200 после
+     process_skin_images.py) — бокс ниже подобран под ЭТУ форму, а не
+     под черновой 720×200 канвас исходника (та же логика, что у japan:
+     «лого здесь квадратный герб, а не длинный леттеринг, поэтому и
+     бокс другой формы»). background-size: contain не растягивает, так
+     что точное совпадение аспекта не обязательно, но без него бокс
+     кормил бы лишними пустыми полями. */
+  :root[data-skin="graffiti"] .brand-mark { display: none; }
+  :root[data-skin="graffiti"] .brand::before {
+    content: "";
+    width: 150px;
+    height: 84px;
+    flex: none;
+    background: url("skins/graffiti/logo.png") no-repeat center / contain;
+  }
+  :root[data-skin="graffiti"] .brand span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 
   @media (prefers-reduced-motion: reduce) {
     :root[data-skin="graffiti"] .card { transition: none; }
@@ -4355,24 +4431,36 @@ document.getElementById("taskForm").addEventListener("submit", async (e) => {
   await loadTasks();
 });
 
+/** Открыть/закрыть .task-details одной строки — общая точка для
+    задач/контактов/долгов/целей (было 4 отдельные копии этой функции,
+    отличавшиеся только Set'ом развёрнутых id и тем, надо ли дозагружать
+    содержимое панели при открытии — унифицировано в одну). У каждого
+    домена по-прежнему свой Set (expandedTaskPanels/expandedContactPanels/
+    expandedDebtPanels/expandedGoalPanels) и своя обёртка ниже с прежним
+    именем — вызовы из обработчиков кликов не меняются. renderPanel
+    необязателен: у целей дозагружать нечего (слайдер уже в DOM). */
+async function toggleDomainRow(li, id, expandedSet, renderPanel) {
+  const details = li.querySelector(".task-details");
+  const chevron = li.querySelector(".task-details-toggle");
+  if (!details) return;
+  if (expandedSet.has(id)) {
+    expandedSet.delete(id);
+    details.hidden = true;
+    if (chevron) chevron.textContent = "▾";
+  } else {
+    expandedSet.add(id);
+    details.hidden = false;
+    if (chevron) chevron.textContent = "▴";
+    if (renderPanel) await renderPanel(id);
+  }
+}
+
 /** Открыть/закрыть .task-details одной задачи — общая точка для клика по
     строке, клика по шеврону и свайпа влево (см. attachSwipeToComplete
     ниже вызывает эту же функцию для отдельного действия complete, но
     сам toggle — только здесь, не дублируется). */
 async function toggleTaskRow(li, id) {
-  const details = li.querySelector(".task-details");
-  const chevron = li.querySelector(".task-details-toggle");
-  if (!details) return;
-  if (expandedTaskPanels.has(id)) {
-    expandedTaskPanels.delete(id);
-    details.hidden = true;
-    if (chevron) chevron.textContent = "▾";
-  } else {
-    expandedTaskPanels.add(id);
-    details.hidden = false;
-    if (chevron) chevron.textContent = "▴";
-    await renderTaskPanel(id);
-  }
+  await toggleDomainRow(li, id, expandedTaskPanels, renderTaskPanel);
 }
 
 /** Общая точка входа для завершения задачи — и по кнопке ✓, и по свайпу
@@ -4663,18 +4751,7 @@ async function loadGoals() {
 }
 
 function toggleGoalRow(li, id) {
-  const details = li.querySelector(".task-details");
-  const chevron = li.querySelector(".task-details-toggle");
-  if (!details) return;
-  if (expandedGoalPanels.has(id)) {
-    expandedGoalPanels.delete(id);
-    details.hidden = true;
-    if (chevron) chevron.textContent = "▾";
-  } else {
-    expandedGoalPanels.add(id);
-    details.hidden = false;
-    if (chevron) chevron.textContent = "▴";
-  }
+  return toggleDomainRow(li, id, expandedGoalPanels, null);
 }
 
 document.getElementById("goalForm").addEventListener("submit", async (e) => {
@@ -4960,23 +5037,10 @@ document.getElementById("debtForm").addEventListener("submit", async (e) => {
   }
 });
 
-/** Открыть/закрыть .task-details одного долга — прямая копия
-    toggleTaskRow, свой Set/DOM-якорь (expandedDebtPanels /
-    data-debt-panel-for). */
+/** Открыть/закрыть .task-details одного долга — свой Set/DOM-якорь
+    (expandedDebtPanels), общая логика — в toggleDomainRow. */
 async function toggleDebtRow(li, id) {
-  const details = li.querySelector(".task-details");
-  const chevron = li.querySelector(".task-details-toggle");
-  if (!details) return;
-  if (expandedDebtPanels.has(id)) {
-    expandedDebtPanels.delete(id);
-    details.hidden = true;
-    if (chevron) chevron.textContent = "▾";
-  } else {
-    expandedDebtPanels.add(id);
-    details.hidden = false;
-    if (chevron) chevron.textContent = "▴";
-    await renderDebtPanel(id);
-  }
+  await toggleDomainRow(li, id, expandedDebtPanels, renderDebtPanel);
 }
 
 document.getElementById("debtList").addEventListener("click", async (e) => {
@@ -5213,23 +5277,10 @@ document.getElementById("contactsForm").addEventListener("submit", async (e) => 
   await loadContacts();
 });
 
-/** Открыть/закрыть .task-details одного контакта — прямая копия
-    toggleTaskRow у задач, свой Set/DOM-якорь (expandedContactPanels /
-    data-contact-panel-for), поэтому не переиспользует ту же функцию. */
+/** Открыть/закрыть .task-details одного контакта — свой Set/DOM-якорь
+    (expandedContactPanels), общая логика — в toggleDomainRow. */
 async function toggleContactRow(li, id) {
-  const details = li.querySelector(".task-details");
-  const chevron = li.querySelector(".task-details-toggle");
-  if (!details) return;
-  if (expandedContactPanels.has(id)) {
-    expandedContactPanels.delete(id);
-    details.hidden = true;
-    if (chevron) chevron.textContent = "▾";
-  } else {
-    expandedContactPanels.add(id);
-    details.hidden = false;
-    if (chevron) chevron.textContent = "▴";
-    await renderContactPanel(id);
-  }
+  await toggleDomainRow(li, id, expandedContactPanels, renderContactPanel);
 }
 
 document.getElementById("contactsList").addEventListener("click", async (e) => {
