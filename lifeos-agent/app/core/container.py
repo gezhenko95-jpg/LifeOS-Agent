@@ -51,10 +51,10 @@ def build_task_service(session: AsyncSession) -> TaskService:
     # contact_repository/habit_repository/goal_repository — валидируют
     # владение contact_id/habit_id/goal_id при связке задачи с человеком/
     # привычкой/целью (specs/022-tasks-v2.md, отчёт владельца 24.08 вечер #6,
-    # живая проверка 25.08 — goal_id). Прямая сборка
+    # живая проверка 25.08 — goal_id). Раньше прямая сборка
     # TaskService(TaskRepository(session)) в нескольких местах jobs.py/
-    # handlers.py/callbacks.py (A-3, ещё не отрефакторено) этой проверки
-    # не получает — существующий, не новый trade-off.
+    # handlers.py/callbacks.py (A-3) этой проверки не получала — закрыто:
+    # все восемь мест переведены на build_task_service.
     return TaskService(
         TaskRepository(session),
         ContactRepository(session),

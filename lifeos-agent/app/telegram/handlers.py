@@ -33,6 +33,7 @@ from app.core.container import (
     build_engine,
     build_focus_service,
     build_task_comment_service,
+    build_task_service,
 )
 from app.db.session import AsyncSessionLocal
 from app.digest.scraper import ChannelScrapeError
@@ -47,8 +48,6 @@ from app.media_inbox.service import MediaInboxService
 from app.memory.models import MemoryType
 from app.memory.repository import MemoryRepository
 from app.memory.service import MemoryService
-from app.tasks.repository import TaskRepository
-from app.tasks.service import TaskService
 from app.telegram.keyboards import (
     MENU_CONTACTS,
     MENU_DIGEST,
@@ -513,7 +512,7 @@ async def _create_subtask_from_text(
         return
 
     async with AsyncSessionLocal() as session:
-        service = TaskService(TaskRepository(session))
+        service = build_task_service(session)
         try:
             task = await service.create_task(
                 telegram_user_id, text.strip(), parent_id=parent_id
@@ -809,7 +808,7 @@ async def _send_tasks_keyboard(update: Update) -> None:
     telegram_user_id = update.effective_user.id
 
     async with AsyncSessionLocal() as session:
-        service = TaskService(TaskRepository(session))
+        service = build_task_service(session)
         tasks = await service.list_active_tasks(telegram_user_id)
         task_ids = [t.id for t in tasks]
         subtask_counts = await service.count_subtasks_by_parents(
@@ -1112,7 +1111,7 @@ async def _send_insights(update: Update) -> None:
 
     async with AsyncSessionLocal() as session:
         service = InsightsService(
-            TaskService(TaskRepository(session)),
+            build_task_service(session),
             HabitService(HabitRepository(session)),
             MemoryService(MemoryRepository(session)),
         )

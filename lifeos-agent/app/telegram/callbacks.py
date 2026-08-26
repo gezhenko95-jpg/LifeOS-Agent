@@ -22,6 +22,7 @@ from app.core.container import (
     build_mood_service,
     build_rewards_service,
     build_task_comment_service,
+    build_task_service,
 )
 from app.db.session import AsyncSessionLocal
 from app.goals.repository import GoalRepository
@@ -35,8 +36,6 @@ from app.memory.service import MemoryService
 from app.mood.models import MAX_SCORE, SCORE_EMOJI
 from app.proactive.repository import PendingPromptRepository
 from app.tasks.models import Task
-from app.tasks.repository import TaskRepository
-from app.tasks.service import TaskService
 from app.telegram.handlers import JOURNAL_PROMPT
 from app.telegram.keyboards import (
     build_contacts_menu,
@@ -297,7 +296,7 @@ async def _handle_task_action(
     telegram_user_id: int,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> tuple[str, InlineKeyboardMarkup]:
-    service = TaskService(TaskRepository(session))
+    service = build_task_service(session)
 
     if action == "m":
         return build_tasks_menu()

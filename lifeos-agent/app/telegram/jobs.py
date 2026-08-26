@@ -21,6 +21,7 @@ from app.core.container import (
     build_focus_service,
     build_mood_service,
     build_prompt_service,
+    build_task_service,
 )
 from app.db.session import AsyncSessionLocal
 from app.digest.service import DAILY, WEEKLY
@@ -41,7 +42,6 @@ from app.scheduler.evening_reflection import build_evening_reflection_prompt
 from app.scheduler.finance_report import build_finance_report
 from app.scheduler.nudges import build_nudges
 from app.scheduler.weekly_digest import build_weekly_digest
-from app.tasks.repository import TaskRepository
 from app.tasks.service import TaskService
 from app.telegram.keyboards import build_habits_message, build_mood_prompt_keyboard
 
@@ -85,7 +85,7 @@ async def send_morning_briefing_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     ai_client = get_ai_client(settings)
 
     async with AsyncSessionLocal() as session:
-        task_service = TaskService(TaskRepository(session))
+        task_service = build_task_service(session)
         memory_service = MemoryService(MemoryRepository(session))
         habit_service = HabitService(HabitRepository(session))
         goal_service = GoalService(GoalRepository(session))
@@ -206,7 +206,7 @@ async def send_evening_checkin_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     ai_client = get_ai_client(settings)
 
     async with AsyncSessionLocal() as session:
-        task_service = TaskService(TaskRepository(session))
+        task_service = build_task_service(session)
         habit_service = HabitService(HabitRepository(session))
         text = await build_evening_checkin_text(
             telegram_user_id, task_service, habit_service
@@ -233,7 +233,7 @@ async def send_weekly_digest_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     async with AsyncSessionLocal() as session:
-        task_service = TaskService(TaskRepository(session))
+        task_service = build_task_service(session)
         habit_service = HabitService(HabitRepository(session))
         persona = await build_assistant_service(session).get_persona(telegram_user_id)
         text = await build_weekly_digest(
@@ -386,7 +386,7 @@ async def send_monthly_insights_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 
     async with AsyncSessionLocal() as session:
         service = InsightsService(
-            TaskService(TaskRepository(session)),
+            build_task_service(session),
             HabitService(HabitRepository(session)),
             MemoryService(MemoryRepository(session)),
         )
@@ -492,7 +492,7 @@ async def send_task_reminders_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     async with AsyncSessionLocal() as session:
-        task_service = TaskService(TaskRepository(session))
+        task_service = build_task_service(session)
         due_tasks = await task_service.list_due_reminders()
         for task in due_tasks:
             if task.telegram_user_id != telegram_user_id:
