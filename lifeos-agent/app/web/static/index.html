@@ -391,6 +391,7 @@
   .grid > [data-domain="contacts"],
   .grid > [data-domain="mood"],
   .grid > [data-domain="focus"],
+  .grid > [data-domain="shop"],
   .grid > [data-domain="shelf"] { grid-column: span 3; }
   .grid > [data-domain="digest"],
   .grid > [data-domain="calendar"] { grid-column: span 12; }
@@ -415,7 +416,8 @@
      риск раздуть ряд. На вкладке одного домена (.grid.single) карточка
      одна и во всю ширину — ограничение ей не нужно. */
   .grid:not(.single) > .card ul.item-list:not(:has(> li.empty)),
-  .grid:not(.single) > .card .finance-analytics {
+  .grid:not(.single) > .card .finance-analytics,
+  .grid:not(.single) > .card .shop-groups {
     max-height: 260px;
     overflow-y: auto;
   }
@@ -430,6 +432,7 @@
     .grid > [data-domain="contacts"],
     .grid > [data-domain="mood"],
     .grid > [data-domain="focus"],
+    .grid > [data-domain="shop"],
     .grid > [data-domain="shelf"] { grid-column: span 6; }
   }
   @media (max-width: 760px) {
@@ -1513,6 +1516,82 @@
     to { transform: translate(var(--dx), var(--dy)) rotate(240deg); opacity: 0; }
   }
 
+  /* --- Магазин наград (specs/028, фаза 1) ---
+     Витрина живёт рядом с карточкой визита не случайно: монеты
+     зарабатываются в одной карточке и тратятся в соседней, обе цифры
+     видно разом. Баланс здесь ОТДЕЛЬНОЕ число от «монет» визита — то
+     заработано за всё время (на нём висят звания и палитра), это
+     осталось после трат. */
+  .shop-wallet {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .shop-balance {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .shop-balance-label { color: var(--muted); font-size: 0.78rem; }
+  .shop-spent { color: var(--muted); font-size: 0.78rem; margin-left: auto; }
+  .shop-note { margin: 8px 0 12px; }
+  .shop-group + .shop-group { margin-top: 14px; }
+  .shop-group h3 { margin: 0 0 6px; }
+  .shop-items { list-style: none; margin: 0; padding: 0; }
+  /* Grid, а не одна флекс-строка: карточка на Панели занимает 3 колонки
+     из 12 (~300px), и описание, зажатое между эмодзи и кнопкой, ложилось
+     в 3-4 строки — товар вырастал до 118px, в 260px витрины помещалось
+     чуть больше двух позиций из семи. Описание вынесено на свою строку
+     во всю ширину: 64px на товар вместо 118 (измерено, не на глаз). */
+  .shop-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    grid-template-areas:
+      "emoji title owned action"
+      "emoji desc  desc  desc";
+    align-items: center;
+    column-gap: 10px;
+    row-gap: 1px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .shop-item:last-child { border-bottom: none; }
+  .shop-emoji { grid-area: emoji; font-size: 1.3rem; line-height: 1; }
+  .shop-title { grid-area: title; font-weight: 600; }
+  .shop-desc { grid-area: desc; color: var(--muted); font-size: 0.78rem; }
+  /* Счётчик купленного всегда в потоке (а не появляется/исчезает): иначе
+     кнопка «Купить» прыгала бы по горизонтали после первой же покупки
+     расходуемого товара. */
+  .shop-owned {
+    grid-area: owned;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .shop-buy {
+    grid-area: action;
+    font-size: 0.85rem;
+    padding: 6px 12px;
+    white-space: nowrap;
+  }
+  .shop-buy:disabled {
+    background: var(--border);
+    color: var(--muted);
+    cursor: default;
+    filter: none;
+  }
+  /* Купленное разовое украшение — не выключенная кнопка, а спокойная
+     отметка: кнопка (даже серая) читается как «попробуй ещё раз», а
+     тут пробовать больше нечего. */
+  .shop-bought {
+    grid-area: action;
+    font-size: 0.85rem;
+    color: var(--ok);
+    white-space: nowrap;
+  }
+
   /* --- Палитра оформления, открывается за монеты --- */
   .theme-picker {
     display: flex;
@@ -2082,6 +2161,20 @@
   :root[data-skin="groovy"] .mood-picker button {
     padding: 8px 3px;
     min-height: auto;
+  }
+
+  /* Тот же класс бага в третий раз (см. .segmented-btn и .mood-picker
+     выше): общий groovy `button` (min-height 44px, padding 0 22px,
+     15px uppercase) раздувал «Купить» в строке магазина — строка
+     вырастала со 118px до 156px, и в 260px витрины на Панели помещалось
+     меньше двух товаров из семи. Здесь оверрайд НЕ гасит характер скина
+     (рамка, тень, шрифт остаются от groovy) — только возвращает кнопке
+     размер строки списка, а не размер формы: «Купить» стоит в ряду
+     товара, а не под ним. Измерено getBoundingClientRect, не на глаз. */
+  :root[data-skin="groovy"] .shop-buy {
+    min-height: 32px;
+    padding: 0 14px;
+    font-size: 13px;
   }
 
   :root[data-skin="groovy"] input,
@@ -2808,6 +2901,14 @@
     min-height: auto;
   }
 
+  /* То же, что у groovy выше: общий graffiti `button` (min-height 40px,
+     padding 0 18px) растягивал строку товара до 137px. */
+  :root[data-skin="graffiti"] .shop-buy {
+    min-height: 30px;
+    padding: 0 13px;
+    font-size: 13px;
+  }
+
   :root[data-skin="graffiti"] ul.item-list li {
     background: var(--paper-warm);
     border: 3px solid var(--ink);
@@ -3030,6 +3131,7 @@
     <button type="button" class="tab" data-tab="contacts">Люди</button>
     <button type="button" class="tab" data-tab="mood">Настроение</button>
     <button type="button" class="tab" data-tab="focus">Фокус</button>
+    <button type="button" class="tab" data-tab="shop">Магазин</button>
   </nav>
 
   <!-- Счётчики продублированы ЗНАЧЕНИЕМ, а не узлом: на исходных
@@ -3237,6 +3339,19 @@
     <!-- Лестница званий: пять ступеней, пройденные подсвечены. -->
     <ol class="rank-ladder" id="rankLadder"></ol>
     <div class="theme-picker" id="themePicker"></div>
+  </section>
+
+  <!-- Магазин: единственное место, где монеты УХОДЯТ. Стоит следом за
+       карточкой визита — заработок и трата рядом (specs/028, фаза 1). -->
+  <section class="card" data-domain="shop">
+    <h2 data-icon="coins">Магазин</h2>
+    <div class="shop-wallet">
+      <span class="shop-balance" id="shopBalance">0</span>
+      <span class="shop-balance-label">монет доступно</span>
+      <span class="shop-spent" id="shopSpent"></span>
+    </div>
+    <p class="meta shop-note">Ферма и питомец — следующим заходом; купленное сохранится.</p>
+    <div class="shop-groups" id="shopGroups"></div>
   </section>
 
   <section class="card" data-domain="tasks">
@@ -4237,6 +4352,104 @@ async function loadRewards() {
   renderRewards();
 }
 
+// --- Магазин наград (specs/028, фаза 1) ------------------------------
+// Витрина и кошелёк приходят ОДНИМ ответом /shop/state: цена без
+// баланса не говорит, доступна ли покупка, а два запроса на один экран
+// дали бы момент, когда видно одно и не видно другое.
+let lastShop = null;
+
+function renderShop() {
+  const groups = document.getElementById("shopGroups");
+  if (!lastShop) {
+    groups.innerHTML = '<p class="meta">Укажите свой Telegram ID в настройках, чтобы открыть магазин.</p>';
+    return;
+  }
+  document.getElementById("shopBalance").textContent = lastShop.balance;
+  // Потраченное показываем только когда оно есть: строка "потрачено 0"
+  // на пустом кошельке — шум, а не информация.
+  document.getElementById("shopSpent").textContent =
+    lastShop.spent_coins > 0 ? `потрачено ${lastShop.spent_coins}` : "";
+
+  // Порядок категорий берём из порядка товаров в каталоге (сервер отдаёт
+  // его как есть), а не сортируем на фронте: ассортимент раскладывает
+  // app/shop/catalog.py, и раскладка не должна расходиться между
+  // магазином в /ui и любым будущим потребителем того же API.
+  const order = [];
+  const byKind = new Map();
+  lastShop.items.forEach((item) => {
+    if (!byKind.has(item.kind)) {
+      byKind.set(item.kind, { title: item.kind_title, items: [] });
+      order.push(item.kind);
+    }
+    byKind.get(item.kind).items.push(item);
+  });
+
+  groups.innerHTML = order.map((kind) => {
+    const group = byKind.get(kind);
+    return `<div class="shop-group">
+      <h3>${escapeHtml(group.title)}</h3>
+      <ul class="shop-items">${group.items.map(shopItemRow).join("")}</ul>
+    </div>`;
+  }).join("");
+}
+
+function shopItemRow(item) {
+  const bought = !item.repeatable && item.owned > 0;
+  // Разовое украшение после покупки — отметка, расходуемое — счётчик
+  // "×N" (сколько лежит на складе до появления фермы, которая начнёт
+  // его тратить).
+  const owned = bought
+    ? '<span class="shop-owned"></span>'
+    : `<span class="shop-owned">${item.owned > 0 ? `×${item.owned}` : ""}</span>`;
+  const action = bought
+    ? '<span class="shop-bought">Куплено ✓</span>'
+    : `<button type="button" class="shop-buy" data-item-id="${escapeHtml(item.id)}"
+        ${item.affordable ? "" : "disabled"}>${item.price} 🪙</button>`;
+  // Порядок в разметке — читаемый (эмодзи, название, описание, счётчик,
+  // действие); раскладку по двум строкам делает grid-template-areas, см.
+  // .shop-item в стилях.
+  return `<li class="shop-item">
+    <span class="shop-emoji">${escapeHtml(item.emoji)}</span>
+    <span class="shop-title">${escapeHtml(item.title)}</span>
+    <span class="shop-desc">${escapeHtml(item.description)}</span>
+    ${owned}
+    ${action}
+  </li>`;
+}
+
+async function loadShop() {
+  const id = getUserId();
+  if (!id) { lastShop = null; renderShop(); return; }
+  lastShop = await api(`/shop/state?telegram_user_id=${encodeURIComponent(id)}`);
+  renderShop();
+}
+
+// Делегирование на контейнер: строки витрины перерисовываются целиком
+// после каждой покупки, отдельные обработчики на кнопках умирали бы
+// вместе с ними.
+document.getElementById("shopGroups").addEventListener("click", async (e) => {
+  const button = e.target.closest(".shop-buy");
+  if (!button || button.disabled) return;
+  const id = requireUserId();
+  // Ответ /shop/purchase — уже новое состояние кошелька и витрины
+  // целиком, догружать /shop/state вторым запросом не нужно.
+  button.disabled = true;
+  try {
+    lastShop = await api("/shop/purchase", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ telegram_user_id: Number(id), item_id: button.dataset.itemId }),
+    });
+    renderShop();
+  } catch (err) {
+    // 409 «не хватает монет» / «уже куплено» — обычный ответ сервера, а
+    // не сбой: показываем текстом и возвращаем кнопку в рабочее
+    // состояние (renderShop сам решит, доступна ли она).
+    showToast(String(err.message || err));
+    renderShop();
+  }
+});
+
 // Короткая всплывающая подпись над кнопкой — "+12 монет" или, в
 // счастливый день, "🍀 Удачный день! +24 монет". Удаляется сама по
 // завершении CSS-анимации.
@@ -4286,6 +4499,9 @@ document.getElementById("claimButton").addEventListener("click", async () => {
   lastRewards = fresh;
   renderRewards();
   renderAchievements();
+  // Забранные монеты сразу же можно потратить — витрина соседней
+  // карточки должна это увидеть, не дожидаясь перезагрузки страницы.
+  if (isNewClaim) loadShop().catch(() => {});
 
   if (isNewClaim) {
     showClaimReveal(fresh.coinsToday, fresh.luckyToday);
@@ -6843,7 +7059,7 @@ const TAB_KEY = "lifeos_tab";
 // семи; календарь на ней намеренно отсутствует, он занимал весь верх
 // экрана и ломал композицию.
 const TAB_CARDS = {
-  dash: ["rewards", "tasks", "habits", "goals", "weekly", "finance", "contacts", "mood", "focus", "shelf", "digest"],
+  dash: ["rewards", "shop", "tasks", "habits", "goals", "weekly", "finance", "contacts", "mood", "focus", "shelf", "digest"],
   tasks: ["tasks"],
   habits: ["habits"],
   goals: ["goals"],
@@ -6854,6 +7070,7 @@ const TAB_CARDS = {
   contacts: ["contacts"],
   mood: ["mood"],
   focus: ["focus"],
+  shop: ["shop"],
 };
 
 function getActiveTab() {
@@ -6948,6 +7165,7 @@ async function loadAll() {
     loadMood(),
     loadFocus(),
     loadPersona(),
+    loadShop(),
   ]);
   // Достижения зависят от данных всех карточек разом — считаем после
   // того, как все они точно загрузились, а не по одной.

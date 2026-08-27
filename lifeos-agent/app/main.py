@@ -23,6 +23,7 @@ from app.api import (
     mood,
     poster,
     rewards,
+    shop,
     tasks,
     watchlist,
 )
@@ -84,6 +85,7 @@ app.include_router(assistant.router, tags=["assistant"], dependencies=_protected
 # голым <img src>, ровно из-за этого (см. loadWeeklyChart в index.html).
 app.include_router(charts.router, tags=["charts"], dependencies=_protected)
 app.include_router(focus.router, tags=["focus"], dependencies=_protected)
+app.include_router(shop.router, tags=["shop"], dependencies=_protected)
 
 # Простейший веб-интерфейс — статическая страница, использует REST API выше.
 app.mount("/ui", StaticFiles(directory=_WEB_STATIC_DIR, html=True), name="ui")

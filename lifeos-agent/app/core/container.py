@@ -45,6 +45,8 @@ from app.proactive.repository import PendingPromptRepository
 from app.proactive.service import PendingPromptService
 from app.rewards.repository import RewardsRepository
 from app.rewards.service import RewardsService
+from app.shop.repository import ShopRepository
+from app.shop.service import ShopService
 from app.tasks.repository import TaskCommentRepository, TaskRepository
 from app.tasks.service import TaskCommentService, TaskService
 from app.watchlist.repository import WatchlistRepository
@@ -89,6 +91,13 @@ def build_watchlist_service(session: AsyncSession) -> WatchlistService:
 
 def build_rewards_service(session: AsyncSession) -> RewardsService:
     return RewardsService(RewardsRepository(session))
+
+
+def build_shop_service(session: AsyncSession) -> ShopService:
+    # Composite: магазин не считает заработок монет сам, а спрашивает у
+    # RewardsService — владельца механики чек-инов (specs/028, вариант A).
+    # Ровно тот случай, для которого фабрики и существуют.
+    return ShopService(ShopRepository(session), build_rewards_service(session))
 
 
 def build_finance_service(session: AsyncSession) -> FinanceService:
