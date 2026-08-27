@@ -25,6 +25,8 @@ from app.crm.service import ContactCommentService, ContactService
 from app.digest.repository import DigestRepository
 from app.digest.scraper import get_channel_scraper
 from app.digest.service import DigestService
+from app.farm.repository import FarmRepository
+from app.farm.service import FarmService
 from app.finance.repository import (
     DebtPaymentRepository,
     DebtRepository,
@@ -41,6 +43,8 @@ from app.memory.repository import MemoryRepository
 from app.memory.service import MemoryService
 from app.mood.repository import MoodRepository
 from app.mood.service import MoodService
+from app.pet.repository import PetRepository
+from app.pet.service import PetService
 from app.proactive.repository import PendingPromptRepository
 from app.proactive.service import PendingPromptService
 from app.rewards.repository import RewardsRepository
@@ -110,6 +114,20 @@ def build_debt_service(session: AsyncSession) -> DebtService:
 
 def build_focus_service(session: AsyncSession) -> FocusSessionService:
     return FocusSessionService(FocusSessionRepository(session))
+
+
+def build_farm_service(session: AsyncSession) -> FarmService:
+    # Composite: ферма не хранит свой склад отдельно — спрашивает у
+    # ShopRepository, сколько куплено (specs/028, фаза 2). Тот же приём,
+    # что у build_shop_service ниже для монет.
+    return FarmService(FarmRepository(session), ShopRepository(session))
+
+
+def build_pet_service(session: AsyncSession) -> PetService:
+    # Composite: кормление тратит сено — ресурс, который ведёт ферма
+    # (specs/028, фаза 3). Питомец не дублирует амбар, а спрашивает у
+    # FarmService, ровно как ферма спрашивает у магазина.
+    return PetService(PetRepository(session), build_farm_service(session))
 
 
 def build_contact_service(session: AsyncSession) -> ContactService:

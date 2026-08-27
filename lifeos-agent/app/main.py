@@ -14,6 +14,7 @@ from app.api import (
     charts,
     crm,
     digest,
+    farm,
     finance,
     focus,
     goals,
@@ -21,6 +22,7 @@ from app.api import (
     health,
     memory,
     mood,
+    pet,
     poster,
     rewards,
     shop,
@@ -86,6 +88,8 @@ app.include_router(assistant.router, tags=["assistant"], dependencies=_protected
 app.include_router(charts.router, tags=["charts"], dependencies=_protected)
 app.include_router(focus.router, tags=["focus"], dependencies=_protected)
 app.include_router(shop.router, tags=["shop"], dependencies=_protected)
+app.include_router(farm.router, tags=["farm"], dependencies=_protected)
+app.include_router(pet.router, tags=["pet"], dependencies=_protected)
 
 # Простейший веб-интерфейс — статическая страница, использует REST API выше.
 app.mount("/ui", StaticFiles(directory=_WEB_STATIC_DIR, html=True), name="ui")

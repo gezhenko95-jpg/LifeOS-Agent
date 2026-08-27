@@ -392,6 +392,8 @@
   .grid > [data-domain="mood"],
   .grid > [data-domain="focus"],
   .grid > [data-domain="shop"],
+  .grid > [data-domain="farm"],
+  .grid > [data-domain="pet"],
   .grid > [data-domain="shelf"] { grid-column: span 3; }
   .grid > [data-domain="digest"],
   .grid > [data-domain="calendar"] { grid-column: span 12; }
@@ -417,7 +419,8 @@
      одна и во всю ширину — ограничение ей не нужно. */
   .grid:not(.single) > .card ul.item-list:not(:has(> li.empty)),
   .grid:not(.single) > .card .finance-analytics,
-  .grid:not(.single) > .card .shop-groups {
+  .grid:not(.single) > .card .shop-groups,
+  .grid:not(.single) > .card .farm-plots:not(:has(> li.empty)) {
     max-height: 260px;
     overflow-y: auto;
   }
@@ -433,6 +436,8 @@
     .grid > [data-domain="mood"],
     .grid > [data-domain="focus"],
     .grid > [data-domain="shop"],
+    .grid > [data-domain="farm"],
+    .grid > [data-domain="pet"],
     .grid > [data-domain="shelf"] { grid-column: span 6; }
   }
   @media (max-width: 760px) {
@@ -1592,6 +1597,104 @@
     white-space: nowrap;
   }
 
+  /* --- Ферма (specs/028, фаза 2) ---
+     Ряд остатков — chips по тому же языку, что .topstats/.rewards-label:
+     число + подпись, не таблица. */
+  .farm-supplies {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    margin-bottom: 10px;
+  }
+  .farm-supply {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+  .farm-supply b {
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .farm-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  /* Чекбокс "с удобрением" — часть ряда действий, не отдельная форма:
+     это модификатор посадки, а не независимое решение. */
+  .farm-fertilizer-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.82rem;
+    color: var(--muted);
+  }
+  .farm-plots { list-style: none; margin: 0; padding: 0; }
+  .farm-plot {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .farm-plot:last-child { border-bottom: none; }
+  .farm-plot-body { flex: 1; min-width: 0; }
+  .farm-plot-label { font-weight: 600; font-size: 0.85rem; }
+  .farm-plot-bar {
+    height: 5px;
+    border-radius: 3px;
+    background: var(--border);
+    margin-top: 4px;
+    overflow: hidden;
+  }
+  .farm-plot-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+  }
+  .farm-plot.ready .farm-plot-bar-fill { background: var(--ok); }
+  .farm-harvest-btn { font-size: 0.85rem; padding: 6px 12px; white-space: nowrap; }
+  .farm-harvest-btn:disabled {
+    background: var(--border);
+    color: var(--muted);
+    cursor: default;
+    filter: none;
+  }
+
+  /* --- Питомец (specs/028, фаза 3) ---
+     Состояние читается ЦВЕТОМ полос и подписи, не только текстом: тот
+     же принцип, что у .focus-bar-fill (color-mix по проценту), но здесь
+     дискретные состояния, а не непрерывная шкала, поэтому подписи вместо
+     градиента. */
+  .pet-state-line {
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .pet-state-line[data-state="healthy"] { color: var(--ok); }
+  .pet-state-line[data-state="hungry"] { color: var(--accent); }
+  .pet-state-line[data-state="sick"] { color: var(--overdue); }
+  .pet-state-line[data-state="dead"] { color: var(--muted); }
+  .pet-bars { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+  .pet-bar-row { display: flex; align-items: center; gap: 8px; font-size: 0.78rem; color: var(--muted); }
+  .pet-bar-row span:first-child { width: 64px; flex-shrink: 0; }
+  .pet-bar {
+    flex: 1;
+    height: 7px;
+    border-radius: 4px;
+    background: var(--border);
+    overflow: hidden;
+  }
+  .pet-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s ease; }
+  .pet-bar-fill.hunger { background: var(--overdue); }
+  .pet-bar-fill.mood { background: var(--accent); }
+  .pet-meta { color: var(--muted); }
+  .pet-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+
   /* --- Палитра оформления, открывается за монеты --- */
   .theme-picker {
     display: flex;
@@ -2172,6 +2275,13 @@
      размер строки списка, а не размер формы: «Купить» стоит в ряду
      товара, а не под ним. Измерено getBoundingClientRect, не на глаз. */
   :root[data-skin="groovy"] .shop-buy {
+    min-height: 32px;
+    padding: 0 14px;
+    font-size: 13px;
+  }
+  /* Тот же баг ещё раз (см. .shop-buy выше) — «Собрать» в строке грядки
+     Фермы попала в тот же список компактных кнопок в списке. */
+  :root[data-skin="groovy"] .farm-harvest-btn {
     min-height: 32px;
     padding: 0 14px;
     font-size: 13px;
@@ -2908,6 +3018,11 @@
     padding: 0 13px;
     font-size: 13px;
   }
+  :root[data-skin="graffiti"] .farm-harvest-btn {
+    min-height: 30px;
+    padding: 0 13px;
+    font-size: 13px;
+  }
 
   :root[data-skin="graffiti"] ul.item-list li {
     background: var(--paper-warm);
@@ -3132,6 +3247,8 @@
     <button type="button" class="tab" data-tab="mood">Настроение</button>
     <button type="button" class="tab" data-tab="focus">Фокус</button>
     <button type="button" class="tab" data-tab="shop">Магазин</button>
+    <button type="button" class="tab" data-tab="farm">Ферма</button>
+    <button type="button" class="tab" data-tab="pet">Питомец</button>
   </nav>
 
   <!-- Счётчики продублированы ЗНАЧЕНИЕМ, а не узлом: на исходных
@@ -3350,8 +3467,25 @@
       <span class="shop-balance-label">монет доступно</span>
       <span class="shop-spent" id="shopSpent"></span>
     </div>
-    <p class="meta shop-note">Ферма и питомец — следующим заходом; купленное сохранится.</p>
+    <p class="meta shop-note">Купленные семена и ускорители ждут на Ферме, украшения — у Питомца.</p>
     <div class="shop-groups" id="shopGroups"></div>
+  </section>
+
+  <!-- Ферма: семена/ускорители из Магазина превращаются в сено для
+       Питомца (specs/028, фаза 2). -->
+  <section class="card" data-domain="farm">
+    <h2 data-icon="farm">Ферма</h2>
+    <div class="farm-supplies" id="farmSupplies"></div>
+    <div class="farm-actions" id="farmActions"></div>
+    <ul class="farm-plots" id="farmPlots"></ul>
+  </section>
+
+  <!-- Питомец: кормится сеном с Фермы, состояние — чистая функция
+       времени с последнего кормления, без фонового тика (specs/028,
+       фаза 3). -->
+  <section class="card" data-domain="pet">
+    <h2 data-icon="pet">Питомец</h2>
+    <div id="petBody"></div>
   </section>
 
   <section class="card" data-domain="tasks">
@@ -3888,6 +4022,14 @@ const ICON = {
   // people выше — свой пиксельный/контурный вариант не оправдан ради
   // одной карточки.
   focus: '<path d="M12 3.4a8.6 8.6 0 1 0 0 17.2 8.6 8.6 0 0 0 0-17.2zm0 3a5.6 5.6 0 1 1 0 11.2 5.6 5.6 0 0 1 0-11.2z" fill-rule="evenodd"/><path d="M12.9 8.4h-1.8v4.6l3.6 2.1.9-1.5-2.7-1.6z"/>',
+  // Ферма (specs/028, фаза 2) — силуэт амбара, дверной проём вырезан тем
+  // же приёмом, что дырка иллюминатора у rocket выше (вогнутый контур,
+  // не отдельная фигура — держит fill-rule по умолчанию без дырок).
+  farm: '<path d="M12 3.4L3.6 10.6V20.6H9.4V13.4H14.6V20.6H20.4V10.6Z"/>',
+  // Питомец (specs/028, фаза 3) — след лапы: четыре пальца-круга и
+  // подушечка-эллипс, тот же язык, что coins (круг+прямоугольник) —
+  // простые примитивы вместо одного сложного контура.
+  pet: '<circle cx="6" cy="9" r="1.8"/><circle cx="10.2" cy="6.4" r="1.8"/><circle cx="13.8" cy="6.4" r="1.8"/><circle cx="18" cy="9" r="1.8"/><ellipse cx="12" cy="15.5" rx="5.6" ry="4.4"/>',
   // Трекер настроения (specs/019-mood-tracker.md): сплошное лицо +
   // светлые прорези глаз/улыбки поверх — тот же приём, что у flameCore
   // (белая деталь fill-opacity поверх сплошной заливки).
@@ -4441,12 +4583,273 @@ document.getElementById("shopGroups").addEventListener("click", async (e) => {
       body: JSON.stringify({ telegram_user_id: Number(id), item_id: button.dataset.itemId }),
     });
     renderShop();
+    // Купленное семя/ускоритель сразу доступно на Ферме.
+    loadFarm().catch(() => {});
   } catch (err) {
     // 409 «не хватает монет» / «уже куплено» — обычный ответ сервера, а
     // не сбой: показываем текстом и возвращаем кнопку в рабочее
     // состояние (renderShop сам решит, доступна ли она).
     showToast(String(err.message || err));
     renderShop();
+  }
+});
+
+// --- Ферма (specs/028, фаза 2) ----------------------------------------
+// Грядки растут сутки+ — обратный отсчёт нужен в часах/минутах, не в
+// mm:ss (formatElapsed выше рассчитан на минуты фокус-сессии).
+function formatCountdown(ms) {
+  const totalMinutes = Math.max(0, Math.ceil(ms / 60000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours <= 0) return `${minutes} мин`;
+  return `${hours} ч ${minutes} мин`;
+}
+
+let lastFarm = null;
+
+function renderFarm() {
+  const supplies = document.getElementById("farmSupplies");
+  const actions = document.getElementById("farmActions");
+  const plots = document.getElementById("farmPlots");
+  if (!lastFarm) {
+    supplies.innerHTML = "";
+    actions.innerHTML = "";
+    plots.innerHTML = '<li class="empty">Укажите свой Telegram ID в настройках, чтобы открыть ферму.</li>';
+    return;
+  }
+
+  supplies.innerHTML = `
+    <span class="farm-supply">🍀 семян <b>${lastFarm.available_seeds}</b></span>
+    <span class="farm-supply">🌱 удобрений <b>${lastFarm.available_fertilizer}</b></span>
+    <span class="farm-supply">🌧 дождя <b>${lastFarm.available_rain}</b></span>
+    <span class="farm-supply">🌾 сена <b>${lastFarm.available_hay}</b></span>`;
+
+  // Чекбокс "с удобрением" не переживает перерисовку строки действий
+  // (innerHTML целиком), поэтому его состояние читаем ДО перезаписи и
+  // переносим обратно — иначе отмеченная галка сбрасывалась бы каждый
+  // раз, когда обновлялся остаток семян после соседнего действия.
+  const wasChecked = document.getElementById("farmFertilizerToggle")?.checked || false;
+  actions.innerHTML = `
+    <button type="button" class="secondary" id="farmPlantBtn" ${lastFarm.available_seeds <= 0 ? "disabled" : ""}>🍀 Посадить</button>
+    <label class="farm-fertilizer-toggle">
+      <input type="checkbox" id="farmFertilizerToggle" ${lastFarm.available_fertilizer <= 0 ? "disabled" : ""} />
+      с удобрением (${lastFarm.available_fertilizer})
+    </label>
+    <button type="button" class="secondary" id="farmRainBtn" ${lastFarm.available_rain <= 0 || lastFarm.plots.length === 0 ? "disabled" : ""}>🌧 Полить всё</button>`;
+  const toggle = document.getElementById("farmFertilizerToggle");
+  if (toggle && !toggle.disabled) toggle.checked = wasChecked;
+
+  plots.innerHTML = lastFarm.plots.length
+    ? lastFarm.plots.map(farmPlotRow).join("")
+    : '<li class="empty">Грядок нет — посадите первую.</li>';
+}
+
+function farmPlotRow(plot) {
+  const plantedAt = new Date(plot.planted_at).getTime();
+  const readyAt = new Date(plot.ready_at).getTime();
+  const totalMs = Math.max(1, readyAt - plantedAt);
+  const remainingMs = readyAt - Date.now();
+  const pct = Math.max(0, Math.min(100, 100 - (remainingMs / totalMs) * 100));
+  const label = plot.fertilized ? "🍀🌱 Грядка" : "🍀 Грядка";
+  const status = plot.ready
+    ? "Готова к сбору"
+    : `осталось ${formatCountdown(remainingMs)}`;
+  const action = plot.ready
+    ? `<button type="button" class="farm-harvest-btn" data-plot-id="${plot.id}">Собрать (+${plot.hay_yield} 🌾)</button>`
+    : "";
+  return `<li class="farm-plot${plot.ready ? " ready" : ""}" data-ready-at="${plot.ready_at}" data-planted-at="${plot.planted_at}">
+    <div class="farm-plot-body">
+      <div class="farm-plot-label">${label} <span class="meta">— ${status}</span></div>
+      <div class="farm-plot-bar"><div class="farm-plot-bar-fill" style="width:${pct}%"></div></div>
+    </div>
+    ${action}
+  </li>`;
+}
+
+// Обратный отсчёт и заполнение полосы обновляются тем же общим тикером,
+// что фокус-сессия (registerTicker) — но грядка не переходит сама в
+// "готова" визуально без перерисовки строки целиком (кнопка "Собрать"
+// появляется только через renderFarm), поэтому по достижении 0 тикер
+// один раз перезагружает состояние с сервера.
+let farmReloadPending = false;
+function tickFarmPlots() {
+  const rows = document.querySelectorAll(".farm-plot[data-ready-at]:not(.ready)");
+  if (!rows.length) return;
+  let anyReady = false;
+  rows.forEach((row) => {
+    const readyAt = new Date(row.dataset.readyAt).getTime();
+    const plantedAt = new Date(row.dataset.plantedAt).getTime();
+    const remainingMs = readyAt - Date.now();
+    if (remainingMs <= 0) { anyReady = true; return; }
+    const totalMs = Math.max(1, readyAt - plantedAt);
+    const pct = Math.max(0, Math.min(100, 100 - (remainingMs / totalMs) * 100));
+    const fill = row.querySelector(".farm-plot-bar-fill");
+    if (fill) fill.style.width = pct + "%";
+    const statusEl = row.querySelector(".meta");
+    if (statusEl) statusEl.textContent = `— осталось ${formatCountdown(remainingMs)}`;
+  });
+  if (anyReady && !farmReloadPending) {
+    farmReloadPending = true;
+    loadFarm().finally(() => { farmReloadPending = false; });
+  }
+}
+registerTicker(tickFarmPlots);
+
+async function loadFarm() {
+  const id = getUserId();
+  if (!id) { lastFarm = null; renderFarm(); return; }
+  lastFarm = await api(`/farm/state?telegram_user_id=${encodeURIComponent(id)}`);
+  renderFarm();
+}
+
+document.getElementById("farmActions").addEventListener("click", async (e) => {
+  const id = requireUserId();
+  if (e.target.id === "farmPlantBtn") {
+    const useFertilizer = document.getElementById("farmFertilizerToggle")?.checked || false;
+    e.target.disabled = true;
+    try {
+      lastFarm = await api("/farm/plant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ telegram_user_id: Number(id), use_fertilizer: useFertilizer }),
+      });
+      renderFarm();
+    } catch (err) {
+      showToast(String(err.message || err));
+      renderFarm();
+    }
+  } else if (e.target.id === "farmRainBtn") {
+    e.target.disabled = true;
+    try {
+      lastFarm = await api("/farm/rain", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ telegram_user_id: Number(id) }),
+      });
+      renderFarm();
+    } catch (err) {
+      showToast(String(err.message || err));
+      renderFarm();
+    }
+  }
+});
+
+document.getElementById("farmPlots").addEventListener("click", async (e) => {
+  const button = e.target.closest(".farm-harvest-btn");
+  if (!button) return;
+  const id = requireUserId();
+  button.disabled = true;
+  try {
+    lastFarm = await api(`/farm/plots/${button.dataset.plotId}/harvest`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ telegram_user_id: Number(id) }),
+    });
+    renderFarm();
+    // Сено с урожая сразу доступно питомцу — перерисовываем и его карточку.
+    loadPet().catch(() => {});
+  } catch (err) {
+    showToast(String(err.message || err));
+    renderFarm();
+  }
+});
+
+// --- Питомец (specs/028, фаза 3) --------------------------------------
+const PET_STATE_LABEL = {
+  healthy: "Здоров",
+  hungry: "Проголодался",
+  sick: "Болен",
+  dead: "Погиб",
+};
+
+let lastPet = null;
+
+function renderPet() {
+  const body = document.getElementById("petBody");
+  if (!lastPet) {
+    body.innerHTML = '<p class="meta">Укажите свой Telegram ID в настройках, чтобы завести питомца.</p>';
+    return;
+  }
+  if (!lastPet.exists) {
+    body.innerHTML = `
+      <p class="meta">Питомца пока нет.</p>
+      <div class="pet-actions"><button type="button" id="petAdoptBtn">🐾 Завести питомца</button></div>`;
+    return;
+  }
+
+  const nextAt = lastPet.next_threshold_at ? new Date(lastPet.next_threshold_at).getTime() : null;
+  const nextLabel = {
+    healthy: "проголодается",
+    hungry: "заболеет",
+    sick: "погибнет",
+  }[lastPet.state];
+  const countdown = nextAt
+    ? `<p class="meta pet-meta" id="petCountdown" data-next-at="${lastPet.next_threshold_at}">${nextLabel} через ${formatCountdown(nextAt - Date.now())}</p>`
+    : "";
+  const deathsNote = lastPet.deaths_count > 0
+    ? `<p class="meta pet-meta">Пережито смертей: ${lastPet.deaths_count}</p>`
+    : "";
+
+  const actions = lastPet.state === "dead"
+    ? '<button type="button" id="petReviveBtn">⚰ Похоронить и завести нового</button>'
+    : `<button type="button" id="petFeedBtn">🌾 Покормить (−5 сена)</button>`;
+
+  body.innerHTML = `
+    <div class="pet-state-line" data-state="${lastPet.state}">${PET_STATE_LABEL[lastPet.state]}</div>
+    <div class="pet-bars">
+      <div class="pet-bar-row"><span>Голод</span><div class="pet-bar"><div class="pet-bar-fill hunger" style="width:${lastPet.hunger}%"></div></div><span>${lastPet.hunger}%</span></div>
+      <div class="pet-bar-row"><span>Настроение</span><div class="pet-bar"><div class="pet-bar-fill mood" style="width:${lastPet.mood}%"></div></div><span>${lastPet.mood}%</span></div>
+    </div>
+    ${countdown}
+    ${deathsNote}
+    <div class="pet-actions">${actions}</div>`;
+}
+
+let petReloadPending = false;
+function tickPetCountdown() {
+  const el = document.getElementById("petCountdown");
+  if (!el) return;
+  const nextAt = new Date(el.dataset.nextAt).getTime();
+  const remainingMs = nextAt - Date.now();
+  if (remainingMs <= 0) {
+    if (!petReloadPending) {
+      petReloadPending = true;
+      loadPet().finally(() => { petReloadPending = false; });
+    }
+    return;
+  }
+  const label = { healthy: "проголодается", hungry: "заболеет", sick: "погибнет" }[lastPet?.state];
+  if (label) el.textContent = `${label} через ${formatCountdown(remainingMs)}`;
+}
+registerTicker(tickPetCountdown);
+
+async function loadPet() {
+  const id = getUserId();
+  if (!id) { lastPet = null; renderPet(); return; }
+  lastPet = await api(`/pet/status?telegram_user_id=${encodeURIComponent(id)}`);
+  renderPet();
+}
+
+document.getElementById("petBody").addEventListener("click", async (e) => {
+  const action = e.target.id === "petAdoptBtn" ? "adopt"
+    : e.target.id === "petFeedBtn" ? "feed"
+    : e.target.id === "petReviveBtn" ? "revive"
+    : null;
+  if (!action) return;
+  const id = requireUserId();
+  e.target.disabled = true;
+  try {
+    lastPet = await api(`/pet/${action}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ telegram_user_id: Number(id) }),
+    });
+    renderPet();
+    // Кормление тратит сено с фермы — соседняя карточка должна это увидеть.
+    if (action === "feed") loadFarm().catch(() => {});
+  } catch (err) {
+    showToast(String(err.message || err));
+    renderPet();
   }
 });
 
@@ -7059,7 +7462,7 @@ const TAB_KEY = "lifeos_tab";
 // семи; календарь на ней намеренно отсутствует, он занимал весь верх
 // экрана и ломал композицию.
 const TAB_CARDS = {
-  dash: ["rewards", "shop", "tasks", "habits", "goals", "weekly", "finance", "contacts", "mood", "focus", "shelf", "digest"],
+  dash: ["rewards", "shop", "farm", "pet", "tasks", "habits", "goals", "weekly", "finance", "contacts", "mood", "focus", "shelf", "digest"],
   tasks: ["tasks"],
   habits: ["habits"],
   goals: ["goals"],
@@ -7071,6 +7474,8 @@ const TAB_CARDS = {
   mood: ["mood"],
   focus: ["focus"],
   shop: ["shop"],
+  farm: ["farm"],
+  pet: ["pet"],
 };
 
 function getActiveTab() {
@@ -7166,6 +7571,8 @@ async function loadAll() {
     loadFocus(),
     loadPersona(),
     loadShop(),
+    loadFarm(),
+    loadPet(),
   ]);
   // Достижения зависят от данных всех карточек разом — считаем после
   // того, как все они точно загрузились, а не по одной.
