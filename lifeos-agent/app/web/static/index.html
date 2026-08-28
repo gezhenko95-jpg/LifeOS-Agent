@@ -1672,12 +1672,13 @@
      проценту), но здесь дискретные состояния, а не непрерывная шкала,
      поэтому подписи вместо градиента. */
 
-  /* Портрет — параметризованный SVG-силуэт (тот же приём, что
-     moodFaceSvg: контур currentColor, заливка только у зрачков, форма
-     глаз/рта меняется по состоянию, не 4 разные иллюстрации). Один
-     силуэт на все скины — характер скина уже несёт цвет (--ok/--accent/
-     --overdue/--muted того же скина), лишняя вариация только раздула бы
-     объём ради непроверенной визуально отдачи. */
+  /* Портрет — параметризованный SVG-силуэт слайма (тот же приём
+     переключения по состоянию, что moodFaceSvg, форма выбрана
+     владельцем из семи набросков 28.08 — глянцевая капля, не
+     контурная мордочка). Один силуэт на все скины — характер скина
+     уже несёт цвет (--ok/--accent/--overdue/--muted того же скина),
+     лишняя вариация только раздула бы объём ради непроверенной
+     визуально отдачи. */
   .pet-portrait {
     position: relative;
     width: 116px;
@@ -1687,14 +1688,40 @@
   .pet-mascot {
     width: 100%;
     height: 100%;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.15;
-    stroke-linecap: round;
-    stroke-linejoin: round;
     /* Пивот ближе к "ногам", а не к центру — покачивание/подпрыгивание
        выглядит так, будто питомец стоит на месте, а не летает по кругу. */
     transform-origin: 50% 78%;
+  }
+  /* Тело — полупрозрачная заливка ЖИВЫМ цветом состояния (не пресет,
+     цвет наследуется от .pet-portrait[data-state] ниже), контур —
+     тот же цвет, затемнённый через color-mix. Один currentColor не
+     развёл бы заливку и контур на два тона — отсюда явный цвет-микс,
+     а не просто "stroke: currentColor", как раньше у контурной версии. */
+  .pet-mascot .pet-blob {
+    fill: currentColor;
+    fill-opacity: 0.82;
+    stroke: color-mix(in srgb, currentColor 60%, black 40%);
+    stroke-width: 1.1;
+  }
+  .pet-mascot .pet-highlight {
+    fill: #fff;
+    fill-opacity: 0.42;
+  }
+  .pet-mascot .pet-pupil {
+    fill: color-mix(in srgb, currentColor 45%, black 55%);
+  }
+  .pet-mascot .pet-face-line {
+    fill: none;
+    stroke: color-mix(in srgb, currentColor 45%, black 55%);
+    stroke-width: 1.1;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  /* Капля пота (только sick) — светлый акцент поверх тела, не тон
+     состояния: должна читаться как "деталь", не как часть силуэта. */
+  .pet-mascot .pet-sweat {
+    fill: #fff;
+    fill-opacity: 0.75;
   }
   .pet-portrait[data-state="healthy"] .pet-mascot { color: var(--ok); }
   .pet-portrait[data-state="hungry"] .pet-mascot { color: var(--accent); }
@@ -4887,34 +4914,37 @@ const PET_STATE_LABEL = {
 };
 
 // Параметризованный силуэт (тот же приём, что moodFaceSvg выше): форма
-// глаз/рта меняется по состоянию, контур один и тот же, currentColor
-// следует за цветом состояния из CSS ([data-state] на .pet-portrait).
-// Уши и тело — фиксированная геометрия, не переизобретаются на каждое
-// состояние, иначе это были бы четыре разные иллюстрации, а не один
-// силуэт с четырьмя лицами.
+// глаз/рта меняется по состоянию, тело-капля и блик — фиксированная
+// геометрия, не переизобретаются на каждое состояние (иначе это были
+// бы четыре разные иллюстрации, а не один силуэт с четырьмя лицами).
+// Слайм выбран владельцем из семи набросков (28.08) — глянцевая капля
+// вместо контурной мордочки-кота: .pet-blob/.pet-pupil/.pet-face-line
+// красятся через color-mix(currentColor) в CSS, не инлайновым
+// fill="currentColor" — телу нужна полупрозрачная заливка ЖИВОГО цвета
+// состояния, а деталям лица (глаза/рот) более тёмный оттенок ТОГО ЖЕ
+// цвета для контраста на нём, одного currentColor на это не хватает.
 function petMascotSvg(state) {
   let eyes, mouth, extra = "";
   if (state === "healthy") {
-    eyes = '<circle cx="9" cy="12.4" r="1.3" fill="currentColor" stroke="none"/><circle cx="15" cy="12.4" r="1.3" fill="currentColor" stroke="none"/>';
-    mouth = '<path d="M9 15.6Q12 18.2 15 15.6"/>';
+    eyes = '<circle class="pet-pupil" cx="9" cy="13.2" r="1.3"/><circle class="pet-pupil" cx="15" cy="13.2" r="1.3"/>';
+    mouth = '<path class="pet-face-line" d="M9.2 16.4Q12 18.6 14.8 16.4"/>';
   } else if (state === "hungry") {
     // Приподнятые брови + маленький "о"-рот — просящее выражение, не грустное.
-    eyes = '<path d="M7.2 10.4Q9 8.8 10.8 10.4M13.2 10.4Q15 8.8 16.8 10.4"/><circle cx="9" cy="12.8" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="12.8" r="1.1" fill="currentColor" stroke="none"/>';
-    mouth = '<circle cx="12" cy="16.6" r="1.3" fill="currentColor" stroke="none"/>';
+    eyes = '<path class="pet-face-line" d="M7.2 11Q9 9.4 10.8 11M13.2 11Q15 9.4 16.8 11"/><circle class="pet-pupil" cx="9" cy="13.4" r="1.1"/><circle class="pet-pupil" cx="15" cy="13.4" r="1.1"/>';
+    mouth = '<circle class="pet-pupil" cx="12" cy="17" r="1.3"/>';
   } else if (state === "sick") {
-    // Полуприкрытые (дугой вниз) глаза + волнистый рот + пара капель пота.
-    eyes = '<path d="M7.4 11.4Q9 12.8 10.6 11.4M13.4 11.4Q15 12.8 16.6 11.4"/>';
-    mouth = '<path d="M8.8 16.8Q10.4 15.6 12 16.8Q13.6 18 15.2 16.8"/>';
-    extra = '<path d="M16.4 7.6Q17.4 9 16.4 9.8Q15.4 9 16.4 7.6Z" fill="currentColor" stroke="none" opacity="0.7"/>';
+    // Полуприкрытые (дугой вниз) глаза + волнистый рот + капля пота.
+    eyes = '<path class="pet-face-line" d="M7.4 12Q9 13.4 10.6 12M13.4 12Q15 13.4 16.6 12"/>';
+    mouth = '<path class="pet-face-line" d="M8.8 17.2Q10.4 16 12 17.2Q13.6 18.4 15.2 17.2"/>';
+    extra = '<path class="pet-sweat" d="M16.6 5.8Q17.6 7.2 16.6 8Q15.6 7.2 16.6 5.8Z"/>';
   } else {
     // dead — крестики вместо глаз, плоский рот.
-    eyes = '<path d="M7.4 10.6L10.2 13.4M10.2 10.6L7.4 13.4M13.8 10.6L16.6 13.4M16.6 10.6L13.8 13.4"/>';
-    mouth = '<path d="M9 16.4L15 16.4"/>';
+    eyes = '<path class="pet-face-line" d="M7.4 11.2L10.2 14M10.2 11.2L7.4 14M13.8 11.2L16.6 14M16.6 11.2L13.8 14"/>';
+    mouth = '<path class="pet-face-line" d="M9 17L15 17"/>';
   }
   return `<svg class="pet-mascot" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M6.2 7L4.4 3L8.6 5.4Z"/>
-    <path d="M17.8 7L19.6 3L15.4 5.4Z"/>
-    <ellipse cx="12" cy="13.8" rx="8.2" ry="7.2"/>
+    <path class="pet-blob" d="M12 3C17 3 20.5 9 20.5 14.5C20.5 19.5 16.5 21.5 12 21.5C7.5 21.5 3.5 19.5 3.5 14.5C3.5 9 7 3 12 3Z"/>
+    <ellipse class="pet-highlight" cx="9" cy="8.3" rx="2.2" ry="1.3"/>
     ${eyes}${mouth}${extra}
   </svg>`;
 }
