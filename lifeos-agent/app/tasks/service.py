@@ -13,6 +13,8 @@ from app.core.ownership import owned_or_none
 from app.crm.repository import ContactRepository
 from app.goals.repository import GoalRepository
 from app.habits.repository import HabitRepository
+from app.shop.models import TASK_REWARD
+from app.shop.repository import ShopRepository
 from app.tasks.models import Task, TaskComment
 from app.tasks.repository import TaskCommentRepository, TaskRepository
 
@@ -26,6 +28,12 @@ COMPLETED = "completed"
 
 _PRIORITY_ORDER = {"high": 0, "normal": 1, "low": 2}
 _RECURRENCE_INTERVALS = {"daily", "weekly", "monthly"}
+
+# Монеты за завершённую задачу (specs/030) — вес по приоритету, единственному
+# измерению важности, которое уже есть на Task. Дедлайн намеренно не
+# учитывается (усложнение без явного запроса владельца — приоритет уже
+# даёт нужный сигнал).
+TASK_REWARD_COINS = {"low": 2, "normal": 4, "high": 7}
 
 
 def _advance_date(due_date: datetime, recurrence: str) -> datetime:
@@ -54,6 +62,7 @@ class TaskService:
         contact_repository: Optional[ContactRepository] = None,
         habit_repository: Optional[HabitRepository] = None,
         goal_repository: Optional[GoalRepository] = None,
+        shop_repository: Optional[ShopRepository] = None,
     ) -> None:
         self._repository = repository
         # Опционально (как ai_client у ConversationEngine) — валидирует
@@ -68,6 +77,10 @@ class TaskService:
         # goal_repository — тот же приём для goal_id (живая проверка 25.08:
         # "в цели тоже возможность связывать цель с задачей").
         self._goals = goal_repository
+        # shop_repository — монеты за завершение (specs/030). Без него
+        # задачи завершаются точно как раньше, просто без начисления —
+        # тот же опциональный composite-приём, что у трёх соседей выше.
+        self._shop = shop_repository
 
     async def create_task(
         self,
@@ -283,6 +296,9 @@ class TaskService:
         saved = await self._repository.save(task)
         if was_active and status == COMPLETED:
             await self._maybe_create_next_occurrence(saved)
+        await self._maybe_award_completion_coins(
+            saved, is_completion=was_active and status == COMPLETED
+        )
         return saved
 
     async def delete_task(self, telegram_user_id: int, task_id: int) -> Optional[Task]:
@@ -318,7 +334,37 @@ class TaskService:
         task.completed_at = datetime.now(timezone.utc)
         saved = await self._repository.save(task)
         await self._maybe_create_next_occurrence(saved)
+        # matches всегда активные (find_active_by_title), значит это
+        # всегда переход active → completed — is_completion не нужно
+        # вычислять условно, в отличие от update_task.
+        await self._maybe_award_completion_coins(saved, is_completion=True)
         return saved
+
+    async def _maybe_award_completion_coins(
+        self, task: Task, is_completion: bool
+    ) -> None:
+        """Монеты за завершение (specs/030) — побочный, не персистящийся
+        атрибут `task.reward_coins` (тот же приём, что `reward_coins` у
+        FocusSession, specs/029): вызывающий код читает его через
+        getattr, если хочет показать сумму, но менять сигнатуру
+        update_task/complete_task_by_title ради этого не пришлось.
+        0 — не начислено (нет shop_repository, это не завершение, или
+        это подзадача, см. ниже)."""
+        task.reward_coins = 0
+        if self._shop is None or not is_completion:
+            return
+        if task.parent_id is not None:
+            # Подзадачи не награждаются — иначе выгоднее дробить одну
+            # содержательную задачу на несколько подзадач, чем закрывать
+            # её целиком (та же критика Todoist Karma, см. specs/029).
+            return
+        reward = TASK_REWARD_COINS.get(task.priority, TASK_REWARD_COINS["normal"])
+        await self._shop.add_transaction(
+            telegram_user_id=task.telegram_user_id,
+            amount=reward,
+            reason=TASK_REWARD,
+        )
+        task.reward_coins = reward
 
     async def _maybe_create_next_occurrence(self, task: Task) -> None:
         """Если задача повторяющаяся — создать следующее вхождение с

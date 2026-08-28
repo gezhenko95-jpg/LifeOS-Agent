@@ -45,6 +45,7 @@ from app.scheduler.evening_reflection import build_evening_reflection_prompt
 from app.scheduler.finance_report import build_finance_report
 from app.scheduler.nudges import build_nudges
 from app.scheduler.persona_nudges import find_nudge_candidate, generate_nudge_text
+from app.scheduler.pet_adventures import generate_adventure_text
 from app.scheduler.weekly_digest import build_weekly_digest
 from app.tasks.service import TaskService
 from app.telegram.keyboards import build_habits_message, build_mood_prompt_keyboard
@@ -105,6 +106,34 @@ async def _maybe_append_persona_nudge(
 
     await assistant_service.record_nudge_sent(telegram_user_id, trigger_key)
     return f"{text}\n\n{nudge_text}"
+
+
+async def _maybe_append_pet_adventure(
+    session: AsyncSession,
+    ai_client: AIClient | None,
+    telegram_user_id: int,
+    text: str,
+) -> str:
+    """ "Приключение" питомца (specs/030) — довесок к вечернему чек-ину,
+    тот же приём, что и персонаж-нэджи выше (не отдельная джоба). Тихо
+    возвращает text без изменений, если сегодня нет питомца/он не
+    покормлен/уже было приключение/AI недоступен/не ответил."""
+    if ai_client is None:
+        return text
+
+    pet_service = build_pet_service(session)
+    candidate = await pet_service.maybe_start_adventure(telegram_user_id)
+    if candidate is None:
+        return text
+
+    persona = await build_assistant_service(session).get_persona(telegram_user_id)
+    story = await generate_adventure_text(ai_client, persona)
+    if not story:
+        return text
+
+    await pet_service.record_adventure(telegram_user_id, candidate.reward_coins)
+    reward_line = f" (+{candidate.reward_coins} 🪙)" if candidate.reward_coins else ""
+    return f"{text}\n\n🐾 {story}{reward_line}"
 
 
 async def send_morning_briefing_job(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -280,6 +309,9 @@ async def send_evening_checkin_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 
         text = await _maybe_append_persona_nudge(
             session, ai_client, telegram_user_id, habit_service, task_service, text
+        )
+        text = await _maybe_append_pet_adventure(
+            session, ai_client, telegram_user_id, text
         )
 
     await context.bot.send_message(

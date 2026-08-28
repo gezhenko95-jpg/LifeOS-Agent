@@ -10,7 +10,7 @@ app/scheduler/finance_report.py) только формулирует фразу 
 
 import math
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from app.core.ownership import owned_or_none
@@ -312,6 +312,23 @@ class PayoffPlan:
         return self.months_current - self.months_with_extra
 
 
+@dataclass
+class DebtPriority:
+    """Один долг в автоматическом порядке приоритета (specs/030) — с
+    человекочитаемым обоснованием, а не просто числом: владелец должен
+    понимать ПОЧЕМУ система советует именно этот долг, не только что."""
+
+    debt: Debt
+    rank: int
+    reason: str
+
+
+# Долг со сроком в пределах этого окна — срочность важнее психологии
+# снежного кома (specs/030): просрочка стоит реальных денег/истории,
+# маленький остаток без близкого срока подождёт.
+_DUE_SOON_DAYS = 30
+
+
 class DebtService:
     """Долги/задолженности (specs/017-finance.md, довесок). Отдельный
     сервис от FinanceService (ADR-005) — своя модель, свой жизненный
@@ -448,6 +465,55 @@ class DebtService:
         return PayoffPlan(
             months_current=months_current, months_with_extra=months_with_extra
         )
+
+    async def rank_by_priority(self, telegram_user_id: int) -> list[DebtPriority]:
+        """С какого долга начать (specs/030) — автоматически, без выбора
+        стратегии владельцем. `Debt` не хранит процентную ставку (см.
+        PayoffPlan), поэтому настоящая "лавина" (по проценту) невозможна
+        — вместо неё два уровня: срок платежа, если он скоро, иначе
+        снежный ком (наименьший остаток первым). Закрытые долги
+        (remaining_amount <= 0) не участвуют — приоритезировать нечего."""
+        debts = [
+            d
+            for d in await self._repository.list_by_user(telegram_user_id)
+            if d.remaining_amount > 0
+        ]
+        now = datetime.now(timezone.utc)
+        soon = now + timedelta(days=_DUE_SOON_DAYS)
+
+        def _due_soon(debt: Debt) -> bool:
+            if debt.due_date is None:
+                return False
+            due = (
+                debt.due_date
+                if debt.due_date.tzinfo
+                else debt.due_date.replace(tzinfo=timezone.utc)
+            )
+            return due <= soon
+
+        urgent = sorted(
+            (d for d in debts if _due_soon(d)),
+            key=lambda d: d.due_date,
+        )
+        rest = sorted(
+            (d for d in debts if not _due_soon(d)),
+            key=lambda d: d.remaining_amount,
+        )
+
+        ranked: list[DebtPriority] = []
+        for rank, debt in enumerate(urgent, start=1):
+            ranked.append(
+                DebtPriority(debt=debt, rank=rank, reason="срок платежа скоро")
+            )
+        for debt in rest:
+            ranked.append(
+                DebtPriority(
+                    debt=debt,
+                    rank=len(ranked) + 1,
+                    reason="меньше всего осталось — быстрая победа",
+                )
+            )
+        return ranked
 
     async def delete_debt(self, telegram_user_id: int, debt_id: int) -> Optional[Debt]:
         debt = owned_or_none(

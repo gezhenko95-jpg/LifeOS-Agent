@@ -44,6 +44,7 @@ def _to_read(state: ShopState) -> ShopStateRead:
                 repeatable=entry.item.repeatable,
                 owned=entry.owned,
                 affordable=entry.affordable,
+                available_until=entry.item.available_until,
             )
             for entry in state.items
         ],

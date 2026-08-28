@@ -37,6 +37,11 @@ PURCHASE = "purchase"
 # знаковым (см. докстринг ниже). purchased_counts фильтрует по
 # reason == PURCHASE, так что этот повод не попадает в инвентарь магазина.
 FOCUS_REWARD = "focus_reward"
+# Три новых повода specs/030 — тот же принцип: начисление мимо чек-ина,
+# не попадает в purchased_counts (фильтр по reason == PURCHASE).
+PET_ADVENTURE = "pet_adventure"
+GOAL_BOSS_DEFEATED = "goal_boss_defeated"
+TASK_REWARD = "task_reward"
 
 
 class CoinTransaction(Base):

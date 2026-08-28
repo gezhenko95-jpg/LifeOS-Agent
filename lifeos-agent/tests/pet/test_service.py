@@ -50,9 +50,22 @@ class FakeShopRepository:
 
     def __init__(self, purchased: dict[str, int] | None = None) -> None:
         self._purchased = purchased or {}
+        self.transactions: list[dict] = []
 
     async def purchased_counts(self, telegram_user_id: int) -> dict[str, int]:
         return dict(self._purchased) if telegram_user_id == 1 else {}
+
+    async def add_transaction(
+        self, telegram_user_id: int, amount: int, reason: str, item_id=None
+    ) -> None:
+        self.transactions.append(
+            {
+                "telegram_user_id": telegram_user_id,
+                "amount": amount,
+                "reason": reason,
+                "item_id": item_id,
+            }
+        )
 
 
 @pytest_asyncio.fixture
@@ -435,3 +448,104 @@ async def test_equip_isolated_per_user(session):
     status2 = await service.get_status(2)
 
     assert status2.equipped_decor_item_id is None
+
+
+# --- Приключения (specs/030, по мотивам Finch) ---------------------------
+
+
+def _build_with_shop(session, hay: int = 100, purchased: dict[str, int] | None = None):
+    """Прямая копия build() выше, но возвращает и shop — новым тестам
+    нужен доступ к shop.transactions, а менять сигнатуру общего build()
+    означало бы переписывать 33 существующих вызова ради этого."""
+    farm = FakeFarmService(hay)
+    shop = FakeShopRepository(purchased)
+    return PetService(PetRepository(session), farm, shop), shop
+
+
+async def test_maybe_start_adventure_without_pet_returns_none(session):
+    service, _ = _build_with_shop(session)
+
+    result = await service.maybe_start_adventure(1)
+
+    assert result is None
+
+
+async def test_maybe_start_adventure_dead_pet_returns_none(session):
+    await _create_with_last_fed(session, DEATH_AFTER_HOURS + 1)
+    service, _ = _build_with_shop(session)
+
+    result = await service.maybe_start_adventure(1)
+
+    assert result is None
+
+
+async def test_maybe_start_adventure_not_fed_today_returns_none(session):
+    """25ч назад — здоров (< HUNGER_FULL_HOURS=48), но это точно ВЧЕРА,
+    не сегодня: 24ч+ смещение всегда пересекает полночь хотя бы раз."""
+    await _create_with_last_fed(session, 25)
+    service, _ = _build_with_shop(session)
+
+    result = await service.maybe_start_adventure(1)
+
+    assert result is None
+
+
+async def test_maybe_start_adventure_fed_today_returns_candidate(session, monkeypatch):
+    await _create_with_last_fed(session, 1)  # только что покормлен
+    service, _ = _build_with_shop(session)
+    monkeypatch.setattr("app.pet.service.random.random", lambda: 0.99)  # без бонуса
+
+    result = await service.maybe_start_adventure(1)
+
+    assert result is not None
+    assert result.state == "healthy"
+    assert result.reward_coins == 0
+
+
+async def test_maybe_start_adventure_already_today_returns_none(session):
+    await _create_with_last_fed(session, 1)
+    service, _ = _build_with_shop(session)
+    await service.record_adventure(1, reward_coins=0)
+
+    result = await service.maybe_start_adventure(1)
+
+    assert result is None
+
+
+async def test_maybe_start_adventure_bonus_roll(session, monkeypatch):
+    await _create_with_last_fed(session, 1)
+    service, _ = _build_with_shop(session)
+    monkeypatch.setattr("app.pet.service.random.random", lambda: 0.0)  # всегда бонус
+    monkeypatch.setattr("app.pet.service.random.randint", lambda lo, hi: lo)
+
+    result = await service.maybe_start_adventure(1)
+
+    assert result.reward_coins == 3  # ADVENTURE_BONUS_MIN_COINS
+
+
+async def test_record_adventure_marks_today_and_pays_reward(session):
+    await _create_with_last_fed(session, 1)
+    service, shop = _build_with_shop(session)
+
+    await service.record_adventure(1, reward_coins=5)
+
+    repo = PetRepository(session)
+    pet = await repo.get(1)
+    assert pet.last_adventure_on == datetime.now(timezone.utc).date()
+    assert shop.transactions == [
+        {
+            "telegram_user_id": 1,
+            "amount": 5,
+            "reason": "pet_adventure",
+            "item_id": None,
+        }
+    ]
+
+
+async def test_record_adventure_zero_reward_does_not_pay(session):
+    await _create_with_last_fed(session, 1)
+    service, shop = _build_with_shop(session)
+
+    await service.record_adventure(1, reward_coins=0)
+
+    assert shop.transactions == []

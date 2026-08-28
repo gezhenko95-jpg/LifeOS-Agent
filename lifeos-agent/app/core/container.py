@@ -64,12 +64,14 @@ def build_task_service(session: AsyncSession) -> TaskService:
     # живая проверка 25.08 — goal_id). Раньше прямая сборка
     # TaskService(TaskRepository(session)) в нескольких местах jobs.py/
     # handlers.py/callbacks.py (A-3) этой проверки не получала — закрыто:
-    # все восемь мест переведены на build_task_service.
+    # все восемь мест переведены на build_task_service. shop_repository —
+    # монеты за завершение задачи (specs/030), тот же приём.
     return TaskService(
         TaskRepository(session),
         ContactRepository(session),
         HabitRepository(session),
         GoalRepository(session),
+        ShopRepository(session),
     )
 
 
@@ -89,7 +91,9 @@ def build_memory_service(session: AsyncSession) -> MemoryService:
 
 
 def build_goal_service(session: AsyncSession) -> GoalService:
-    return GoalService(GoalRepository(session))
+    # Composite: награда за квест-босса (specs/030) — тот же приём, что
+    # у build_task_service выше.
+    return GoalService(GoalRepository(session), ShopRepository(session))
 
 
 def build_watchlist_service(session: AsyncSession) -> WatchlistService:

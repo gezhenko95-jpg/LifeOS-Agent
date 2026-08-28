@@ -292,3 +292,33 @@ async def test_payoff_plan_missing_debt_returns_404(client):
         "/finance/debts/9999/payoff-plan", params={"telegram_user_id": 7}
     )
     assert response.status_code == 404
+
+
+# --- Автоматический приоритет долгов (specs/030) -------------------------
+
+
+async def test_debts_priority_orders_smaller_remaining_first(client):
+    await client.post(
+        "/finance/debts",
+        json={"telegram_user_id": 8, "name": "Большой", "total_amount": 90000},
+    )
+    await client.post(
+        "/finance/debts",
+        json={"telegram_user_id": 8, "name": "Маленький", "total_amount": 5000},
+    )
+
+    response = await client.get(
+        "/finance/debts/priority", params={"telegram_user_id": 8}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert [entry["debt"]["name"] for entry in body] == ["Маленький", "Большой"]
+    assert body[0]["rank"] == 1
+    assert body[0]["reason"] == "меньше всего осталось — быстрая победа"
+
+
+async def test_debts_priority_empty_without_debts(client):
+    response = await client.get(
+        "/finance/debts/priority", params={"telegram_user_id": 9}
+    )
+    assert response.json() == []

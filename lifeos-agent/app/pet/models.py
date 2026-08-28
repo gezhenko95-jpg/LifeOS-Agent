@@ -14,9 +14,9 @@
 `deaths_count`).
 """
 
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import BigInteger, DateTime, Integer, String, func
+from sqlalchemy import BigInteger, Date, DateTime, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -71,4 +71,14 @@ class Pet(Base):
         "значение, а собственный выбор владельца среди купленного; "
         "владение проверяется на момент экипировки (app/pet/service.py), "
         "не хранится повторно здесь",
+    )
+
+    last_adventure_on: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
+        comment="Дедуп 'приключения' (specs/030, по мотивам Finch) — раз в "
+        "день, если питомец сегодня покормлен. NULL — ещё ни одного не "
+        "было. Тот же приём дедупа, что hungry_notified_at выше, только "
+        "по дате, не по моменту времени: приключение либо было сегодня, "
+        "либо нет.",
     )

@@ -149,3 +149,15 @@ class DebtRead(BaseModel):
     monthly_payment: Optional[int] = None
     next_payment_due: Optional[datetime] = None
     created_at: datetime
+
+
+class DebtPriorityRead(BaseModel):
+    """Один долг в автоматическом порядке приоритета (specs/030) —
+    собирается вручную в app/api/finance.py (DebtRead.model_validate на
+    вложенном ORM-объекте), не через model_validate(from_attributes) на
+    самом DebtPriority: проще и явнее, тот же приём, что _to_read в
+    app/api/shop.py."""
+
+    debt: DebtRead
+    rank: int
+    reason: str

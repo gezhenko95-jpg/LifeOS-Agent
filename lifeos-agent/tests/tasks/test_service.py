@@ -766,3 +766,117 @@ async def test_update_task_clear_goal(repository):
     updated = await service.update_task(1, task_id=1, clear_goal=True)
 
     assert updated.goal_id is None
+
+
+# --- Взвешенные монеты за задачи (specs/030) -----------------------------
+
+
+@pytest.fixture
+def shop_repository():
+    return AsyncMock()
+
+
+async def test_complete_task_without_shop_repository_unchanged(repository):
+    """Без shop_repository поведение как раньше — старые тесты выше не
+    ломаются."""
+    task = Task(id=1, telegram_user_id=1, title="X", status="active")
+    repository.get_by_id.return_value = task
+    service = TaskService(repository)
+
+    updated = await service.update_task(1, task_id=1, status="completed")
+
+    assert updated.reward_coins == 0
+
+
+async def test_complete_normal_priority_task_awards_base_reward(
+    repository, shop_repository
+):
+    task = Task(id=1, telegram_user_id=1, title="X", status="active", priority="normal")
+    repository.get_by_id.return_value = task
+    service = TaskService(repository, shop_repository=shop_repository)
+
+    updated = await service.update_task(1, task_id=1, status="completed")
+
+    assert updated.reward_coins == 4
+    shop_repository.add_transaction.assert_awaited_once_with(
+        telegram_user_id=1, amount=4, reason="task_reward"
+    )
+
+
+async def test_complete_high_priority_task_awards_more(repository, shop_repository):
+    task = Task(id=1, telegram_user_id=1, title="X", status="active", priority="high")
+    repository.get_by_id.return_value = task
+    service = TaskService(repository, shop_repository=shop_repository)
+
+    updated = await service.update_task(1, task_id=1, status="completed")
+
+    assert updated.reward_coins == 7
+
+
+async def test_complete_low_priority_task_awards_less(repository, shop_repository):
+    task = Task(id=1, telegram_user_id=1, title="X", status="active", priority="low")
+    repository.get_by_id.return_value = task
+    service = TaskService(repository, shop_repository=shop_repository)
+
+    updated = await service.update_task(1, task_id=1, status="completed")
+
+    assert updated.reward_coins == 2
+
+
+async def test_completing_subtask_awards_nothing(repository, shop_repository):
+    """Подзадачи не награждаются — иначе дробление одной задачи на
+    несколько подзадач было бы выгоднее (specs/030)."""
+    subtask = Task(
+        id=2,
+        telegram_user_id=1,
+        title="Подзадача",
+        status="active",
+        priority="high",
+        parent_id=1,
+    )
+    repository.get_by_id.return_value = subtask
+    service = TaskService(repository, shop_repository=shop_repository)
+
+    updated = await service.update_task(1, task_id=2, status="completed")
+
+    assert updated.reward_coins == 0
+    shop_repository.add_transaction.assert_not_awaited()
+
+
+async def test_non_completion_update_awards_nothing(repository, shop_repository):
+    task = Task(id=1, telegram_user_id=1, title="X", status="active")
+    repository.get_by_id.return_value = task
+    service = TaskService(repository, shop_repository=shop_repository)
+
+    updated = await service.update_task(1, task_id=1, priority="high")
+
+    assert updated.reward_coins == 0
+    shop_repository.add_transaction.assert_not_awaited()
+
+
+async def test_reopening_completed_task_awards_nothing(repository, shop_repository):
+    """status уже "completed" → "completed" ещё раз — was_active=False,
+    не переход, награды нет (тот же принцип, что у _maybe_create_next_
+    occurrence чуть выше по коду)."""
+    task = Task(id=1, telegram_user_id=1, title="X", status="completed")
+    repository.get_by_id.return_value = task
+    service = TaskService(repository, shop_repository=shop_repository)
+
+    updated = await service.update_task(1, task_id=1, status="completed")
+
+    assert updated.reward_coins == 0
+    shop_repository.add_transaction.assert_not_awaited()
+
+
+async def test_complete_task_by_title_awards_reward(repository, shop_repository):
+    repository.list_by_user.return_value = [
+        Task(id=1, telegram_user_id=1, title="Молоко", status="active", priority="high")
+    ]
+    service = TaskService(repository, shop_repository=shop_repository)
+
+    completed = await service.complete_task_by_title(1, "молоко")
+
+    assert completed.reward_coins == 7
+    shop_repository.add_transaction.assert_awaited_once_with(
+        telegram_user_id=1, amount=7, reason="task_reward"
+    )

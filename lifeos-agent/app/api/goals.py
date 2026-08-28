@@ -69,7 +69,10 @@ async def update_goal(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Цель не найдена"
         )
-    return GoalRead.model_validate(goal)
+    read = GoalRead.model_validate(goal)
+    # reward_coins — не колонка Goal, model_validate её не видит (см.
+    # GoalService.update_goal, всегда ставит атрибут).
+    return read.model_copy(update={"reward_coins": getattr(goal, "reward_coins", 0)})
 
 
 @router.delete("/{goal_id}", status_code=status.HTTP_204_NO_CONTENT)

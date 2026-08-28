@@ -6,18 +6,22 @@ RewardsService и его собственных тестов (tests/rewards/), �
 проверяется только вычитание, инвентарь и запреты.
 """
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.db.base import Base
 from app.rewards.service import RewardsStatus
+from app.shop.catalog import DECOR, ShopItem
 from app.shop.repository import ShopRepository
 from app.shop.service import (
     AlreadyOwnedError,
     InsufficientCoinsError,
     ShopService,
     UnknownItemError,
+    _is_available,
 )
 
 # Цены из каталога, зафиксированные здесь ЯВНО: тест должен упасть, если
@@ -189,3 +193,54 @@ async def test_affordable_reflects_balance(session):
     by_id = {entry.item.id: entry for entry in state.items}
     assert by_id[HAT].affordable is True
     assert by_id["decor_crown"].affordable is False
+
+
+# --- Сезонные/лимитированные товары (specs/030, по мотивам Finch/Habitica) --
+
+NOW = datetime.now(timezone.utc)
+
+
+def _seasonal_item(available_until) -> ShopItem:
+    return ShopItem(
+        id="decor_test_seasonal",
+        kind=DECOR,
+        title="Тестовый сезонный",
+        emoji="🍂",
+        price=50,
+        description="",
+        repeatable=False,
+        available_until=available_until,
+    )
+
+
+def test_is_available_without_deadline_is_always_true():
+    assert _is_available(_seasonal_item(None), owned_count=0) is True
+
+
+def test_is_available_before_deadline():
+    item = _seasonal_item(NOW + timedelta(days=1))
+    assert _is_available(item, owned_count=0) is True
+
+
+def test_is_available_after_deadline_and_not_owned_is_false():
+    item = _seasonal_item(NOW - timedelta(days=1))
+    assert _is_available(item, owned_count=0) is False
+
+
+def test_is_available_after_deadline_but_already_owned_is_true():
+    """Уже купленное сезонное украшение остаётся видно как "Куплено ✓" —
+    магазин не стирает историю ради того, что перестало продаваться."""
+    item = _seasonal_item(NOW - timedelta(days=1))
+    assert _is_available(item, owned_count=1) is True
+
+
+def test_autumn_scarf_in_real_catalog_has_a_deadline():
+    """Реальный товар из каталога (specs/030) — не проверяем конкретную
+    дату (тест иначе сломался бы сам по себе после неё), только что
+    сезонность вообще задана, в отличие от остальных семи товаров."""
+    from app.shop.catalog import get_item
+
+    item = get_item("decor_autumn_scarf")
+
+    assert item is not None
+    assert item.available_until is not None

@@ -2,6 +2,9 @@
 Pydantic-схемы магазина.
 """
 
+from datetime import datetime
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -16,6 +19,8 @@ class ShopItemRead(BaseModel):
     repeatable: bool
     owned: int
     affordable: bool
+    # Сезонный товар (specs/030) — None у всех обычных товаров.
+    available_until: Optional[datetime] = None
 
 
 class ShopStateRead(BaseModel):

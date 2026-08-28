@@ -1400,6 +1400,33 @@
     line-height: 1.3;
   }
 
+  /* Квест-босс (specs/030) — та же приглушённая манера, что .item-note,
+     но inline (не отдельная строка): это ярлык статуса, а не описание. */
+  .goal-boss-badge {
+    display: inline-block;
+    margin-left: 6px;
+    color: var(--muted);
+    font-size: 0.76rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  /* Автоприоритет долгов (specs/030) — бейдж только у долга ранга 1,
+     рядом с названием в той же строке (не отдельная строка, как
+     .item-note — короткая метка, а не описание). */
+  .debt-priority-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+
   /* --- Звание (по накопленным монетам) --- */
   .rank-line {
     font-size: 0.85rem;
@@ -1566,6 +1593,10 @@
   .shop-emoji { grid-area: emoji; font-size: 1.3rem; line-height: 1; }
   .shop-title { grid-area: title; font-weight: 600; }
   .shop-desc { grid-area: desc; color: var(--muted); font-size: 0.78rem; }
+  /* Сезонный товар (specs/030) — тёплый акцент вместо приглушённого
+     --muted у остального описания: это единственная строка в карточке,
+     которая нарочно должна создавать лёгкую срочность. */
+  .shop-seasonal { color: var(--overdue); font-weight: 600; }
   /* Счётчик купленного всегда в потоке (а не появляется/исчезает): иначе
      кнопка «Купить» прыгала бы по горизонтали после первой же покупки
      расходуемого товара. */
@@ -4695,13 +4726,19 @@ function shopItemRow(item) {
     ? '<span class="shop-bought">Куплено ✓</span>'
     : `<button type="button" class="shop-buy" data-item-id="${escapeHtml(item.id)}"
         ${item.affordable ? "" : "disabled"}>${item.price} 🪙</button>`;
+  // Сезонный товар (specs/030) — срок только пока не куплен: после
+  // покупки урgency больше ни о чём не говорит, "Куплено ✓" и так
+  // однозначно.
+  const seasonal = item.available_until && !bought
+    ? ` <span class="shop-seasonal">⏳ до ${new Date(item.available_until).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" })}</span>`
+    : "";
   // Порядок в разметке — читаемый (эмодзи, название, описание, счётчик,
   // действие); раскладку по двум строкам делает grid-template-areas, см.
   // .shop-item в стилях.
   return `<li class="shop-item">
     <span class="shop-emoji">${escapeHtml(item.emoji)}</span>
     <span class="shop-title">${escapeHtml(item.title)}</span>
-    <span class="shop-desc">${escapeHtml(item.description)}</span>
+    <span class="shop-desc">${escapeHtml(item.description)}${seasonal}</span>
     ${owned}
     ${action}
   </li>`;
@@ -5382,12 +5419,16 @@ async function completeTaskWithGuard(taskId, elForFlash) {
   const title = task ? task.title : "эту задачу";
   if (!confirm(`Отметить «${title}» выполненной?`)) return false;
   await flashAndReload(elForFlash, async () => {
-    await api(`/tasks/${taskId}?telegram_user_id=${getUserId()}`, {
+    const updated = await api(`/tasks/${taskId}?telegram_user_id=${getUserId()}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "completed" }),
     });
     await loadTasks();
+    // reward_coins — специфичное недостоверное поле (specs/030): 0 у
+    // подзадач и когда сервис собран без shop_repository, показываем
+    // тост только если реально начислено.
+    if (updated.reward_coins > 0) showToast(`🪙 +${updated.reward_coins}`);
   });
   return true;
 }
@@ -5638,6 +5679,17 @@ document.getElementById("habitList").addEventListener("click", async (e) => {
 // управления — в .task-details по клику.
 const expandedGoalPanels = new Set();
 
+// Квест-босс (specs/030, по мотивам Habitica) — тот же прогресс-бар,
+// только интерпретация: % — не "выполнено", а "урон по боссу". Чистая
+// функция от уже существующего goal.progress, без нового поля.
+function goalBossStatus(progress) {
+  if (progress >= 100) return { emoji: "🏆", label: "повержен" };
+  if (progress >= 75) return { emoji: "💥", label: "на издыхании" };
+  if (progress >= 50) return { emoji: "🩸", label: "истощён" };
+  if (progress >= 25) return { emoji: "🐉", label: "пошатнулся" };
+  return { emoji: "🐉", label: "полон сил" };
+}
+
 async function loadGoals() {
   const id = getUserId();
   const list = document.getElementById("goalList");
@@ -5650,10 +5702,13 @@ async function loadGoals() {
   }
   list.innerHTML = goals.map((goal) => {
     const expanded = expandedGoalPanels.has(goal.id);
+    const boss = goalBossStatus(goal.progress);
     return `
     <li>
       <div class="task-row-main" data-action="toggle-row" data-id="${goal.id}">
-        <span class="item-title">${escapeHtml(goal.title)}</span>
+        <span class="item-title">${escapeHtml(goal.title)}
+          <span class="goal-boss-badge" title="Босс ${boss.label}">${boss.emoji} ${boss.label}</span>
+        </span>
         <span class="progress-bar"><span style="width:${goal.progress}%"></span></span>
         <span class="meta goal-progress-value">${goal.progress}%</span>
       </div>
@@ -5716,12 +5771,15 @@ document.getElementById("goalList").addEventListener("click", async (e) => {
     toggleGoalRow(btn.closest("li"), Number(goalId));
   } else if (btn.dataset.action === "save-progress") {
     const input = document.querySelector(`input[data-action="progress-input"][data-id="${goalId}"]`);
-    await api(`/goals/${goalId}?telegram_user_id=${getUserId()}`, {
+    const updated = await api(`/goals/${goalId}?telegram_user_id=${getUserId()}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ progress: Number(input.value) }),
     });
     await loadGoals();
+    // Награда за квест-босса (specs/030) — только на реальной первой
+    // победе, reward_coins у обычного сохранения прогресса — 0.
+    if (updated.reward_coins > 0) showToast(`🏆 Босс повержен! +${updated.reward_coins} 🪙`);
   } else if (btn.dataset.action === "delete-goal") {
     await api(`/goals/${goalId}?telegram_user_id=${getUserId()}`, {
       method: "DELETE",
@@ -5830,13 +5888,25 @@ async function loadDebts() {
   const id = getUserId();
   const list = document.getElementById("debtList");
   if (!id) { list.innerHTML = ""; lastDebts = []; return; }
-  const debts = await api(`/finance/debts?telegram_user_id=${encodeURIComponent(id)}`);
+  const [debts, priority] = await Promise.all([
+    api(`/finance/debts?telegram_user_id=${encodeURIComponent(id)}`),
+    api(`/finance/debts/priority?telegram_user_id=${encodeURIComponent(id)}`),
+  ]);
+  // Порядок списка следует автоматическому приоритету (specs/030) —
+  // закрытые долги в приоритет не попадают (rank_by_priority их
+  // исключает), остаются в конце в исходном порядке.
+  const rankById = new Map(priority.map((entry) => [entry.debt.id, entry]));
+  const sorted = [...debts].sort((a, b) => {
+    const ra = rankById.get(a.id)?.rank ?? Infinity;
+    const rb = rankById.get(b.id)?.rank ?? Infinity;
+    return ra - rb;
+  });
   lastDebts = debts;
   if (!debts.length) {
     list.innerHTML = '<li class="empty">Долгов нет — и пусть не будет.</li>';
     return;
   }
-  list.innerHTML = debts.map((d) => {
+  list.innerHTML = sorted.map((d) => {
     const closed = d.remaining_amount <= 0;
     const due = d.due_date
       ? ` · срок ${new Date(d.due_date).toLocaleDateString("ru-RU")}`
@@ -5846,13 +5916,19 @@ async function loadDebts() {
       : "";
     const pct = Math.round((1 - d.remaining_amount / d.total_amount) * 100);
     const expanded = expandedDebtPanels.has(d.id);
+    // Бейдж только у долга ранга 1 — не у каждого, чтобы список не
+    // превратился в частокол одинаковых значков (specs/030).
+    const entry = rankById.get(d.id);
+    const priorityBadge = entry && entry.rank === 1
+      ? ` <span class="debt-priority-badge" title="${escapeHtml(entry.reason)}">🎯 приоритет</span>`
+      : "";
     // Вариант 3 (живая проверка 25.08, подтверждено на задачах) — платёж
     // остаётся снаружи как самое частое действие (тот же принцип, что ✓
     // у задачи/👋 у контакта), ✕ и план/история — в .task-details.
     return `
     <li>
       <div class="task-row-main" data-action="toggle-row" data-id="${d.id}">
-        <span class="item-title">${closed ? "✅ " : ""}${escapeHtml(d.name)}</span>
+        <span class="item-title">${closed ? "✅ " : ""}${escapeHtml(d.name)}${priorityBadge}</span>
         <span class="progress-bar"><span style="width:${pct}%"></span></span>
         <span class="meta">${d.remaining_amount.toLocaleString("ru-RU")} / ${d.total_amount.toLocaleString("ru-RU")} ₽${due}${plan}</span>
       </div>

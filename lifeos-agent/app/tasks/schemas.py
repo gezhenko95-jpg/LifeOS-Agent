@@ -83,6 +83,10 @@ class TaskRead(BaseModel):
     contact_id: Optional[int] = None
     habit_id: Optional[int] = None
     goal_id: Optional[int] = None
+    # Не колонка Task — побочный атрибут TaskService._maybe_award_
+    # completion_coins (specs/030), заполняется через getattr в
+    # app/api/tasks.py (тот же приём, что у subtask_count выше).
+    reward_coins: int = 0
 
 
 class TaskCommentCreate(BaseModel):

@@ -21,6 +21,7 @@ from app.finance.schemas import (
     DebtCreate,
     DebtPayment,
     DebtPaymentRead,
+    DebtPriorityRead,
     DebtRead,
     DebtUpdate,
     FinanceSummaryRead,
@@ -171,6 +172,24 @@ async def list_debts(
 ) -> list[DebtRead]:
     debts = await service.list_debts(telegram_user_id)
     return [DebtRead.model_validate(d) for d in debts]
+
+
+@router.get("/debts/priority", response_model=list[DebtPriorityRead])
+async def get_debts_priority(
+    telegram_user_id: int, service: DebtService = Depends(get_debt_service)
+) -> list[DebtPriorityRead]:
+    """Автоматический порядок "с какого долга начать" (specs/030) — не
+    выбор стратегии владельцем, система решает сама (см.
+    DebtService.rank_by_priority)."""
+    ranked = await service.rank_by_priority(telegram_user_id)
+    return [
+        DebtPriorityRead(
+            debt=DebtRead.model_validate(entry.debt),
+            rank=entry.rank,
+            reason=entry.reason,
+        )
+        for entry in ranked
+    ]
 
 
 @router.post("/debts/{debt_id}/payment", response_model=DebtRead)

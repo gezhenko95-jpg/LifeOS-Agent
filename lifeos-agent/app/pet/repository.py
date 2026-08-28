@@ -3,7 +3,7 @@
 Бизнес-логика (голод/настроение/жив ли) — в service.py.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -62,6 +62,13 @@ class PetRepository:
 
     async def mark_hungry_notified(self, pet: Pet, when: datetime) -> Pet:
         pet.hungry_notified_at = when
+        self._session.add(pet)
+        await self._session.commit()
+        await self._session.refresh(pet)
+        return pet
+
+    async def mark_adventure(self, pet: Pet, day: date) -> Pet:
+        pet.last_adventure_on = day
         self._session.add(pet)
         await self._session.commit()
         await self._session.refresh(pet)

@@ -17,6 +17,7 @@ coin_transactions лежит item_id строкой, а не внешним кл
 """
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 # Категории. Разделены не ради красоты вывода: у них разное поведение
 # при повторной покупке (см. repeatable ниже) и разные потребители —
@@ -47,6 +48,15 @@ class ShopItem:
     # копится количеством. Украшение — разовое: второй такой же цилиндр
     # питомцу надеть некуда, и списывать за него монеты нечестно.
     repeatable: bool
+    # Сезонный/лимитированный товар (specs/030, по мотивам Finch/
+    # Habitica) — None (по умолчанию) значит бессрочно, семь товаров
+    # выше это поле не задают вовсе. После этой даты ShopService.get_state
+    # прячет товар с витрины, ЕСЛИ он ни разу не куплен (уже купленный
+    # остаётся видно как "Куплено ✓" — магазин не стирает историю).
+    # get_item() эту дату не учитывает вовсе: Ферма/Питомец должны
+    # находить уже купленный товар независимо от того, продаётся ли он
+    # ещё.
+    available_until: datetime | None = None
 
 
 CATALOG: tuple[ShopItem, ...] = (
@@ -121,6 +131,16 @@ CATALOG: tuple[ShopItem, ...] = (
         price=40,
         description="Защищает серию привычки от одного пропущенного дня",
         repeatable=True,
+    ),
+    ShopItem(
+        id="decor_autumn_scarf",
+        kind=DECOR,
+        title="Осенний шарф",
+        emoji="🍂",
+        price=90,
+        description="Сезонный — пропадёт с витрины после 20 сентября",
+        repeatable=False,
+        available_until=datetime(2026, 9, 20, tzinfo=timezone.utc),
     ),
 )
 

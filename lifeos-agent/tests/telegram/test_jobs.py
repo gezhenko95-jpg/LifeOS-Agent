@@ -4,6 +4,7 @@ app/telegram/jobs.py — джобы планировщика. `AsyncSessionLocal
 подменяются на AsyncMock с готовыми возвратами — реальная БД не нужна.
 """
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -307,6 +308,13 @@ async def test_evening_checkin_appends_persona_nudge(no_db, monkeypatch):
     monkeypatch.setattr(jobs, "build_task_service", lambda session: AsyncMock())
     monkeypatch.setattr(jobs, "HabitService", lambda repository: AsyncMock())
     monkeypatch.setattr(jobs, "HabitRepository", lambda session: None)
+    # Приключение питомца (specs/030) — не тема этого теста, "сегодня
+    # нет кандидата" отключает довесок предсказуемо.
+    monkeypatch.setattr(
+        jobs,
+        "build_pet_service",
+        lambda session: AsyncMock(maybe_start_adventure=AsyncMock(return_value=None)),
+    )
     # random.random() < _EVENING_GAP_CHANCE может добавить gap-вопрос —
     # отключаем его для предсказуемости этого теста.
     monkeypatch.setattr(jobs.random, "random", lambda: 1.0)
@@ -332,6 +340,78 @@ async def test_evening_checkin_appends_persona_nudge(no_db, monkeypatch):
     _, kwargs = context.bot.send_message.call_args
     assert kwargs["text"] == "Итоги дня.\n\nНе забудь про отчёт."
     assistant_service.record_nudge_sent.assert_awaited_once_with(1, "task_overdue:5")
+
+
+async def test_evening_checkin_appends_pet_adventure(no_db, monkeypatch):
+    """specs/030 — довесок к вечернему чек-ину, изолированно от
+    персонаж-нэджей (find_nudge_candidate → None в этом тесте)."""
+    monkeypatch.setattr(jobs, "get_settings", _owner_settings)
+    monkeypatch.setattr(jobs, "get_ai_client", lambda settings: AsyncMock())
+    monkeypatch.setattr(
+        jobs, "build_evening_checkin_text", AsyncMock(return_value="Итоги дня.")
+    )
+    monkeypatch.setattr(jobs, "build_task_service", lambda session: AsyncMock())
+    monkeypatch.setattr(jobs, "HabitService", lambda repository: AsyncMock())
+    monkeypatch.setattr(jobs, "HabitRepository", lambda session: None)
+    monkeypatch.setattr(jobs.random, "random", lambda: 1.0)
+
+    assistant_service = AsyncMock()
+    assistant_service.get_today_nudge_trigger.return_value = None
+    assistant_service.get_persona.return_value = Persona.BUTLER
+    monkeypatch.setattr(
+        jobs, "build_assistant_service", lambda session: assistant_service
+    )
+    monkeypatch.setattr(jobs, "find_nudge_candidate", AsyncMock(return_value=None))
+
+    candidate = SimpleNamespace(state="healthy", reward_coins=7)
+    pet_service = AsyncMock()
+    pet_service.maybe_start_adventure.return_value = candidate
+    monkeypatch.setattr(jobs, "build_pet_service", lambda session: pet_service)
+    monkeypatch.setattr(
+        jobs,
+        "generate_adventure_text",
+        AsyncMock(return_value="Нашёл клевер с четырьмя листьями."),
+    )
+
+    context = _context()
+    await jobs.send_evening_checkin_job(context)
+
+    _, kwargs = context.bot.send_message.call_args
+    assert kwargs["text"] == (
+        "Итоги дня.\n\n🐾 Нашёл клевер с четырьмя листьями. (+7 🪙)"
+    )
+    pet_service.record_adventure.assert_awaited_once_with(1, 7)
+
+
+async def test_evening_checkin_pet_adventure_ai_failure_skips_silently(
+    no_db, monkeypatch
+):
+    monkeypatch.setattr(jobs, "get_settings", _owner_settings)
+    monkeypatch.setattr(jobs, "get_ai_client", lambda settings: AsyncMock())
+    monkeypatch.setattr(
+        jobs, "build_evening_checkin_text", AsyncMock(return_value="Итоги дня.")
+    )
+    monkeypatch.setattr(jobs, "build_task_service", lambda session: AsyncMock())
+    monkeypatch.setattr(jobs, "HabitService", lambda repository: AsyncMock())
+    monkeypatch.setattr(jobs, "HabitRepository", lambda session: None)
+    monkeypatch.setattr(jobs.random, "random", lambda: 1.0)
+    monkeypatch.setattr(jobs, "build_assistant_service", lambda session: AsyncMock())
+    monkeypatch.setattr(jobs, "find_nudge_candidate", AsyncMock(return_value=None))
+
+    pet_service = AsyncMock()
+    pet_service.maybe_start_adventure.return_value = SimpleNamespace(
+        state="healthy", reward_coins=7
+    )
+    monkeypatch.setattr(jobs, "build_pet_service", lambda session: pet_service)
+    monkeypatch.setattr(jobs, "generate_adventure_text", AsyncMock(return_value=None))
+
+    context = _context()
+    await jobs.send_evening_checkin_job(context)
+
+    _, kwargs = context.bot.send_message.call_args
+    assert kwargs["text"] == "Итоги дня."
+    # Не сгорает попусту — дедуп ставится только на успешной генерации.
+    pet_service.record_adventure.assert_not_awaited()
 
 
 # --- Фокус-сессии (specs/026-focus-sessions.md) -----------------------------

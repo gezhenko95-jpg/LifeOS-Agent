@@ -11,6 +11,8 @@ from typing import Optional
 from app.core.ownership import owned_or_none
 from app.goals.models import Goal
 from app.goals.repository import GoalRepository
+from app.shop.models import GOAL_BOSS_DEFEATED
+from app.shop.repository import ShopRepository
 
 ACTIVE = "active"
 COMPLETED = "completed"
@@ -18,10 +20,22 @@ ABANDONED = "abandoned"
 
 _VALID_STATUSES = {ACTIVE, COMPLETED, ABANDONED}
 
+# Квест-босс (specs/030, по мотивам Habitica) — фиксированная одноразовая
+# награда за достижение 100%, не требует калибровки под частоту (в
+# отличие от чек-ина/фокус-сессий — цель закрывается редко, не каждый день).
+GOAL_BOSS_REWARD_COINS = 25
+
 
 class GoalService:
-    def __init__(self, repository: GoalRepository) -> None:
+    def __init__(
+        self,
+        repository: GoalRepository,
+        shop_repository: Optional[ShopRepository] = None,
+    ) -> None:
         self._repository = repository
+        # Опционально (тот же приём, что у трёх соседних доменов) — без
+        # него цели завершаются точно как раньше, просто без награды.
+        self._shop = shop_repository
 
     async def create_goal(
         self,
@@ -97,7 +111,33 @@ class GoalService:
                 elif progress < 100 and goal.status == COMPLETED:
                     goal.status = ACTIVE
         goal.updated_at = datetime.now(timezone.utc)
-        return await self._repository.save(goal)
+
+        # Квест-босс: награда один раз за ДОСТИЖЕНИЕ COMPLETED, не за
+        # каждое сохранение уже завершённой цели — boss_reward_claimed_at
+        # не сбрасывается, если прогресс потом утащили обратно ниже 100
+        # (см. докстринг поля), поэтому перетаскивание ползунка не может
+        # зафармить награду дважды.
+        reward = 0
+        if (
+            self._shop is not None
+            and goal.status == COMPLETED
+            and goal.boss_reward_claimed_at is None
+        ):
+            goal.boss_reward_claimed_at = goal.updated_at
+            reward = GOAL_BOSS_REWARD_COINS
+
+        saved = await self._repository.save(goal)
+        if reward:
+            await self._shop.add_transaction(
+                telegram_user_id=saved.telegram_user_id,
+                amount=reward,
+                reason=GOAL_BOSS_DEFEATED,
+            )
+        # Не колонка модели — тот же приём, что reward_coins у
+        # FocusSession/Task (specs/029/030): вызывающий код (/ui) читает
+        # через getattr, если хочет показать сумму.
+        saved.reward_coins = reward
+        return saved
 
     async def complete_goal(
         self, telegram_user_id: int, goal_id: int

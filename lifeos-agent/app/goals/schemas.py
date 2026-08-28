@@ -40,3 +40,6 @@ class GoalRead(BaseModel):
     status: str
     created_at: datetime
     updated_at: Optional[datetime]
+    # Не колонка Goal — побочный атрибут GoalService.update_goal
+    # (specs/030), заполняется через getattr в app/api/goals.py.
+    reward_coins: int = 0

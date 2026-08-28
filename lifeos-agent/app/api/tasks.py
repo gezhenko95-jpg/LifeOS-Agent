@@ -220,7 +220,11 @@ async def update_task(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Задача не найдена"
         )
-    return TaskRead.model_validate(task)
+    read = TaskRead.model_validate(task)
+    # reward_coins — не колонка Task, model_validate её не видит.
+    # TaskService.update_task всегда ставит этот атрибут (0, если не
+    # награда), см. _maybe_award_completion_coins.
+    return read.model_copy(update={"reward_coins": getattr(task, "reward_coins", 0)})
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)

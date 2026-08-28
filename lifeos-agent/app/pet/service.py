@@ -14,14 +14,16 @@ availability семян фермы и т.д.: производное состо�
 потому что хранимая копия имеет свойство расходиться с первоисточником.
 """
 
+import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Literal
+from typing import Literal, Optional
 
 from app.farm.service import FarmService, InsufficientHayError
 from app.pet.models import Pet
 from app.pet.repository import PetRepository
 from app.shop.catalog import DECOR, get_item
+from app.shop.models import PET_ADVENTURE
 from app.shop.repository import ShopRepository
 
 # Калибровка от той же экономики, что ферма (specs/028, ответ владельца
@@ -38,6 +40,15 @@ SICK_AFTER_HOURS = 72
 DEATH_AFTER_HOURS = 144
 
 PetState = Literal["healthy", "hungry", "sick", "dead"]
+
+# Приключения питомца (specs/030, по мотивам Finch). Настоящий random,
+# не детерминированный хэш (как у coins.is_lucky_day) — событие разовое
+# и сразу фиксируется в ledger, детерминизм там был нужен ИМЕННО для
+# безопасного пересчёта total_coins заново на каждый запрос, здесь
+# пересчёта нет.
+ADVENTURE_BONUS_CHANCE = 0.4
+ADVENTURE_BONUS_MIN_COINS = 3
+ADVENTURE_BONUS_MAX_COINS = 10
 
 
 class PetError(ValueError):
@@ -84,6 +95,18 @@ class PetStatus:
     # выбор владельца среди купленного в Магазине (см. docstring
     # Pet.equipped_decor_item_id).
     equipped_decor_item_id: str | None = None
+
+
+@dataclass
+class AdventureCandidate:
+    """Готовое к отправке "приключение" (specs/030) — reward_coins уже
+    решён (roll был сделан), запись в БД/начисление монет ещё нет: их
+    делает record_adventure ПОСЛЕ того, как AI успешно сгенерировал
+    текст (app/scheduler/pet_adventures.py) — неудачная попытка не
+    должна сжигать сегодняшний день."""
+
+    state: PetState
+    reward_coins: int
 
 
 class PetService:
@@ -196,6 +219,53 @@ class PetService:
         return await self._repository.mark_hungry_notified(
             pet, datetime.now(timezone.utc)
         )
+
+    # --- Приключения (specs/030, по мотивам Finch; довесок к
+    # send_evening_checkin_job, не отдельная джоба) ---------------------
+
+    async def maybe_start_adventure(
+        self, telegram_user_id: int
+    ) -> Optional[AdventureCandidate]:
+        """None — нет питомца/он мёртв, сегодня уже было приключение,
+        или питомец сегодня не покормлен (триггер — покормлен, не
+        отдельная проверка задач/привычек: PetService и так знает
+        last_fed_at, кросс-доменная зависимость не нужна)."""
+        pet = await self._repository.get(telegram_user_id)
+        if pet is None:
+            return None
+        status = _status(pet)
+        if status.state == "dead":
+            return None
+
+        today = datetime.now(timezone.utc).date()
+        if pet.last_adventure_on == today:
+            return None
+        if _as_aware(pet.last_fed_at).date() != today:
+            return None
+
+        reward = 0
+        if random.random() < ADVENTURE_BONUS_CHANCE:
+            reward = random.randint(
+                ADVENTURE_BONUS_MIN_COINS, ADVENTURE_BONUS_MAX_COINS
+            )
+        return AdventureCandidate(state=status.state, reward_coins=reward)
+
+    async def record_adventure(self, telegram_user_id: int, reward_coins: int) -> None:
+        """Вызывать ТОЛЬКО после успешной генерации текста приключения
+        (app/scheduler/pet_adventures.py) — отметка "сегодня уже было"
+        не должна сгорать впустую на ошибке AI (слот один в день, ретрая
+        не будет до завтра)."""
+        pet = await self._repository.get(telegram_user_id)
+        if pet is None:
+            return
+        today = datetime.now(timezone.utc).date()
+        await self._repository.mark_adventure(pet, today)
+        if reward_coins > 0:
+            await self._shop.add_transaction(
+                telegram_user_id=telegram_user_id,
+                amount=reward_coins,
+                reason=PET_ADVENTURE,
+            )
 
 
 def _status(pet: Pet) -> PetStatus:

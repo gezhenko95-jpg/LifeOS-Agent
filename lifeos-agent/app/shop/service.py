@@ -11,6 +11,7 @@ ShopService — покупка за монеты (specs/028, фаза 1).
 """
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from app.rewards.service import RewardsService
 from app.shop.catalog import CATALOG, ShopItem, get_item
@@ -72,6 +73,13 @@ class ShopService:
             raise UnknownItemError(f"Нет такого товара: {item_id}")
 
         earned, balance, owned = await self._wallet(telegram_user_id)
+        # Сезонный товар, срок вышел, и это не повторная покупка того же
+        # (repeatable=False всегда, но проверка симметрична на будущее) —
+        # с точки зрения покупателя это тот же "нет такого товара", что и
+        # опечатка в id: с витрины он уже убран (см. _is_available), 404
+        # не различает причину.
+        if not _is_available(item, owned.get(item.id, 0)):
+            raise UnknownItemError(f"«{item.title}» больше не продаётся")
         if not item.repeatable and owned.get(item.id, 0) > 0:
             raise AlreadyOwnedError(f"«{item.title}» уже куплен")
         if balance < item.price:
@@ -123,5 +131,16 @@ class ShopService:
                     and (item.repeatable or owned.get(item.id, 0) == 0),
                 )
                 for item in CATALOG
+                # Сезонный товар, срок вышел и ни разу не куплен — прячем
+                # с витрины совсем (specs/030). Уже купленный (owned > 0)
+                # остаётся видно как "Куплено ✓" — магазин не стирает
+                # историю ради того, что перестало продаваться.
+                if _is_available(item, owned.get(item.id, 0))
             ],
         )
+
+
+def _is_available(item: ShopItem, owned_count: int) -> bool:
+    if item.available_until is None or owned_count > 0:
+        return True
+    return datetime.now(timezone.utc) < item.available_until

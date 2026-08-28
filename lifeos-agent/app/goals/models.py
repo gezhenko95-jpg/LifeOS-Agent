@@ -68,3 +68,15 @@ class Goal(Base):
         nullable=True,
         comment="Дата и время последнего обновления",
     )
+
+    boss_reward_claimed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Квест-босс (specs/030, по мотивам Habitica) — момент, "
+        "когда за ДОСТИЖЕНИЕ 100% один раз начислена награда. НЕ "
+        "сбрасывается, если прогресс потом утащили обратно ниже 100 "
+        "(GoalService.update_goal снимает status=COMPLETED симметрично) "
+        "— иначе перетаскивание ползунка 100→90→100 фармило бы монеты "
+        "бесконечно; 'босс побеждён' — разовый факт, как deaths_count "
+        "у питомца.",
+    )

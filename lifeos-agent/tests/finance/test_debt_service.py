@@ -2,7 +2,7 @@
 DebtService — repository замокан.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -359,3 +359,70 @@ async def test_simulate_payoff_negative_extra_raises(repository):
 
     with pytest.raises(ValueError):
         await service.simulate_payoff(1, 1, extra_monthly=-100)
+
+
+# --- Автоматический приоритет долгов (specs/030) ------------------------
+
+
+async def test_rank_by_priority_excludes_closed_debts(repository):
+    repository.list_by_user.return_value = [
+        _debt(id=1, remaining_amount=0),
+        _debt(id=2, remaining_amount=5000),
+    ]
+    service = DebtService(repository)
+
+    ranked = await service.rank_by_priority(1)
+
+    assert [entry.debt.id for entry in ranked] == [2]
+
+
+async def test_rank_by_priority_due_soon_before_snowball(repository):
+    """Долг с близким сроком — впереди долга с меньшим остатком, но без
+    срока: срочность важнее психологии снежного кома."""
+    small_no_due = _debt(id=1, remaining_amount=1000, due_date=None)
+    due_soon = _debt(id=2, remaining_amount=50000, due_date=NOW + timedelta(days=10))
+    repository.list_by_user.return_value = [small_no_due, due_soon]
+    service = DebtService(repository)
+
+    ranked = await service.rank_by_priority(1)
+
+    assert [entry.debt.id for entry in ranked] == [2, 1]
+    assert ranked[0].reason == "срок платежа скоро"
+    assert ranked[1].reason == "меньше всего осталось — быстрая победа"
+
+
+async def test_rank_by_priority_snowball_orders_by_remaining_amount(repository):
+    big = _debt(id=1, remaining_amount=90000)
+    small = _debt(id=2, remaining_amount=5000)
+    repository.list_by_user.return_value = [big, small]
+    service = DebtService(repository)
+
+    ranked = await service.rank_by_priority(1)
+
+    assert [entry.debt.id for entry in ranked] == [2, 1]
+    assert [entry.rank for entry in ranked] == [1, 2]
+
+
+async def test_rank_by_priority_far_due_date_falls_back_to_snowball(repository):
+    """Срок есть, но он далеко (> 30 дней) — не "срочно", участвует в
+    снежном коме на общих основаниях."""
+    far_due = _debt(id=1, remaining_amount=90000, due_date=NOW + timedelta(days=90))
+    small = _debt(id=2, remaining_amount=5000, due_date=None)
+    repository.list_by_user.return_value = [far_due, small]
+    service = DebtService(repository)
+
+    ranked = await service.rank_by_priority(1)
+
+    assert [entry.debt.id for entry in ranked] == [2, 1]
+    assert all(e.reason == "меньше всего осталось — быстрая победа" for e in ranked)
+
+
+async def test_rank_by_priority_multiple_due_soon_sorted_by_date(repository):
+    later = _debt(id=1, remaining_amount=1000, due_date=NOW + timedelta(days=20))
+    sooner = _debt(id=2, remaining_amount=1000, due_date=NOW + timedelta(days=5))
+    repository.list_by_user.return_value = [later, sooner]
+    service = DebtService(repository)
+
+    ranked = await service.rank_by_priority(1)
+
+    assert [entry.debt.id for entry in ranked] == [2, 1]
