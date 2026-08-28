@@ -41,3 +41,21 @@ class PetRepository:
         await self._session.commit()
         await self._session.refresh(pet)
         return pet
+
+    # --- Опрашивающая джоба (app/telegram/jobs.py::send_farm_pet_notifications_job) ---
+
+    async def list_all(self) -> list[Pet]:
+        """Все питомцы, без фильтра по telegram_user_id — проект
+        single-user (тот же приём, что list_due_ready_notifications у
+        фермы). Голод/состояние здесь не считается — это чистая функция
+        от last_fed_at (см. app/pet/service.py), в SQL её не выразить,
+        поэтому джоба-опрос вычисляет её сама после загрузки."""
+        result = await self._session.execute(select(Pet))
+        return list(result.scalars().all())
+
+    async def mark_hungry_notified(self, pet: Pet, when: datetime) -> Pet:
+        pet.hungry_notified_at = when
+        self._session.add(pet)
+        await self._session.commit()
+        await self._session.refresh(pet)
+        return pet

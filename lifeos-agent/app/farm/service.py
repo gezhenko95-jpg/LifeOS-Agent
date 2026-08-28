@@ -148,6 +148,18 @@ class FarmService:
         await self._repository.record_supply_use(telegram_user_id, RAIN_ITEM_ID)
         return await self._state(telegram_user_id)
 
+    # --- Опрашивающая джоба (app/telegram/jobs.py::send_farm_pet_notifications_job) ---
+
+    async def list_due_ready_notifications(self) -> list[FarmPlot]:
+        return await self._repository.list_due_ready_notifications(
+            datetime.now(timezone.utc)
+        )
+
+    async def mark_ready_notified(self, plot: FarmPlot) -> FarmPlot:
+        return await self._repository.mark_ready_notified(
+            plot, datetime.now(timezone.utc)
+        )
+
     # --- Сено, используется app/pet/service.py -----------------------
 
     async def available_hay(self, telegram_user_id: int) -> int:

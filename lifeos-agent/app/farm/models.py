@@ -68,6 +68,14 @@ class FarmPlot(Base):
         comment="NULL — ещё растёт или созрела, но не собрана",
     )
 
+    ready_notified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Когда отправлено уведомление 'сено готово' "
+        "(app/telegram/jobs.py::send_farm_pet_notifications_job), "
+        "NULL — ещё не отправлялось",
+    )
+
 
 class FarmSupplyUse(Base):
     """Расход купленного в магазине на нужды фермы: посадка тратит семя

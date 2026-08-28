@@ -68,6 +68,27 @@ class FarmRepository:
         await self._session.refresh(plot)
         return plot
 
+    # --- Опрашивающая джоба (app/telegram/jobs.py::send_farm_pet_notifications_job) ---
+
+    async def list_due_ready_notifications(self, now: datetime) -> list[FarmPlot]:
+        """Созревшие, не собранные и ещё не уведомлённые грядки — без
+        фильтра по telegram_user_id (проект single-user, тот же приём,
+        что list_due_work_end у фокус-сессий)."""
+        query = select(FarmPlot).where(
+            FarmPlot.harvested_at.is_(None),
+            FarmPlot.ready_at <= now,
+            FarmPlot.ready_notified_at.is_(None),
+        )
+        result = await self._session.execute(query)
+        return list(result.scalars().all())
+
+    async def mark_ready_notified(self, plot: FarmPlot, when: datetime) -> FarmPlot:
+        plot.ready_notified_at = when
+        self._session.add(plot)
+        await self._session.commit()
+        await self._session.refresh(plot)
+        return plot
+
     async def push_ready_at_earlier(
         self, plots: list[FarmPlot], hours: int, floor: datetime
     ) -> None:

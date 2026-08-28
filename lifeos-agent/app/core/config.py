@@ -70,6 +70,14 @@ class Settings(BaseSettings):
     focus_notifications_enabled: bool = True
     focus_notifications_interval_seconds: int = 20
 
+    # Ферма/питомец (specs/028-farm-tamagotchi-rewards.md) — тот же
+    # приём опроса БД, что у фокус-сессий выше. Один тик — обе проверки
+    # ("сено готово" и "питомец проголодался"), не два отдельных
+    # интервала: они дешёвые, крутить их порознь только удваивало бы
+    # число job'ов ради несуществующей экономии.
+    farm_pet_notifications_enabled: bool = True
+    farm_pet_notifications_interval_seconds: int = 60
+
     # Три касания дня (см. flows/009-daily-rhythm.md — имена настроек не
     # переименовывали при переосмыслении содержания, чтобы не задеть уже
     # настроенный .env): утро (10:30) — вопрос про сон или gap-вопрос про

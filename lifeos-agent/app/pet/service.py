@@ -127,6 +127,34 @@ class PetService:
         pet = await self._repository.revive(pet, datetime.now(timezone.utc))
         return _status(pet)
 
+    # --- Опрашивающая джоба (app/telegram/jobs.py::send_farm_pet_notifications_job) ---
+
+    async def list_due_hunger_notifications(self) -> list[Pet]:
+        """Питомцы не healthy (proголодался/болен/погиб), для которых
+        текущий эпизод ещё не уведомлён. "Текущий эпизод" — не то же
+        самое, что "hungry_notified_at is None": поле НЕ сбрасывается
+        при кормлении (см. докстринг Pet.hungry_notified_at), поэтому
+        условие "уже уведомляли" — hungry_notified_at позже последнего
+        кормления. Голод — чистая функция времени (см. _status), её
+        нельзя выразить в SQL-запросе репозитория, поэтому фильтрация
+        здесь, после загрузки всех строк (проект single-user — одна
+        строка на пользователя, нагрузка не проблема)."""
+        due = []
+        for pet in await self._repository.list_all():
+            if _status(pet).state == "healthy":
+                continue
+            notified = pet.hungry_notified_at
+            last_fed = _as_aware(pet.last_fed_at)
+            if notified is not None and _as_aware(notified) >= last_fed:
+                continue
+            due.append(pet)
+        return due
+
+    async def mark_hunger_notified(self, pet: Pet) -> Pet:
+        return await self._repository.mark_hungry_notified(
+            pet, datetime.now(timezone.utc)
+        )
+
 
 def _status(pet: Pet) -> PetStatus:
     last_fed = _as_aware(pet.last_fed_at)

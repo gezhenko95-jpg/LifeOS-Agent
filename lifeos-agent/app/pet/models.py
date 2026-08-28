@@ -53,3 +53,12 @@ class Pet(Base):
         "после смерти запрещено, снять её может только явное "
         "adopt_new_pet, которое инкрементит это поле",
     )
+
+    hungry_notified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Когда отправлено уведомление 'проголодался' "
+        "(app/telegram/jobs.py::send_farm_pet_notifications_job). НЕ "
+        "сбрасывается при кормлении — джоба сама сравнивает это поле с "
+        "last_fed_at, чтобы понять, новый ли это эпизод голода",
+    )

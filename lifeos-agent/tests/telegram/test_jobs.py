@@ -404,3 +404,120 @@ async def test_focus_notifications_no_owner_does_nothing(monkeypatch):
     await jobs.send_focus_notifications_job(context)
 
     context.bot.send_message.assert_not_awaited()
+
+
+# --- Ферма/питомец (specs/028-farm-tamagotchi-rewards.md) --------------------
+
+
+def _farm_plot(**kwargs):
+    kwargs.setdefault("telegram_user_id", 1)
+    kwargs.setdefault("hay_yield", 10)
+    return MagicMock(**kwargs)
+
+
+def _pet(**kwargs):
+    kwargs.setdefault("telegram_user_id", 1)
+    return MagicMock(**kwargs)
+
+
+async def test_farm_pet_notifications_sends_hay_ready_message(no_db, monkeypatch):
+    monkeypatch.setattr(jobs, "get_settings", _owner_settings)
+    plot = _farm_plot(hay_yield=10)
+    farm_service = AsyncMock()
+    farm_service.list_due_ready_notifications.return_value = [plot]
+    farm_service.mark_ready_notified.return_value = plot
+    monkeypatch.setattr(jobs, "build_farm_service", lambda s: farm_service)
+    pet_service = AsyncMock()
+    pet_service.list_due_hunger_notifications.return_value = []
+    monkeypatch.setattr(jobs, "build_pet_service", lambda s: pet_service)
+
+    context = _context()
+    await jobs.send_farm_pet_notifications_job(context)
+
+    context.bot.send_message.assert_awaited_once()
+    _, kwargs = context.bot.send_message.call_args
+    assert "Сено готово" in kwargs["text"]
+    assert "10" in kwargs["text"]
+    farm_service.mark_ready_notified.assert_awaited_once_with(plot)
+
+
+async def test_farm_pet_notifications_sends_hungry_message(no_db, monkeypatch):
+    monkeypatch.setattr(jobs, "get_settings", _owner_settings)
+    farm_service = AsyncMock()
+    farm_service.list_due_ready_notifications.return_value = []
+    monkeypatch.setattr(jobs, "build_farm_service", lambda s: farm_service)
+    pet = _pet()
+    pet_service = AsyncMock()
+    pet_service.list_due_hunger_notifications.return_value = [pet]
+    pet_service.mark_hunger_notified.return_value = pet
+    monkeypatch.setattr(jobs, "build_pet_service", lambda s: pet_service)
+
+    context = _context()
+    await jobs.send_farm_pet_notifications_job(context)
+
+    context.bot.send_message.assert_awaited_once()
+    _, kwargs = context.bot.send_message.call_args
+    assert "проголодался" in kwargs["text"]
+    pet_service.mark_hunger_notified.assert_awaited_once_with(pet)
+
+
+async def test_farm_pet_notifications_sends_both_in_one_tick(no_db, monkeypatch):
+    monkeypatch.setattr(jobs, "get_settings", _owner_settings)
+    plot = _farm_plot()
+    farm_service = AsyncMock()
+    farm_service.list_due_ready_notifications.return_value = [plot]
+    monkeypatch.setattr(jobs, "build_farm_service", lambda s: farm_service)
+    pet = _pet()
+    pet_service = AsyncMock()
+    pet_service.list_due_hunger_notifications.return_value = [pet]
+    monkeypatch.setattr(jobs, "build_pet_service", lambda s: pet_service)
+
+    context = _context()
+    await jobs.send_farm_pet_notifications_job(context)
+
+    assert context.bot.send_message.await_count == 2
+
+
+async def test_farm_pet_notifications_ignores_other_users_plot(no_db, monkeypatch):
+    monkeypatch.setattr(jobs, "get_settings", _owner_settings)
+    plot = _farm_plot(telegram_user_id=999)
+    farm_service = AsyncMock()
+    farm_service.list_due_ready_notifications.return_value = [plot]
+    monkeypatch.setattr(jobs, "build_farm_service", lambda s: farm_service)
+    pet_service = AsyncMock()
+    pet_service.list_due_hunger_notifications.return_value = []
+    monkeypatch.setattr(jobs, "build_pet_service", lambda s: pet_service)
+
+    context = _context()
+    await jobs.send_farm_pet_notifications_job(context)
+
+    context.bot.send_message.assert_not_awaited()
+    farm_service.mark_ready_notified.assert_not_awaited()
+
+
+async def test_farm_pet_notifications_ignores_other_users_pet(no_db, monkeypatch):
+    monkeypatch.setattr(jobs, "get_settings", _owner_settings)
+    farm_service = AsyncMock()
+    farm_service.list_due_ready_notifications.return_value = []
+    monkeypatch.setattr(jobs, "build_farm_service", lambda s: farm_service)
+    pet = _pet(telegram_user_id=999)
+    pet_service = AsyncMock()
+    pet_service.list_due_hunger_notifications.return_value = [pet]
+    monkeypatch.setattr(jobs, "build_pet_service", lambda s: pet_service)
+
+    context = _context()
+    await jobs.send_farm_pet_notifications_job(context)
+
+    context.bot.send_message.assert_not_awaited()
+    pet_service.mark_hunger_notified.assert_not_awaited()
+
+
+async def test_farm_pet_notifications_no_owner_does_nothing(monkeypatch):
+    monkeypatch.setattr(
+        jobs, "get_settings", lambda: MagicMock(owner_telegram_user_id=0)
+    )
+
+    context = _context()
+    await jobs.send_farm_pet_notifications_job(context)
+
+    context.bot.send_message.assert_not_awaited()

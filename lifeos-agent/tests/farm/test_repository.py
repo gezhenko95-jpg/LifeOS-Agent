@@ -153,3 +153,30 @@ async def test_hay_consumption_round_trip(session):
 
     assert await repo.total_hay_consumed(1) == 10
     assert await repo.total_hay_consumed(2) == 0
+
+
+async def test_list_due_ready_notifications_only_ready_unharvested_unnotified(session):
+    repo = FarmRepository(session)
+    ready_pending = await repo.add_plot(make_plot(ready_delta_hours=-1))
+    await repo.add_plot(make_plot(ready_delta_hours=5))  # ещё не созрела
+    already_notified = await repo.add_plot(make_plot(ready_delta_hours=-1))
+    already_notified.ready_notified_at = NOW
+    already_harvested = await repo.add_plot(
+        make_plot(ready_delta_hours=-1, harvested=True)
+    )
+    session.add(already_notified)
+    session.add(already_harvested)
+    await session.commit()
+
+    due = await repo.list_due_ready_notifications(NOW)
+
+    assert [p.id for p in due] == [ready_pending.id]
+
+
+async def test_mark_ready_notified_sets_timestamp(session):
+    repo = FarmRepository(session)
+    plot = await repo.add_plot(make_plot(ready_delta_hours=-1))
+
+    notified = await repo.mark_ready_notified(plot, NOW)
+
+    assert _naive(notified.ready_notified_at) == _naive(NOW)

@@ -79,3 +79,28 @@ async def test_revive_twice_increments_deaths_again(session):
     revived = await repo.revive(pet, NOW)
 
     assert revived.deaths_count == 2
+
+
+async def test_list_all_returns_every_pet(session):
+    repo = PetRepository(session)
+    await repo.create(1, NOW)
+    await repo.create(2, NOW)
+
+    pets = await repo.list_all()
+
+    assert {p.telegram_user_id for p in pets} == {1, 2}
+
+
+async def test_list_all_empty_without_pets(session):
+    repo = PetRepository(session)
+
+    assert await repo.list_all() == []
+
+
+async def test_mark_hungry_notified_sets_timestamp(session):
+    repo = PetRepository(session)
+    pet = await repo.create(1, NOW - timedelta(hours=60))
+
+    notified = await repo.mark_hungry_notified(pet, NOW)
+
+    assert notified.hungry_notified_at == NOW.replace(tzinfo=None)

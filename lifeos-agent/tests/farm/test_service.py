@@ -226,3 +226,39 @@ async def test_consume_hay_reduces_available_hay(session):
 
     assert remaining == HAY_PER_PLOT - 5
     assert await service.available_hay(1) == HAY_PER_PLOT - 5
+
+
+async def test_list_due_ready_notifications_returns_ready_unnotified_plots(session):
+    service = build(session, seed_clover=1)
+    state = await service.plant(1)
+    plot_id = state.plots[0].id
+    await _force_ready(session, plot_id)
+
+    due = await service.list_due_ready_notifications()
+
+    assert [p.id for p in due] == [plot_id]
+
+
+async def test_list_due_ready_notifications_excludes_growing_plots(session):
+    service = build(session, seed_clover=1)
+    await service.plant(1)
+
+    due = await service.list_due_ready_notifications()
+
+    assert due == []
+
+
+async def test_mark_ready_notified_removes_plot_from_due_list(session):
+    service = build(session, seed_clover=1)
+    state = await service.plant(1)
+    plot_id = state.plots[0].id
+    await _force_ready(session, plot_id)
+    repo = FarmRepository(session)
+    plot = await repo.get_plot(plot_id)
+
+    await service.mark_ready_notified(plot)
+
+    assert await service.list_due_ready_notifications() == []
+    # Грядка остаётся собираемой — уведомление не эквивалент сбора.
+    state = await service.get_state(1)
+    assert state.plots[0].ready is True

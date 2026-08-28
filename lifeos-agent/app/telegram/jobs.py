@@ -18,9 +18,11 @@ from app.core.container import (
     build_assistant_service,
     build_contact_service,
     build_digest_service,
+    build_farm_service,
     build_finance_service,
     build_focus_service,
     build_mood_service,
+    build_pet_service,
     build_prompt_service,
     build_task_service,
 )
@@ -600,4 +602,37 @@ async def send_focus_notifications_job(context: ContextTypes.DEFAULT_TYPE) -> No
             await context.bot.send_message(
                 chat_id=telegram_user_id,
                 text="✅ Перерыв закончен, сессия завершена. Отличная работа!",
+            )
+
+
+async def send_farm_pet_notifications_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Опрос БД на "пора" фермы/питомца (specs/028-farm-tamagotchi-
+    rewards.md, единственный оставшийся пункт спеки) — тот же приём, что
+    у фокус-сессий выше. Один тик — обе проверки ("сено готово",
+    "питомец проголодался"), см. `farm_pet_notifications_*` в
+    `app/core/config.py`."""
+    settings = get_settings()
+    telegram_user_id = settings.owner_telegram_user_id
+    if not telegram_user_id:
+        return
+
+    async with AsyncSessionLocal() as session:
+        farm_service = build_farm_service(session)
+        for plot in await farm_service.list_due_ready_notifications():
+            if plot.telegram_user_id != telegram_user_id:
+                continue
+            await farm_service.mark_ready_notified(plot)
+            await context.bot.send_message(
+                chat_id=telegram_user_id,
+                text=f"🌾 Сено готово! Грядка ждёт сбора (+{plot.hay_yield} сена).",
+            )
+
+        pet_service = build_pet_service(session)
+        for pet in await pet_service.list_due_hunger_notifications():
+            if pet.telegram_user_id != telegram_user_id:
+                continue
+            await pet_service.mark_hunger_notified(pet)
+            await context.bot.send_message(
+                chat_id=telegram_user_id,
+                text="🐾 Питомец проголодался — загляните покормить его.",
             )

@@ -255,3 +255,81 @@ async def test_pet_status_isolated_per_user(session):
     status = await service.get_status(2)
 
     assert status.exists is False
+
+
+async def test_list_due_hunger_notifications_excludes_healthy_pet(session):
+    service, _ = build(session)
+    await service.adopt(1)
+
+    due = await service.list_due_hunger_notifications()
+
+    assert due == []
+
+
+async def test_list_due_hunger_notifications_includes_hungry_unnotified_pet(session):
+    service, _ = build(session)
+    await _create_with_last_fed(session, hours_ago=HUNGER_FULL_HOURS + 1, user_id=1)
+
+    due = await service.list_due_hunger_notifications()
+
+    assert [p.telegram_user_id for p in due] == [1]
+
+
+async def test_mark_hunger_notified_removes_pet_from_due_list(session):
+    service, _ = build(session)
+    await _create_with_last_fed(session, hours_ago=HUNGER_FULL_HOURS + 1, user_id=1)
+    repo = PetRepository(session)
+    pet = await repo.get(1)
+
+    await service.mark_hunger_notified(pet)
+
+    assert await service.list_due_hunger_notifications() == []
+
+
+async def test_feeding_after_notification_makes_pet_due_again_next_episode(session):
+    """Ключевое свойство dedup: hungry_notified_at НЕ сбрасывается явно
+    при кормлении (см. докстринг Pet.hungry_notified_at) — джоба
+    отличает старый эпизод от нового сравнением с last_fed_at, а не
+    флагом "уведомлён/нет".
+
+    Оба поля выставлены напрямую через репозиторий (не через
+    service.mark_hunger_notified/feed, которые оба берут "сейчас" в
+    момент вызова — тест выполняется за миллисекунды и не может
+    развести события по часам через реальные вызовы). Хронология: было
+    старое уведомление (100ч назад), ПОСЛЕ него было кормление (55ч
+    назад — позже уведомления, но уже снова достаточно давно, чтобы
+    питомец успел проголодать заново)."""
+    service, _ = build(session)
+    repo = PetRepository(session)
+    now = datetime.now(timezone.utc)
+    pet = await repo.create(1, now - timedelta(hours=100))
+    await repo.mark_hungry_notified(pet, now - timedelta(hours=100))
+    pet = await repo.get(1)
+    pet.last_fed_at = now - timedelta(hours=55)
+    await session.commit()
+
+    due = await service.list_due_hunger_notifications()
+
+    assert [p.telegram_user_id for p in due] == [1]
+
+
+async def test_dead_pet_is_included_in_hunger_notifications(session):
+    """ "Голоден или хуже" — фаза 3 не различает hungry/sick/dead
+    отдельными уведомлениями, одно сообщение на весь неблагополучный
+    диапазон (см. app/pet/service.py::list_due_hunger_notifications)."""
+    service, _ = build(session)
+    await _create_with_last_fed(session, hours_ago=DEATH_AFTER_HOURS + 1, user_id=1)
+
+    due = await service.list_due_hunger_notifications()
+
+    assert [p.telegram_user_id for p in due] == [1]
+
+
+async def test_notifications_isolated_per_user(session):
+    service, _ = build(session)
+    await _create_with_last_fed(session, hours_ago=HUNGER_FULL_HOURS + 1, user_id=1)
+    await service.adopt(2)
+
+    due = await service.list_due_hunger_notifications()
+
+    assert [p.telegram_user_id for p in due] == [1]

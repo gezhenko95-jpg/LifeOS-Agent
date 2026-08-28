@@ -38,6 +38,7 @@ from app.telegram.jobs import (
     send_digests_job,
     send_evening_checkin_job,
     send_evening_reflection_job,
+    send_farm_pet_notifications_job,
     send_finance_report_job,
     send_focus_notifications_job,
     send_habit_reminders_job,
@@ -133,6 +134,7 @@ def build_application() -> Application:
     _register_task_reminders(application, settings)
     _register_habit_reminders(application, settings)
     _register_focus_notifications(application, settings)
+    _register_farm_pet_notifications(application, settings)
     _register_proactive_prompts(application, settings)
     _register_weekly_digest(application, settings)
     _register_finance_report(application, settings)
@@ -216,6 +218,25 @@ def _register_focus_notifications(application: Application, settings: Settings) 
         interval=settings.focus_notifications_interval_seconds,
         first=15,
         name="focus_notifications",
+    )
+
+
+def _register_farm_pet_notifications(
+    application: Application, settings: Settings
+) -> None:
+    """Опрос БД на "пора" фермы/питомца (specs/028) — тот же приём и
+    довод, что у фокус-сессий выше."""
+    if (
+        not settings.farm_pet_notifications_enabled
+        or not settings.owner_telegram_user_id
+    ):
+        return
+
+    application.job_queue.run_repeating(
+        send_farm_pet_notifications_job,
+        interval=settings.farm_pet_notifications_interval_seconds,
+        first=25,
+        name="farm_pet_notifications",
     )
 
 
