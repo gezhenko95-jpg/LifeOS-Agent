@@ -21,6 +21,8 @@ from typing import Literal
 from app.farm.service import FarmService, InsufficientHayError
 from app.pet.models import Pet
 from app.pet.repository import PetRepository
+from app.shop.catalog import DECOR, get_item
+from app.shop.repository import ShopRepository
 
 # Калибровка от той же экономики, что ферма (specs/028, ответ владельца
 # 27.08): грядка — сутки, 10 сена, питомец ест 5/день — то есть ОДНА
@@ -58,6 +60,14 @@ class NotDeadError(PetError):
     pass
 
 
+class UnknownDecorationError(PetError):
+    pass
+
+
+class DecorationNotOwnedError(PetError):
+    pass
+
+
 @dataclass
 class PetStatus:
     exists: bool
@@ -70,12 +80,22 @@ class PetStatus:
     # болен → мёртв) — тот же UX-приём, что ready_at у грядок фермы:
     # UI показывает обратный отсчёт, а не просит клиента считать часы.
     next_threshold_at: datetime | None = None
+    # Единственное поле статуса, которое НЕ производное — собственный
+    # выбор владельца среди купленного в Магазине (см. docstring
+    # Pet.equipped_decor_item_id).
+    equipped_decor_item_id: str | None = None
 
 
 class PetService:
-    def __init__(self, repository: PetRepository, farm_service: FarmService) -> None:
+    def __init__(
+        self,
+        repository: PetRepository,
+        farm_service: FarmService,
+        shop_repository: ShopRepository,
+    ) -> None:
         self._repository = repository
         self._farm = farm_service
+        self._shop = shop_repository
 
     async def get_status(self, telegram_user_id: int) -> PetStatus:
         pet = await self._repository.get(telegram_user_id)
@@ -125,6 +145,28 @@ class PetService:
         if _status(pet).state != "dead":
             raise NotDeadError("Питомец жив, оживлять нечего")
         pet = await self._repository.revive(pet, datetime.now(timezone.utc))
+        return _status(pet)
+
+    async def equip(self, telegram_user_id: int, item_id: str | None) -> PetStatus:
+        """Надеть украшение из Магазина или снять (item_id=None — снять
+        всегда разрешено, владение не проверяется). Владение проверяется
+        каждый раз заново по факту покупки (ShopRepository.purchased_
+        counts), а не читается из отдельного "инвентаря питомца" — тот
+        же принцип, что у остатков фермы: один источник правды, не два,
+        которые могут разойтись."""
+        pet = await self._repository.get(telegram_user_id)
+        if pet is None:
+            raise NoPetError("Сначала заведите питомца")
+
+        if item_id is not None:
+            item = get_item(item_id)
+            if item is None or item.kind != DECOR:
+                raise UnknownDecorationError(f"Нет такого украшения: {item_id}")
+            owned = await self._shop.purchased_counts(telegram_user_id)
+            if owned.get(item_id, 0) <= 0:
+                raise DecorationNotOwnedError(f"«{item.title}» ещё не куплено")
+
+        pet = await self._repository.set_equipped_decor(pet, item_id)
         return _status(pet)
 
     # --- Опрашивающая джоба (app/telegram/jobs.py::send_farm_pet_notifications_job) ---
@@ -193,6 +235,7 @@ def _status(pet: Pet) -> PetStatus:
         last_fed_at=pet.last_fed_at,
         deaths_count=pet.deaths_count,
         next_threshold_at=next_threshold_at,
+        equipped_decor_item_id=pet.equipped_decor_item_id,
     )
 
 

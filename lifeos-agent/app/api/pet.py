@@ -13,15 +13,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.container import build_pet_service
 from app.db.session import get_session
 from app.farm.service import InsufficientHayError
-from app.pet.schemas import PetStatusRead, TelegramUserRequest
+from app.pet.schemas import EquipRequest, PetStatusRead, TelegramUserRequest
 from app.pet.service import (
     AlreadyHasPetError,
+    DecorationNotOwnedError,
     NoPetError,
     NotDeadError,
     PetError,
     PetIsDeadError,
     PetService,
     PetStatus,
+    UnknownDecorationError,
 )
 
 router = APIRouter(prefix="/pet", tags=["pet"])
@@ -36,10 +38,12 @@ def _to_read(status_: PetStatus) -> PetStatusRead:
 
 
 def _raise_for(exc: PetError | InsufficientHayError) -> NoReturn:
-    # 404 — питомца ещё нет, 409 — запрос корректен, но невозможен из-за
-    # текущего состояния (уже есть питомец, он мёртв/жив). Тот же выбор
-    # кодов, что в app/api/farm.py и app/api/shop.py.
-    if isinstance(exc, NoPetError):
+    # 404 — того, к чему обращались, не существует (питомца ещё нет,
+    # такого товара нет в каталоге); 409 — запрос корректен, но
+    # невозможен из-за текущего состояния (питомец мёртв/жив, украшение
+    # ещё не куплено). Тот же выбор кодов, что в app/api/farm.py и
+    # app/api/shop.py.
+    if isinstance(exc, (NoPetError, UnknownDecorationError)):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
         ) from exc
@@ -82,5 +86,18 @@ async def revive(
     try:
         status_ = await service.revive(payload.telegram_user_id)
     except (NoPetError, NotDeadError) as exc:
+        _raise_for(exc)
+    return _to_read(status_)
+
+
+@router.post("/equip", response_model=PetStatusRead)
+async def equip(
+    payload: EquipRequest, service: PetService = Depends(get_pet_service)
+) -> PetStatusRead:
+    """item_id=null снимает украшение — всегда разрешено, владение не
+    проверяется для снятия."""
+    try:
+        status_ = await service.equip(payload.telegram_user_id, payload.item_id)
+    except (NoPetError, UnknownDecorationError, DecorationNotOwnedError) as exc:
         _raise_for(exc)
     return _to_read(status_)

@@ -16,7 +16,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Integer, func
+from sqlalchemy import BigInteger, DateTime, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -61,4 +61,14 @@ class Pet(Base):
         "(app/telegram/jobs.py::send_farm_pet_notifications_job). НЕ "
         "сбрасывается при кормлении — джоба сама сравнивает это поле с "
         "last_fed_at, чтобы понять, новый ли это эпизод голода",
+    )
+
+    equipped_decor_item_id: Mapped[str | None] = mapped_column(
+        String(length=64),
+        nullable=True,
+        comment="Товар из app/shop/catalog.py (kind=decor), надетый на "
+        "питомца сейчас. В отличие от остальных полей — НЕ производное "
+        "значение, а собственный выбор владельца среди купленного; "
+        "владение проверяется на момент экипировки (app/pet/service.py), "
+        "не хранится повторно здесь",
     )

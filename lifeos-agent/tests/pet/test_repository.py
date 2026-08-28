@@ -104,3 +104,22 @@ async def test_mark_hungry_notified_sets_timestamp(session):
     notified = await repo.mark_hungry_notified(pet, NOW)
 
     assert notified.hungry_notified_at == NOW.replace(tzinfo=None)
+
+
+async def test_set_equipped_decor_stores_item_id(session):
+    repo = PetRepository(session)
+    pet = await repo.create(1, NOW)
+
+    equipped = await repo.set_equipped_decor(pet, "decor_hat")
+
+    assert equipped.equipped_decor_item_id == "decor_hat"
+
+
+async def test_set_equipped_decor_none_unequips(session):
+    repo = PetRepository(session)
+    pet = await repo.create(1, NOW)
+    await repo.set_equipped_decor(pet, "decor_hat")
+
+    unequipped = await repo.set_equipped_decor(pet, None)
+
+    assert unequipped.equipped_decor_item_id is None

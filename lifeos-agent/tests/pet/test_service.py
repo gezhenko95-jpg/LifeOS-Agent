@@ -21,10 +21,12 @@ from app.pet.service import (
     HUNGER_FULL_HOURS,
     SICK_AFTER_HOURS,
     AlreadyHasPetError,
+    DecorationNotOwnedError,
     NoPetError,
     NotDeadError,
     PetIsDeadError,
     PetService,
+    UnknownDecorationError,
 )
 
 
@@ -42,6 +44,17 @@ class FakeFarmService:
         return self.hay
 
 
+class FakeShopRepository:
+    """Столько куплено каждого товара для ПОЛЬЗОВАТЕЛЯ 1 — остальные
+    видят пустой магазин (тот же приём, что в tests/farm/test_service.py)."""
+
+    def __init__(self, purchased: dict[str, int] | None = None) -> None:
+        self._purchased = purchased or {}
+
+    async def purchased_counts(self, telegram_user_id: int) -> dict[str, int]:
+        return dict(self._purchased) if telegram_user_id == 1 else {}
+
+
 @pytest_asyncio.fixture
 async def session():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
@@ -55,9 +68,10 @@ async def session():
     await engine.dispose()
 
 
-def build(session, hay: int = 100):
+def build(session, hay: int = 100, purchased: dict[str, int] | None = None):
     farm = FakeFarmService(hay)
-    return PetService(PetRepository(session), farm), farm
+    shop = FakeShopRepository(purchased)
+    return PetService(PetRepository(session), farm, shop), farm
 
 
 async def _create_with_last_fed(session, hours_ago: float, user_id: int = 1) -> None:
@@ -333,3 +347,91 @@ async def test_notifications_isolated_per_user(session):
     due = await service.list_due_hunger_notifications()
 
     assert [p.telegram_user_id for p in due] == [1]
+
+
+# --- Экипировка украшений (specs/028, визуальный питомец) --------------
+
+
+async def test_equip_without_pet_raises(session):
+    service, _ = build(session)
+
+    with pytest.raises(NoPetError):
+        await service.equip(1, "decor_hat")
+
+
+async def test_equip_unknown_item_raises(session):
+    service, _ = build(session)
+    await service.adopt(1)
+
+    with pytest.raises(UnknownDecorationError):
+        await service.equip(1, "no_such_item")
+
+
+async def test_equip_non_decor_item_raises(session):
+    """seed_clover существует в каталоге, но это не украшение —
+    надевать семя на питомца бессмысленно."""
+    service, _ = build(session, purchased={"seed_clover": 5})
+    await service.adopt(1)
+
+    with pytest.raises(UnknownDecorationError):
+        await service.equip(1, "seed_clover")
+
+
+async def test_equip_unowned_decoration_raises(session):
+    service, _ = build(session)
+    await service.adopt(1)
+
+    with pytest.raises(DecorationNotOwnedError):
+        await service.equip(1, "decor_hat")
+
+
+async def test_equip_owned_decoration_succeeds(session):
+    service, _ = build(session, purchased={"decor_hat": 1})
+    await service.adopt(1)
+
+    status = await service.equip(1, "decor_hat")
+
+    assert status.equipped_decor_item_id == "decor_hat"
+
+
+async def test_unequip_sets_none_without_ownership_check(session):
+    service, _ = build(session, purchased={"decor_hat": 1})
+    await service.adopt(1)
+    await service.equip(1, "decor_hat")
+
+    status = await service.equip(1, None)
+
+    assert status.equipped_decor_item_id is None
+
+
+async def test_equipped_decor_persists_across_status_reads(session):
+    service, _ = build(session, purchased={"decor_crown": 1})
+    await service.adopt(1)
+    await service.equip(1, "decor_crown")
+
+    status = await service.get_status(1)
+
+    assert status.equipped_decor_item_id == "decor_crown"
+
+
+async def test_equipped_decor_survives_feed_and_state_changes(session):
+    """Экипировка не производное от голода/настроения — кормление и
+    смена состояния её не трогают."""
+    service, _ = build(session, hay=100, purchased={"decor_scarf": 1})
+    await service.adopt(1)
+    await service.equip(1, "decor_scarf")
+
+    status = await service.feed(1)
+
+    assert status.equipped_decor_item_id == "decor_scarf"
+
+
+async def test_equip_isolated_per_user(session):
+    service, _ = build(session, purchased={"decor_hat": 1})
+    await service.adopt(1)
+    await service.adopt(2)
+    await service.equip(1, "decor_hat")
+
+    status2 = await service.get_status(2)
+
+    assert status2.equipped_decor_item_id is None

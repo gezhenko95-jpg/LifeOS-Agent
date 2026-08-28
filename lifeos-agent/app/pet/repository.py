@@ -42,6 +42,13 @@ class PetRepository:
         await self._session.refresh(pet)
         return pet
 
+    async def set_equipped_decor(self, pet: Pet, item_id: str | None) -> Pet:
+        pet.equipped_decor_item_id = item_id
+        self._session.add(pet)
+        await self._session.commit()
+        await self._session.refresh(pet)
+        return pet
+
     # --- Опрашивающая джоба (app/telegram/jobs.py::send_farm_pet_notifications_job) ---
 
     async def list_all(self) -> list[Pet]:

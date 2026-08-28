@@ -156,3 +156,83 @@ async def test_pet_isolated_per_user(client):
     response = await ac.get("/pet/status?telegram_user_id=2")
 
     assert response.json()["exists"] is False
+
+
+async def _earn_and_buy_decor(ac, monkeypatch, item_id: str):
+    monkeypatch.setattr("app.rewards.coins.coins_for_streak_day", lambda *a, **kw: 500)
+    monkeypatch.setattr("app.rewards.coins.is_lucky_day", lambda *a, **kw: False)
+    await ac.post("/rewards/checkin", json={"telegram_user_id": 1})
+    response = await ac.post(
+        "/shop/purchase", json={"telegram_user_id": 1, "item_id": item_id}
+    )
+    assert response.status_code == 200, response.text
+
+
+async def test_equip_without_pet_returns_404(client):
+    ac, _ = client
+    response = await ac.post(
+        "/pet/equip", json={"telegram_user_id": 1, "item_id": "decor_hat"}
+    )
+
+    assert response.status_code == 404
+
+
+async def test_equip_unowned_decoration_returns_409(client):
+    ac, _ = client
+    await ac.post("/pet/adopt", json={"telegram_user_id": 1})
+
+    response = await ac.post(
+        "/pet/equip", json={"telegram_user_id": 1, "item_id": "decor_hat"}
+    )
+
+    assert response.status_code == 409
+
+
+async def test_equip_unknown_item_returns_404(client):
+    ac, _ = client
+    await ac.post("/pet/adopt", json={"telegram_user_id": 1})
+
+    response = await ac.post(
+        "/pet/equip", json={"telegram_user_id": 1, "item_id": "no_such_item"}
+    )
+
+    assert response.status_code == 404
+
+
+async def test_equip_owned_decoration_via_real_purchase(client, monkeypatch):
+    ac, _ = client
+    await ac.post("/pet/adopt", json={"telegram_user_id": 1})
+    await _earn_and_buy_decor(ac, monkeypatch, "decor_hat")
+
+    response = await ac.post(
+        "/pet/equip", json={"telegram_user_id": 1, "item_id": "decor_hat"}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["equipped_decor_item_id"] == "decor_hat"
+
+
+async def test_unequip_returns_null(client, monkeypatch):
+    ac, _ = client
+    await ac.post("/pet/adopt", json={"telegram_user_id": 1})
+    await _earn_and_buy_decor(ac, monkeypatch, "decor_hat")
+    await ac.post("/pet/equip", json={"telegram_user_id": 1, "item_id": "decor_hat"})
+
+    response = await ac.post(
+        "/pet/equip", json={"telegram_user_id": 1, "item_id": None}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["equipped_decor_item_id"] is None
+
+
+async def test_status_reflects_equipped_decor(client, monkeypatch):
+    ac, _ = client
+    await ac.post("/pet/adopt", json={"telegram_user_id": 1})
+    await _earn_and_buy_decor(ac, monkeypatch, "decor_crown")
+    await ac.post("/pet/equip", json={"telegram_user_id": 1, "item_id": "decor_crown"})
+
+    response = await ac.get("/pet/status?telegram_user_id=1")
+
+    assert response.json()["equipped_decor_item_id"] == "decor_crown"

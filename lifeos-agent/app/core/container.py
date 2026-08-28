@@ -126,8 +126,13 @@ def build_farm_service(session: AsyncSession) -> FarmService:
 def build_pet_service(session: AsyncSession) -> PetService:
     # Composite: кормление тратит сено — ресурс, который ведёт ферма
     # (specs/028, фаза 3). Питомец не дублирует амбар, а спрашивает у
-    # FarmService, ровно как ферма спрашивает у магазина.
-    return PetService(PetRepository(session), build_farm_service(session))
+    # FarmService, ровно как ферма спрашивает у магазина. ShopRepository
+    # напрямую (не build_shop_service) — питомцу для проверки владения
+    # украшением нужен только purchased_counts, не вся бизнес-логика
+    # покупки.
+    return PetService(
+        PetRepository(session), build_farm_service(session), ShopRepository(session)
+    )
 
 
 def build_contact_service(session: AsyncSession) -> ContactService:

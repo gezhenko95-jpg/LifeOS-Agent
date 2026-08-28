@@ -15,7 +15,14 @@ class PetStatusRead(BaseModel):
     last_fed_at: datetime | None = None
     deaths_count: int = 0
     next_threshold_at: datetime | None = None
+    equipped_decor_item_id: str | None = None
 
 
 class TelegramUserRequest(BaseModel):
     telegram_user_id: int
+
+
+class EquipRequest(BaseModel):
+    telegram_user_id: int
+    # None — снять текущее украшение.
+    item_id: str | None = None
