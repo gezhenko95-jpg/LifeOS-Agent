@@ -3655,6 +3655,7 @@
       <input type="text" id="habitTitle" placeholder="Название привычки" required />
       <button type="submit">Добавить</button>
     </form>
+    <p class="meta" id="habitFreezeWallet"></p>
     <ul class="item-list" id="habitList"></ul>
   </section>
 
@@ -5533,12 +5534,22 @@ document.getElementById("taskList").addEventListener("submit", async (e) => {
 
 // ---- Habits ----
 
+// Доступные заморозки стрика (specs/029) — отдельным полем кошелька, не
+// частью каждой привычки: инвентарь общий на аккаунт, не на привычку.
+let lastFreezesAvailable = 0;
+
 async function loadHabits() {
   const id = getUserId();
   const list = document.getElementById("habitList");
-  if (!id) { list.innerHTML = ""; lastGoals = []; return; }
-  const habits = await api(`/habits?telegram_user_id=${encodeURIComponent(id)}`);
+  const wallet = document.getElementById("habitFreezeWallet");
+  if (!id) { list.innerHTML = ""; wallet.textContent = ""; lastGoals = []; return; }
+  const [habits, freezeWallet] = await Promise.all([
+    api(`/habits?telegram_user_id=${encodeURIComponent(id)}`),
+    api(`/habits/streak-freezes?telegram_user_id=${encodeURIComponent(id)}`),
+  ]);
   lastHabits = habits; // до early return — иначе достижение "серия 7 дней" не обнулится, когда привычек не осталось
+  lastFreezesAvailable = freezeWallet.available;
+  wallet.textContent = lastFreezesAvailable > 0 ? `🧊 доступно заморозок: ${lastFreezesAvailable}` : "";
   if (!habits.length) {
     list.innerHTML = '<li class="empty">Активных привычек нет.</li>';
     return;
@@ -5547,6 +5558,13 @@ async function loadHabits() {
     // 30 дней подряд = полная полоска — просто наглядная шкала, не привязана
     // к какой-то конкретной цели (у привычек нет "плана" в днях).
     const strength = Math.min(100, Math.round((habit.streak / 30) * 100));
+    // Кнопка заморозки — только когда И инвентарь не пуст, И сервер
+    // подтвердил, что заморозка вчера реально продлит серию
+    // (can_freeze_yesterday, см. HabitService.can_freeze_yesterday_bulk) —
+    // не показываем бесполезную кнопку у каждой привычки всегда.
+    const freezeBtn = habit.can_freeze_yesterday && lastFreezesAvailable > 0
+      ? `<button class="secondary" data-action="freeze-habit" data-id="${habit.id}" title="Заморозить вчерашний день">🧊</button>`
+      : "";
     return `
     <li>
       <span class="item-title">${escapeHtml(habit.title)}
@@ -5554,6 +5572,7 @@ async function loadHabits() {
       </span>
       <span class="progress-bar"><span style="width:${strength}%"></span></span>
       <span class="meta">${habit.streak > 0 ? "🔥 " + habit.streak : "нет серии"}</span>
+      ${freezeBtn}
       <button class="secondary" data-action="edit" data-kind="habit" data-id="${habit.id}" title="Изменить">✎</button>
       <button class="secondary" data-action="complete-habit" data-id="${habit.id}">Готово</button>
       <button class="danger" data-action="delete-habit" data-id="${habit.id}">✕</button>
@@ -5592,6 +5611,19 @@ document.getElementById("habitList").addEventListener("click", async (e) => {
     await api(`/habits/${habitId}?telegram_user_id=${getUserId()}`, {
       method: "DELETE",
     });
+    await loadHabits();
+  } else if (btn.dataset.action === "freeze-habit") {
+    // 409 (заморозок нет / уже неактуально — гонка с другой вкладкой) —
+    // обычный ответ, не сбой: показываем тостом, список перерисуется и
+    // сам уберёт кнопку, если условие больше не выполняется.
+    try {
+      await api(`/habits/${habitId}/streak-freeze?telegram_user_id=${getUserId()}`, {
+        method: "POST",
+      });
+      showToast("🧊 Вчерашний день заморожен");
+    } catch (err) {
+      showToast(String(err.message || err));
+    }
     await loadHabits();
   }
 });
@@ -5854,6 +5886,21 @@ async function renderDebtPanel(debtId) {
   const historyHtml = payments.length
     ? renderDebtPaymentBars(payments)
     : '<p class="empty">Платежей пока не было</p>';
+  // Калькулятор досрочного погашения (specs/029, по мотивам YNAB) —
+  // только если есть план рассрочки: без monthly_payment серверу нечего
+  // считать (см. DebtService.simulate_payoff), поле на фронте тоже не
+  // показываем.
+  const payoffHtml = debt?.monthly_payment
+    ? `
+    <div class="task-panel-col">
+      <h4>⏩ Досрочное погашение</h4>
+      <form class="add-form debt-payoff-form" data-debt-id="${debtId}">
+        <input type="number" name="extra_monthly" placeholder="Доплата в мес., ₽" min="1" />
+        <button type="submit">Посчитать</button>
+      </form>
+      <p class="meta" data-payoff-result-for="${debtId}"></p>
+    </div>`
+    : "";
   panel.innerHTML = `
     <div class="task-panel-col">
       <h4>📈 История платежей</h4>
@@ -5867,7 +5914,8 @@ async function renderDebtPanel(debtId) {
         <button type="submit">Сохранить</button>
       </form>
       <p class="hint">Пусто в обоих полях — план снимается, останется только остаток/срок.</p>
-    </div>`;
+    </div>
+    ${payoffHtml}`;
 }
 
 // Те же .fa-bar, что у "Итоги недели"/финансовой аналитики — столбик на
@@ -5984,6 +6032,29 @@ document.getElementById("debtList").addEventListener("submit", async (e) => {
   });
   await loadDebts();
   showToast("План сохранён");
+});
+
+// Отдельный слушатель submit (не ветка в предыдущем — тот выходит рано
+// на форме другого класса) — калькулятор досрочного погашения только
+// читает, ничего не сохраняет, поэтому список долгов не перезагружаем.
+document.getElementById("debtList").addEventListener("submit", async (e) => {
+  const form = e.target.closest(".debt-payoff-form");
+  if (!form) return;
+  e.preventDefault();
+  const id = getUserId();
+  const debtId = form.dataset.debtId;
+  const extra = Number(form.elements.extra_monthly.value) || 0;
+  const result = document.querySelector(`[data-payoff-result-for="${debtId}"]`);
+  try {
+    const plan = await api(
+      `/finance/debts/${debtId}/payoff-plan?telegram_user_id=${encodeURIComponent(id)}&extra_monthly=${extra}`
+    );
+    result.textContent = plan.months_saved > 0
+      ? `Сейчас: ${plan.months_current} мес. → с доплатой: ${plan.months_with_extra} мес. (раньше на ${plan.months_saved})`
+      : `Сейчас: ${plan.months_current} мес. — доплата пока не сокращает срок`;
+  } catch (err) {
+    result.textContent = String(err.message || err);
+  }
 });
 
 // --- Аналитика (specs/017-finance.md, довесок) --------------------------

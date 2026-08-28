@@ -130,3 +130,51 @@ async def test_delete_nonexistent_habit_returns_404(client):
     response = await client.delete("/habits/999999", params={"telegram_user_id": 1})
 
     assert response.status_code == 404
+
+
+# --- Стрик-заморозка (specs/029) ----------------------------------------
+
+
+async def test_streak_freeze_wallet_starts_at_zero(client):
+    response = await client.get(
+        "/habits/streak-freezes", params={"telegram_user_id": 10}
+    )
+    assert response.status_code == 200
+    assert response.json() == {"available": 0}
+
+
+async def test_use_streak_freeze_without_inventory_returns_409(client):
+    create_resp = await client.post(
+        "/habits", json={"telegram_user_id": 10, "title": "Читать"}
+    )
+    habit_id = create_resp.json()["id"]
+
+    response = await client.post(
+        f"/habits/{habit_id}/streak-freeze", params={"telegram_user_id": 10}
+    )
+    assert response.status_code == 409
+
+
+async def test_use_streak_freeze_missing_habit_returns_404(client):
+    response = await client.post(
+        "/habits/999999/streak-freeze", params={"telegram_user_id": 10}
+    )
+    assert response.status_code == 404
+
+
+async def test_streak_freeze_wallet_reflects_purchase(client, monkeypatch):
+    # Тот же приём, что tests/shop/test_api.py: делаем чек-ин
+    # детерминированным, чтобы монет хватило на покупку (40 за заморозку).
+    monkeypatch.setattr("app.rewards.coins.is_lucky_day", lambda *a, **kw: False)
+    monkeypatch.setattr("app.rewards.coins.coins_for_streak_day", lambda *a, **kw: 100)
+    await client.post("/rewards/checkin", json={"telegram_user_id": 11})
+
+    await client.post(
+        "/shop/purchase",
+        json={"telegram_user_id": 11, "item_id": "streak_freeze"},
+    )
+
+    response = await client.get(
+        "/habits/streak-freezes", params={"telegram_user_id": 11}
+    )
+    assert response.json() == {"available": 1}

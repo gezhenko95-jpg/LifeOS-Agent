@@ -8,10 +8,10 @@
 from collections import defaultdict
 from datetime import date, time
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 
 from app.core.repository import BaseRepository, escape_like
-from app.habits.models import Habit, HabitLog
+from app.habits.models import Habit, HabitLog, HabitStreakFreeze
 
 
 class HabitRepository(BaseRepository[Habit]):
@@ -107,3 +107,44 @@ class HabitRepository(BaseRepository[Habit]):
         for log in result.scalars():
             grouped[log.habit_id].append(log)
         return dict(grouped)
+
+    # --- Стрик-заморозка (specs/029) --------------------------------
+
+    async def add_streak_freeze(self, habit_id: int, day: date) -> HabitStreakFreeze:
+        freeze = HabitStreakFreeze(habit_id=habit_id, protected_on=day)
+        self._session.add(freeze)
+        await self._session.commit()
+        await self._session.refresh(freeze)
+        return freeze
+
+    async def list_freeze_days_for_habits(
+        self, habit_ids: list[int]
+    ) -> dict[int, set[date]]:
+        """Замороженные дни сразу для нескольких привычек, одним
+        запросом (тот же довод, что у list_logs_for_habits — списки/
+        брифинг не должны ходить в БД в цикле, см. AUDIT.md, P-1)."""
+        if not habit_ids:
+            return {}
+
+        query = select(
+            HabitStreakFreeze.habit_id, HabitStreakFreeze.protected_on
+        ).where(HabitStreakFreeze.habit_id.in_(habit_ids))
+        result = await self._session.execute(query)
+
+        grouped: dict[int, set[date]] = defaultdict(set)
+        for habit_id, protected_on in result.all():
+            grouped[habit_id].add(protected_on)
+        return dict(grouped)
+
+    async def count_used_freezes(self, telegram_user_id: int) -> int:
+        """Сколько заморозок уже потрачено всего — через JOIN на Habit,
+        владение у HabitStreakFreeze своего telegram_user_id нет (см.
+        докстринг модели)."""
+        query = (
+            select(func.count())
+            .select_from(HabitStreakFreeze)
+            .join(Habit, Habit.id == HabitStreakFreeze.habit_id)
+            .where(Habit.telegram_user_id == telegram_user_id)
+        )
+        result = await self._session.execute(query)
+        return int(result.scalar_one())

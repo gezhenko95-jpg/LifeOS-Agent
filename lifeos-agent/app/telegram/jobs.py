@@ -598,10 +598,18 @@ async def send_focus_notifications_job(context: ContextTypes.DEFAULT_TYPE) -> No
         for focus in await service.list_due_break_end():
             if focus.telegram_user_id != telegram_user_id:
                 continue
-            await service.mark_break_notified(focus)
+            completed = await service.mark_break_notified(focus)
+            # reward_coins — не колонка модели, атрибут выставляется
+            # только внутри mark_break_notified (specs/029); getattr на
+            # случай сервиса без shop_repository (см. build_focus_service).
+            reward = getattr(completed, "reward_coins", 0)
+            reward_line = f" +{reward} 🪙" if reward else ""
             await context.bot.send_message(
                 chat_id=telegram_user_id,
-                text="✅ Перерыв закончен, сессия завершена. Отличная работа!",
+                text=(
+                    "✅ Перерыв закончен, сессия завершена. "
+                    f"Отличная работа!{reward_line}"
+                ),
             )
 
 

@@ -246,3 +246,49 @@ async def test_update_missing_debt_returns_404(client):
         json={"monthly_payment": 1000},
     )
     assert response.status_code == 404
+
+
+# --- Калькулятор досрочного погашения (specs/029) -----------------------
+
+
+async def test_payoff_plan_with_extra_payment(client):
+    create_resp = await client.post(
+        "/finance/debts",
+        json={"telegram_user_id": 7, "name": "Долг", "total_amount": 100000},
+    )
+    debt_id = create_resp.json()["id"]
+    await client.patch(
+        f"/finance/debts/{debt_id}",
+        params={"telegram_user_id": 7},
+        json={"monthly_payment": 20000},
+    )
+
+    response = await client.get(
+        f"/finance/debts/{debt_id}/payoff-plan",
+        params={"telegram_user_id": 7, "extra_monthly": 30000},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["months_current"] == 5
+    assert body["months_with_extra"] == 2
+    assert body["months_saved"] == 3
+
+
+async def test_payoff_plan_without_monthly_payment_returns_404(client):
+    create_resp = await client.post(
+        "/finance/debts",
+        json={"telegram_user_id": 7, "name": "Долг", "total_amount": 100000},
+    )
+    debt_id = create_resp.json()["id"]
+
+    response = await client.get(
+        f"/finance/debts/{debt_id}/payoff-plan", params={"telegram_user_id": 7}
+    )
+    assert response.status_code == 404
+
+
+async def test_payoff_plan_missing_debt_returns_404(client):
+    response = await client.get(
+        "/finance/debts/9999/payoff-plan", params={"telegram_user_id": 7}
+    )
+    assert response.status_code == 404

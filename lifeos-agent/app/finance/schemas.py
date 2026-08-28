@@ -125,6 +125,18 @@ class DebtPaymentRead(BaseModel):
     paid_at: datetime
 
 
+class PayoffPlanRead(BaseModel):
+    """Ответ калькулятора досрочного погашения (specs/029) — months_saved
+    dataclass-свойство (months_current − months_with_extra), как
+    over_budget/net у соседних схем выше."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    months_current: int
+    months_with_extra: int
+    months_saved: int
+
+
 class DebtRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

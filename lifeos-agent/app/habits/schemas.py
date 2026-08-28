@@ -45,3 +45,15 @@ class HabitRead(BaseModel):
     archived: bool
     created_at: datetime
     streak: int = 0
+    # Дозаполняется в app/api/habits.py (тот же приём, что streak) — не
+    # хранимое поле Habit, а результат HabitService.can_freeze_yesterday_bulk
+    # (specs/029): показывать кнопку заморозки на /ui только когда она
+    # реально продлит серию.
+    can_freeze_yesterday: bool = False
+
+
+class StreakFreezeWalletRead(BaseModel):
+    """Ответ GET /habits/streak-freezes (specs/029) — сколько заморозок
+    можно использовать прямо сейчас."""
+
+    available: int

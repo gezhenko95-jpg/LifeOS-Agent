@@ -8,6 +8,7 @@ app/scheduler/finance_report.py) только формулирует фразу 
 готовых чисел.
 """
 
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
@@ -294,6 +295,23 @@ class FinanceService:
         return recommendations
 
 
+@dataclass
+class PayoffPlan:
+    """Результат калькулятора досрочного погашения (specs/029, по
+    мотивам YNAB) — сколько месяцев осталось сейчас и сколько останется,
+    если добавить extra_monthly сверху уже заданного плана рассрочки.
+    Без процентной ставки: Debt её не хранит (владелец не вводит её по
+    каждому долгу), считаем только сдвиг срока, не "экономию на
+    процентах"."""
+
+    months_current: int
+    months_with_extra: int
+
+    @property
+    def months_saved(self) -> int:
+        return self.months_current - self.months_with_extra
+
+
 class DebtService:
     """Долги/задолженности (specs/017-finance.md, довесок). Отдельный
     сервис от FinanceService (ADR-005) — своя модель, свой жизненный
@@ -407,6 +425,29 @@ class DebtService:
             debt.next_payment_due = next_payment_due
 
         return await self._repository.save(debt)
+
+    async def simulate_payoff(
+        self, telegram_user_id: int, debt_id: int, extra_monthly: int = 0
+    ) -> Optional[PayoffPlan]:
+        """Калькулятор "добавь X₽/мес — закроешь на N месяцев раньше"
+        (specs/029, по мотивам YNAB). None — долг чужой/не найден, нет
+        плана рассрочки (monthly_payment не задан — нечего считать) или
+        уже закрыт (remaining_amount <= 0 — сравнивать месяцы не с чем)."""
+        if extra_monthly < 0:
+            raise ValueError("Доплата не может быть отрицательной")
+
+        debt = owned_or_none(
+            await self._repository.get_by_id(debt_id), telegram_user_id
+        )
+        if debt is None or debt.monthly_payment is None or debt.remaining_amount <= 0:
+            return None
+
+        months_current = math.ceil(debt.remaining_amount / debt.monthly_payment)
+        new_payment = debt.monthly_payment + extra_monthly
+        months_with_extra = math.ceil(debt.remaining_amount / new_payment)
+        return PayoffPlan(
+            months_current=months_current, months_with_extra=months_with_extra
+        )
 
     async def delete_debt(self, telegram_user_id: int, debt_id: int) -> Optional[Debt]:
         debt = owned_or_none(

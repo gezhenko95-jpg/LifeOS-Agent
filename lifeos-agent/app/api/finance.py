@@ -25,6 +25,7 @@ from app.finance.schemas import (
     DebtUpdate,
     FinanceSummaryRead,
     MonthSummaryRead,
+    PayoffPlanRead,
     TransactionCreate,
     TransactionRead,
 )
@@ -230,6 +231,31 @@ async def list_debt_payments(
 ) -> list[DebtPaymentRead]:
     payments = await service.list_payments(telegram_user_id, debt_id)
     return [DebtPaymentRead.model_validate(p) for p in payments]
+
+
+@router.get("/debts/{debt_id}/payoff-plan", response_model=PayoffPlanRead)
+async def get_payoff_plan(
+    debt_id: int,
+    telegram_user_id: int,
+    extra_monthly: int = 0,
+    service: DebtService = Depends(get_debt_service),
+) -> PayoffPlanRead:
+    """Калькулятор "добавь X₽/мес — закроешь на N месяцев раньше"
+    (specs/029, по мотивам YNAB). 404 — долг чужой/не найден, нет плана
+    рассрочки или уже закрыт: все три "нечего посчитать", отдельные коды
+    не нужны."""
+    try:
+        plan = await service.simulate_payoff(telegram_user_id, debt_id, extra_monthly)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+    if plan is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Нет плана рассрочки для расчёта",
+        )
+    return PayoffPlanRead.model_validate(plan)
 
 
 @router.delete("/debts/{debt_id}", status_code=status.HTTP_204_NO_CONTENT)

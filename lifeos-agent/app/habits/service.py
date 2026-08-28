@@ -12,7 +12,7 @@ API/Conversation — только вызывают этот сервис. См. 
 запрос, по одному на привычку (см. AUDIT.md, P-1).
 """
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from typing import Optional
 
 from app.core.ownership import owned_or_none
@@ -20,11 +20,39 @@ from app.habits.models import Habit
 from app.habits.repository import HabitRepository
 from app.habits.streaks import current_streak, days_since_last, longest_streak
 from app.habits.templates import HabitTemplate
+from app.shop.repository import ShopRepository
+
+# app/shop/catalog.py — id товара заморозки (specs/029).
+STREAK_FREEZE_ITEM_ID = "streak_freeze"
+
+
+class HabitFreezeError(ValueError):
+    """Общий предок ошибок стрик-заморозки — API ловит его одним except."""
+
+
+class HabitNotFoundError(HabitFreezeError):
+    pass
+
+
+class NoFreezeAvailableError(HabitFreezeError):
+    pass
+
+
+class NothingToFreezeError(HabitFreezeError):
+    pass
 
 
 class HabitService:
-    def __init__(self, repository: HabitRepository) -> None:
+    def __init__(
+        self,
+        repository: HabitRepository,
+        shop_repository: Optional[ShopRepository] = None,
+    ) -> None:
         self._repository = repository
+        # Опционально (тот же приём, что payment_repository у DebtService)
+        # — без него available_freezes/freeze_yesterday недоступны (0
+        # заморозок), остальная логика привычек не меняется.
+        self._shop = shop_repository
 
     async def create_habit(
         self,
@@ -161,7 +189,14 @@ class HabitService:
         )
         if habit is None:
             return 0
-        return current_streak(await self._completed_days(habit_id))
+        completed = await self._completed_days(habit_id)
+        frozen = await self._repository.list_freeze_days_for_habits([habit_id])
+        # Замороженные дни продлевают только ЧИСЛО текущего стрика — не
+        # HabitLog (см. докстринг HabitStreakFreeze), поэтому объединение
+        # множеств происходит здесь, у вызывающего кода, а не внутри
+        # current_streak (она остаётся чистой функцией, не знающей о
+        # заморозках вовсе).
+        return current_streak(completed | frozen.get(habit_id, set()))
 
     async def get_streaks_bulk(
         self, telegram_user_id: int, habit_ids: list[int]
@@ -171,9 +206,11 @@ class HabitService:
         одиночного get_streak."""
         owned_ids = await self._owned_ids(telegram_user_id, habit_ids)
         by_habit = await self._repository.list_logs_for_habits(owned_ids)
+        frozen = await self._repository.list_freeze_days_for_habits(owned_ids)
         return {
             habit_id: current_streak(
                 {log.completed_on for log in by_habit.get(habit_id, [])}
+                | frozen.get(habit_id, set())
             )
             for habit_id in owned_ids
         }
@@ -268,3 +305,76 @@ class HabitService:
             return None
         await self._repository.delete(habit)
         return habit
+
+    # --- Стрик-заморозка (specs/029, по мотивам Duolingo) -------------
+
+    async def available_freezes(self, telegram_user_id: int) -> int:
+        """Сколько заморозок можно использовать прямо сейчас — куплено
+        (см. ShopRepository.purchased_counts) минус уже потрачено. Без
+        shop_repository — 0 (composite не собран, см. __init__)."""
+        if self._shop is None:
+            return 0
+        purchased = await self._shop.purchased_counts(telegram_user_id)
+        used = await self._repository.count_used_freezes(telegram_user_id)
+        return max(purchased.get(STREAK_FREEZE_ITEM_ID, 0) - used, 0)
+
+    async def freeze_yesterday(self, telegram_user_id: int, habit_id: int) -> Habit:
+        """Использовать одну заморозку на ВЧЕРАШНИЙ день конкретной
+        привычки. Только вчера, и только если это реально продлевает
+        серию (позавчера отмечено, вчера — нет) — см. обоснование в
+        specs/029: без этого ограничения заморозки копились бы годами и
+        чинили любой давний разрыв задним числом, что превращает
+        расходную механику поддержки формы в переписывание истории."""
+        habit = owned_or_none(
+            await self._repository.get_by_id(habit_id), telegram_user_id
+        )
+        if habit is None:
+            raise HabitNotFoundError("Привычка не найдена")
+
+        available = await self.available_freezes(telegram_user_id)
+        if available <= 0:
+            raise NoFreezeAvailableError("Нет доступных заморозок — купите в Магазине")
+
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+        day_before_yesterday = today - timedelta(days=2)
+        completed = await self._completed_days(habit_id)
+        if yesterday in completed:
+            raise NothingToFreezeError("Вчера привычка уже отмечена")
+        if day_before_yesterday not in completed:
+            raise NothingToFreezeError(
+                "Позавчера привычка не была отмечена — заморозка не продлит серию"
+            )
+        frozen = await self._repository.list_freeze_days_for_habits([habit_id])
+        if yesterday in frozen.get(habit_id, set()):
+            raise NothingToFreezeError("Вчерашний день уже заморожен")
+
+        await self._repository.add_streak_freeze(habit_id, yesterday)
+        return habit
+
+    async def can_freeze_yesterday_bulk(
+        self, telegram_user_id: int, habit_ids: list[int]
+    ) -> dict[int, bool]:
+        """Для каждой привычки — реально ли заморозка вчерашнего дня
+        продлит серию (не зависит от того, есть ли инвентарь — это
+        отдельная проверка, available_freezes). /ui показывает кнопку
+        только когда И то, И другое true, не показывая бесполезную
+        кнопку у каждой привычки всегда."""
+        owned_ids = await self._owned_ids(telegram_user_id, habit_ids)
+        by_habit = await self._repository.list_logs_for_habits(owned_ids)
+        frozen = await self._repository.list_freeze_days_for_habits(owned_ids)
+
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+        day_before_yesterday = today - timedelta(days=2)
+
+        result: dict[int, bool] = {}
+        for habit_id in owned_ids:
+            completed = {log.completed_on for log in by_habit.get(habit_id, [])}
+            already_frozen = yesterday in frozen.get(habit_id, set())
+            result[habit_id] = (
+                yesterday not in completed
+                and day_before_yesterday in completed
+                and not already_frozen
+            )
+        return result

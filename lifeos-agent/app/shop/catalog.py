@@ -20,15 +20,18 @@ from dataclasses import dataclass
 
 # Категории. Разделены не ради красоты вывода: у них разное поведение
 # при повторной покупке (см. repeatable ниже) и разные потребители —
-# семена и ускорители расходует ферма, украшения носит питомец.
+# семена и ускорители расходует ферма, украшения носит питомец, заморозку
+# — привычки (app/habits/).
 SEED = "seed"
 BOOSTER = "booster"
 DECOR = "decor"
+FREEZE = "freeze"
 
 KIND_TITLES = {
     SEED: "Семена",
     BOOSTER: "Ускорители фермы",
     DECOR: "Украшения питомца",
+    FREEZE: "Стрики",
 }
 
 
@@ -109,6 +112,15 @@ CATALOG: tuple[ShopItem, ...] = (
         price=250,
         description="Больше недели визитов — и питомец коронован",
         repeatable=False,
+    ),
+    ShopItem(
+        id="streak_freeze",
+        kind=FREEZE,
+        title="Заморозка стрика",
+        emoji="🧊",
+        price=40,
+        description="Защищает серию привычки от одного пропущенного дня",
+        repeatable=True,
     ),
 )
 

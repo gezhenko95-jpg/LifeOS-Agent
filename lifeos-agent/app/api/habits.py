@@ -10,8 +10,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.container import build_habit_service
 from app.db.session import get_session
 from app.habits.models import Habit
-from app.habits.schemas import HabitCreate, HabitRead, HabitUpdate
-from app.habits.service import HabitService
+from app.habits.schemas import (
+    HabitCreate,
+    HabitRead,
+    HabitUpdate,
+    StreakFreezeWalletRead,
+)
+from app.habits.service import (
+    HabitFreezeError,
+    HabitNotFoundError,
+    HabitService,
+)
 
 router = APIRouter(prefix="/habits", tags=["habits"])
 
@@ -22,8 +31,16 @@ def get_habit_service(session: AsyncSession = Depends(get_session)) -> HabitServ
 
 async def _to_read_model(habit: Habit, service: HabitService) -> HabitRead:
     streak = await service.get_streak(habit.telegram_user_id, habit.id)
+    can_freeze = await service.can_freeze_yesterday_bulk(
+        habit.telegram_user_id, [habit.id]
+    )
     read_model = HabitRead.model_validate(habit)
-    return read_model.model_copy(update={"streak": streak})
+    return read_model.model_copy(
+        update={
+            "streak": streak,
+            "can_freeze_yesterday": can_freeze.get(habit.id, False),
+        }
+    )
 
 
 @router.post("", response_model=HabitRead, status_code=status.HTTP_201_CREATED)
@@ -49,10 +66,15 @@ async def list_habits(
     telegram_user_id: int, service: HabitService = Depends(get_habit_service)
 ) -> list[HabitRead]:
     habits = await service.list_active_habits(telegram_user_id)
-    streaks = await service.get_streaks_bulk(telegram_user_id, [h.id for h in habits])
+    habit_ids = [h.id for h in habits]
+    streaks = await service.get_streaks_bulk(telegram_user_id, habit_ids)
+    can_freeze = await service.can_freeze_yesterday_bulk(telegram_user_id, habit_ids)
     return [
         HabitRead.model_validate(habit).model_copy(
-            update={"streak": streaks.get(habit.id, 0)}
+            update={
+                "streak": streaks.get(habit.id, 0),
+                "can_freeze_yesterday": can_freeze.get(habit.id, False),
+            }
         )
         for habit in habits
     ]
@@ -100,6 +122,36 @@ async def complete_habit(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Привычка не найдена"
         )
+    return await _to_read_model(habit, service)
+
+
+@router.get("/streak-freezes", response_model=StreakFreezeWalletRead)
+async def get_streak_freeze_wallet(
+    telegram_user_id: int, service: HabitService = Depends(get_habit_service)
+) -> StreakFreezeWalletRead:
+    available = await service.available_freezes(telegram_user_id)
+    return StreakFreezeWalletRead(available=available)
+
+
+@router.post("/{habit_id}/streak-freeze", response_model=HabitRead)
+async def use_streak_freeze(
+    habit_id: int,
+    telegram_user_id: int,
+    service: HabitService = Depends(get_habit_service),
+) -> HabitRead:
+    """Заморозить вчерашний день привычки (specs/029). 404 — привычка не
+    найдена/чужая; 409 — нет заморозок в инвентаре или замораживать
+    нечего (см. HabitService.freeze_yesterday)."""
+    try:
+        habit = await service.freeze_yesterday(telegram_user_id, habit_id)
+    except HabitNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    except HabitFreezeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
     return await _to_read_model(habit, service)
 
 

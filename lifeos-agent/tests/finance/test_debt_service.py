@@ -271,3 +271,91 @@ async def test_update_debt_wrong_owner_returns_none(repository):
     result = await service.update_debt(1, debt_id=1, monthly_payment=1000)
 
     assert result is None
+
+
+# --- Калькулятор досрочного погашения (specs/029, по мотивам YNAB) -----
+
+
+async def test_simulate_payoff_no_extra_saves_nothing(repository):
+    debt = _debt(id=1, remaining_amount=100000, monthly_payment=20000)
+    repository.get_by_id.return_value = debt
+    service = DebtService(repository)
+
+    plan = await service.simulate_payoff(1, 1, extra_monthly=0)
+
+    assert plan.months_current == 5
+    assert plan.months_with_extra == 5
+    assert plan.months_saved == 0
+
+
+async def test_simulate_payoff_extra_payment_shortens_term(repository):
+    debt = _debt(id=1, remaining_amount=100000, monthly_payment=20000)
+    repository.get_by_id.return_value = debt
+    service = DebtService(repository)
+
+    plan = await service.simulate_payoff(1, 1, extra_monthly=30000)
+
+    # 100000 / 20000 = 5 мес текущих, 100000 / 50000 = 2 мес с доплатой
+    assert plan.months_current == 5
+    assert plan.months_with_extra == 2
+    assert plan.months_saved == 3
+
+
+async def test_simulate_payoff_rounds_up_partial_months(repository):
+    """Последний неполный месяц всё равно считается целым — платёж
+    в этом месяце ещё не закрыт."""
+    debt = _debt(id=1, remaining_amount=100001, monthly_payment=20000)
+    repository.get_by_id.return_value = debt
+    service = DebtService(repository)
+
+    plan = await service.simulate_payoff(1, 1, extra_monthly=0)
+
+    assert plan.months_current == 6
+
+
+async def test_simulate_payoff_without_monthly_payment_returns_none(repository):
+    debt = _debt(id=1, remaining_amount=100000, monthly_payment=None)
+    repository.get_by_id.return_value = debt
+    service = DebtService(repository)
+
+    plan = await service.simulate_payoff(1, 1)
+
+    assert plan is None
+
+
+async def test_simulate_payoff_already_closed_returns_none(repository):
+    debt = _debt(id=1, remaining_amount=0, monthly_payment=20000)
+    repository.get_by_id.return_value = debt
+    service = DebtService(repository)
+
+    plan = await service.simulate_payoff(1, 1)
+
+    assert plan is None
+
+
+async def test_simulate_payoff_missing_debt_returns_none(repository):
+    repository.get_by_id.return_value = None
+    service = DebtService(repository)
+
+    plan = await service.simulate_payoff(1, 999)
+
+    assert plan is None
+
+
+async def test_simulate_payoff_wrong_owner_returns_none(repository):
+    debt = _debt(id=1, telegram_user_id=2, monthly_payment=20000)
+    repository.get_by_id.return_value = debt
+    service = DebtService(repository)
+
+    plan = await service.simulate_payoff(1, 1)
+
+    assert plan is None
+
+
+async def test_simulate_payoff_negative_extra_raises(repository):
+    debt = _debt(id=1, monthly_payment=20000)
+    repository.get_by_id.return_value = debt
+    service = DebtService(repository)
+
+    with pytest.raises(ValueError):
+        await service.simulate_payoff(1, 1, extra_monthly=-100)

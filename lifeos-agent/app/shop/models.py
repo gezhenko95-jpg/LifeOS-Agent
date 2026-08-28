@@ -32,6 +32,11 @@ from app.db.base import Base
 # не должно требовать миграции типа (тот же довод, что у status в
 # focus_sessions).
 PURCHASE = "purchase"
+# Награда за завершённую фокус-сессию (specs/029) — то самое "будущее
+# начисление мимо чек-ина", под которое поле amount уже было спроектировано
+# знаковым (см. докстринг ниже). purchased_counts фильтрует по
+# reason == PURCHASE, так что этот повод не попадает в инвентарь магазина.
+FOCUS_REWARD = "focus_reward"
 
 
 class CoinTransaction(Base):

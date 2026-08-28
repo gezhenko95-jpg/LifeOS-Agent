@@ -2,7 +2,7 @@
 Репозиторий фокус-сессий. Единственное место с SQL к `focus_sessions`.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import func, select
 
@@ -67,3 +67,16 @@ class FocusSessionRepository(BaseRepository[FocusSession]):
         result = await self._session.execute(query)
         count, minutes = result.one()
         return count, minutes
+
+    async def list_completed_days(self, telegram_user_id: int) -> set[date]:
+        """Дни, когда была хотя бы одна завершённая сессия — для
+        "фокус-стрика" в награде монетами (specs/029). Дата — по
+        started_at (день, когда сессия ФАКТИЧЕСКИ проходила), не по
+        моменту завершения: сессия, начатая поздно вечером и закрытая
+        уже после полуночи, всё ещё относится к дню, когда её начали."""
+        query = select(FocusSession.started_at).where(
+            FocusSession.telegram_user_id == telegram_user_id,
+            FocusSession.status == COMPLETED,
+        )
+        result = await self._session.execute(query)
+        return {started_at.date() for (started_at,) in result.all()}

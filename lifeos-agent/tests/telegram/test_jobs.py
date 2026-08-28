@@ -380,6 +380,25 @@ async def test_focus_notifications_sends_break_done_message(no_db, monkeypatch):
     service.mark_break_notified.assert_awaited_once_with(session)
 
 
+async def test_focus_notifications_break_done_shows_reward(no_db, monkeypatch):
+    """specs/029 — сумма монет за сессию попадает в текст уведомления."""
+    monkeypatch.setattr(jobs, "get_settings", _owner_settings)
+    session = _focus_session()
+    completed = _focus_session()
+    completed.reward_coins = 11
+    service = AsyncMock()
+    service.list_due_work_end.return_value = []
+    service.list_due_break_end.return_value = [session]
+    service.mark_break_notified.return_value = completed
+    monkeypatch.setattr(jobs, "build_focus_service", lambda s: service)
+
+    context = _context()
+    await jobs.send_focus_notifications_job(context)
+
+    _, kwargs = context.bot.send_message.call_args
+    assert "+11 🪙" in kwargs["text"]
+
+
 async def test_focus_notifications_ignores_other_users_sessions(no_db, monkeypatch):
     monkeypatch.setattr(jobs, "get_settings", _owner_settings)
     session = _focus_session(telegram_user_id=999)

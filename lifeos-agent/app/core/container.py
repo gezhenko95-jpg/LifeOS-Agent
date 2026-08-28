@@ -78,7 +78,10 @@ def build_task_comment_service(session: AsyncSession) -> TaskCommentService:
 
 
 def build_habit_service(session: AsyncSession) -> HabitService:
-    return HabitService(HabitRepository(session))
+    # Composite: стрик-заморозка (specs/029) — товар магазина, инвентарь
+    # считается через ShopRepository.purchased_counts, тот же приём, что
+    # у build_farm_service ниже для семян/ускорителей.
+    return HabitService(HabitRepository(session), ShopRepository(session))
 
 
 def build_memory_service(session: AsyncSession) -> MemoryService:
@@ -113,7 +116,10 @@ def build_debt_service(session: AsyncSession) -> DebtService:
 
 
 def build_focus_service(session: AsyncSession) -> FocusSessionService:
-    return FocusSessionService(FocusSessionRepository(session))
+    # Composite: монеты за завершённую сессию (specs/029) списываются в
+    # тот же ledger, что и покупки магазина — тот же приём, что у
+    # build_farm_service ниже для сена.
+    return FocusSessionService(FocusSessionRepository(session), ShopRepository(session))
 
 
 def build_farm_service(session: AsyncSession) -> FarmService:

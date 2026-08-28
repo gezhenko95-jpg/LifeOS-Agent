@@ -109,3 +109,41 @@ class HabitLog(Base):
         server_default=func.now(),
         comment="Когда фактически была сделана отметка",
     )
+
+
+class HabitStreakFreeze(Base):
+    """Заморозка стрика, использованная на конкретный день (specs/029, по
+    мотивам Duolingo) — append-only ledger, тот же приём, что у
+    `coin_transactions`/`debt_payments`: факт использования не
+    редактируется и не удаляется. Без `telegram_user_id` — владение
+    проверяется через `Habit`, тот же принцип, что у `HabitLog` выше.
+
+    НЕ создаёт запись в `HabitLog`: заморозка защищает только ЧИСЛО
+    текущего стрика (см. `HabitService.get_streak`), а не переписывает
+    историю выполнения — календарь и рекорд серии (`longest_streak`)
+    остаются честными (тот же принцип, что у `Pet.deaths_count`,
+    specs/028: игровая поблажка не должна обесценивать память о факте)."""
+
+    __tablename__ = "habit_streak_freezes"
+    __table_args__ = (
+        UniqueConstraint("habit_id", "protected_on", name="uq_habit_freeze_day"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
+
+    habit_id: Mapped[int] = mapped_column(
+        ForeignKey("habits.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        comment="Привычка, чей стрик защищён",
+    )
+
+    protected_on: Mapped[date] = mapped_column(
+        Date,
+        nullable=False,
+        comment="Какой день заморожен — только вчерашний на момент использования",
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

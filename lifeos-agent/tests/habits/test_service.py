@@ -4,7 +4,13 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.habits.models import Habit, HabitLog
-from app.habits.service import HabitService
+from app.habits.service import (
+    HabitFreezeError,
+    HabitNotFoundError,
+    HabitService,
+    NoFreezeAvailableError,
+    NothingToFreezeError,
+)
 
 TODAY = date.today()
 
@@ -21,6 +27,9 @@ def repository():
         for habit in repo.list_by_user.return_value
         if query.lower() in habit.title.lower()
     ]
+    # Стрик-заморозка (specs/029) — по умолчанию ни у одной привычки нет
+    # замороженных дней; тесты, которым это важно, переопределяют явно.
+    repo.list_freeze_days_for_habits.return_value = {}
     return repo
 
 
@@ -340,3 +349,165 @@ async def test_days_since_last_completion_bulk(repository):
     result = await service.days_since_last_completion_bulk(1, [1, 2])
 
     assert result == {1: 3, 2: None}
+
+
+# --- Стрик-заморозка (specs/029, по мотивам Duolingo) -------------------
+
+YESTERDAY = TODAY - timedelta(days=1)
+DAY_BEFORE_YESTERDAY = TODAY - timedelta(days=2)
+
+
+@pytest.fixture
+def shop_repository():
+    repo = AsyncMock()
+    repo.purchased_counts.return_value = {}
+    return repo
+
+
+async def test_available_freezes_without_shop_repository_is_zero(repository):
+    service = HabitService(repository)
+
+    assert await service.available_freezes(1) == 0
+
+
+async def test_available_freezes_subtracts_used(repository, shop_repository):
+    shop_repository.purchased_counts.return_value = {"streak_freeze": 3}
+    repository.count_used_freezes.return_value = 1
+    service = HabitService(repository, shop_repository)
+
+    assert await service.available_freezes(1) == 2
+
+
+async def test_freeze_yesterday_missing_habit_raises_not_found(repository):
+    repository.get_by_id.return_value = None
+    service = HabitService(repository)
+
+    with pytest.raises(HabitNotFoundError):
+        await service.freeze_yesterday(1, 999)
+
+
+async def test_freeze_yesterday_wrong_owner_raises_not_found(repository):
+    repository.get_by_id.return_value = _owned_habit(telegram_user_id=2)
+    service = HabitService(repository)
+
+    with pytest.raises(HabitNotFoundError):
+        await service.freeze_yesterday(1, 1)
+
+
+async def test_freeze_yesterday_no_freezes_available_raises(repository):
+    repository.get_by_id.return_value = _owned_habit()
+    service = HabitService(repository)  # без shop_repository — 0 в инвентаре
+
+    with pytest.raises(NoFreezeAvailableError):
+        await service.freeze_yesterday(1, 1)
+
+
+async def test_freeze_yesterday_already_logged_raises(repository, shop_repository):
+    repository.get_by_id.return_value = _owned_habit()
+    shop_repository.purchased_counts.return_value = {"streak_freeze": 1}
+    repository.count_used_freezes.return_value = 0
+    repository.list_logs.return_value = [_log(1, YESTERDAY)]
+    service = HabitService(repository, shop_repository)
+
+    with pytest.raises(NothingToFreezeError):
+        await service.freeze_yesterday(1, 1)
+
+
+async def test_freeze_yesterday_no_streak_to_bridge_raises(repository, shop_repository):
+    """Позавчера не отмечено — заморозка вчерашнего дня ничего не продлит."""
+    repository.get_by_id.return_value = _owned_habit()
+    shop_repository.purchased_counts.return_value = {"streak_freeze": 1}
+    repository.count_used_freezes.return_value = 0
+    repository.list_logs.return_value = []
+    service = HabitService(repository, shop_repository)
+
+    with pytest.raises(NothingToFreezeError):
+        await service.freeze_yesterday(1, 1)
+
+
+async def test_freeze_yesterday_already_frozen_raises(repository, shop_repository):
+    repository.get_by_id.return_value = _owned_habit()
+    shop_repository.purchased_counts.return_value = {"streak_freeze": 1}
+    repository.count_used_freezes.return_value = 0
+    repository.list_logs.return_value = [_log(1, DAY_BEFORE_YESTERDAY)]
+    repository.list_freeze_days_for_habits.return_value = {1: {YESTERDAY}}
+    service = HabitService(repository, shop_repository)
+
+    with pytest.raises(NothingToFreezeError):
+        await service.freeze_yesterday(1, 1)
+
+
+async def test_freeze_yesterday_success_records_freeze(repository, shop_repository):
+    habit = _owned_habit()
+    repository.get_by_id.return_value = habit
+    shop_repository.purchased_counts.return_value = {"streak_freeze": 1}
+    repository.count_used_freezes.return_value = 0
+    repository.list_logs.return_value = [_log(1, DAY_BEFORE_YESTERDAY)]
+    service = HabitService(repository, shop_repository)
+
+    result = await service.freeze_yesterday(1, 1)
+
+    assert result is habit
+    repository.add_streak_freeze.assert_awaited_once_with(1, YESTERDAY)
+
+
+async def test_get_streak_extended_by_freeze(repository, shop_repository):
+    """Позавчера отмечено, вчера — заморожено: текущий стрик считает
+    заморозку как продолжение серии."""
+    repository.get_by_id.return_value = _owned_habit()
+    repository.list_logs.return_value = [_log(1, DAY_BEFORE_YESTERDAY)]
+    repository.list_freeze_days_for_habits.return_value = {1: {YESTERDAY}}
+    service = HabitService(repository, shop_repository)
+
+    streak = await service.get_streak(1, 1)
+
+    assert streak == 2
+
+
+async def test_can_freeze_yesterday_bulk_true_when_gap_bridgeable(repository):
+    repository.list_by_user.return_value = _owned(1)
+    repository.list_logs_for_habits.return_value = {1: [_log(1, DAY_BEFORE_YESTERDAY)]}
+    service = HabitService(repository)
+
+    result = await service.can_freeze_yesterday_bulk(1, [1])
+
+    assert result == {1: True}
+
+
+async def test_can_freeze_yesterday_bulk_false_when_yesterday_already_done(repository):
+    repository.list_by_user.return_value = _owned(1)
+    repository.list_logs_for_habits.return_value = {
+        1: [_log(1, DAY_BEFORE_YESTERDAY), _log(1, YESTERDAY)]
+    }
+    service = HabitService(repository)
+
+    result = await service.can_freeze_yesterday_bulk(1, [1])
+
+    assert result == {1: False}
+
+
+async def test_can_freeze_yesterday_bulk_false_without_streak_to_bridge(repository):
+    repository.list_by_user.return_value = _owned(1)
+    repository.list_logs_for_habits.return_value = {1: []}
+    service = HabitService(repository)
+
+    result = await service.can_freeze_yesterday_bulk(1, [1])
+
+    assert result == {1: False}
+
+
+async def test_can_freeze_yesterday_bulk_false_when_already_frozen(repository):
+    repository.list_by_user.return_value = _owned(1)
+    repository.list_logs_for_habits.return_value = {1: [_log(1, DAY_BEFORE_YESTERDAY)]}
+    repository.list_freeze_days_for_habits.return_value = {1: {YESTERDAY}}
+    service = HabitService(repository)
+
+    result = await service.can_freeze_yesterday_bulk(1, [1])
+
+    assert result == {1: False}
+
+
+def test_habit_freeze_errors_share_common_base():
+    assert issubclass(HabitNotFoundError, HabitFreezeError)
+    assert issubclass(NoFreezeAvailableError, HabitFreezeError)
+    assert issubclass(NothingToFreezeError, HabitFreezeError)

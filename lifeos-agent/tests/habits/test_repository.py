@@ -153,3 +153,39 @@ async def test_find_active_by_title_percent_is_literal(session):
     matches = await repo.find_active_by_title(1, "100%")
 
     assert len(matches) == 1
+
+
+# --- Стрик-заморозка (specs/029) ---------------------------------------
+
+
+async def test_add_streak_freeze_and_list_for_habits(session):
+    habit = await _add_habit(session)
+    repo = HabitRepository(session)
+
+    await repo.add_streak_freeze(habit.id, TODAY)
+    result = await repo.list_freeze_days_for_habits([habit.id])
+
+    assert result == {habit.id: {TODAY}}
+
+
+async def test_list_freeze_days_for_habits_empty_ids_returns_empty_dict(session):
+    repo = HabitRepository(session)
+
+    result = await repo.list_freeze_days_for_habits([])
+
+    assert result == {}
+
+
+async def test_count_used_freezes_filters_by_owner(session):
+    mine = await _add_habit(session, "Моя")
+    other = Habit(telegram_user_id=2, title="Чужая")
+    session.add(other)
+    await session.commit()
+    await session.refresh(other)
+    repo = HabitRepository(session)
+
+    await repo.add_streak_freeze(mine.id, TODAY)
+    await repo.add_streak_freeze(other.id, TODAY)
+
+    assert await repo.count_used_freezes(1) == 1
+    assert await repo.count_used_freezes(2) == 1

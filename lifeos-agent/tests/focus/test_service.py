@@ -7,6 +7,7 @@ import pytest
 
 from app.focus.models import CANCELLED, COMPLETED, IN_PROGRESS, ON_BREAK, FocusSession
 from app.focus.service import FocusSessionService
+from app.shop.models import FOCUS_REWARD
 
 NOW = datetime.now(timezone.utc)
 
@@ -185,3 +186,83 @@ async def test_list_due_break_end_delegates(repository):
 
     assert len(result) == 1
     repository.list_due_break_end.assert_awaited_once_with(NOW)
+
+
+# --- Монеты за фокус-сессию (specs/029, по мотивам Forest/TickTick) -----
+
+
+@pytest.fixture
+def shop_repository():
+    return AsyncMock()
+
+
+async def test_mark_break_notified_without_shop_repository_unchanged(repository):
+    """Без shop_repository поведение как раньше — старый вызывающий код
+    (и старые тесты выше) не ломается."""
+    session = _session(status=ON_BREAK)
+    service = FocusSessionService(repository)
+
+    updated = await service.mark_break_notified(session)
+
+    assert updated.status == COMPLETED
+    assert updated.reward_coins == 0
+
+
+async def test_mark_break_notified_short_session_gets_no_reward(
+    repository, shop_repository
+):
+    session = _session(status=ON_BREAK, work_minutes=10)
+    service = FocusSessionService(repository, shop_repository)
+
+    updated = await service.mark_break_notified(session)
+
+    assert updated.reward_coins == 0
+    shop_repository.add_transaction.assert_not_awaited()
+
+
+async def test_mark_break_notified_first_session_today_gets_base_and_bonus(
+    repository, shop_repository
+):
+    """Позавчера/вчера уже была завершённая сессия — сегодняшняя первая
+    продлевает фокус-стрик до 3 дней подряд: база 5 + 2×3 = 11."""
+    today = datetime.now(timezone.utc).date()
+    repository.list_completed_days.return_value = {
+        today - timedelta(days=1),
+        today - timedelta(days=2),
+    }
+    session = _session(status=ON_BREAK, work_minutes=25)
+    service = FocusSessionService(repository, shop_repository)
+
+    updated = await service.mark_break_notified(session)
+
+    assert updated.reward_coins == 11
+    shop_repository.add_transaction.assert_awaited_once_with(
+        telegram_user_id=1, amount=11, reason=FOCUS_REWARD
+    )
+
+
+async def test_mark_break_notified_second_session_today_gets_base_only(
+    repository, shop_repository
+):
+    today = datetime.now(timezone.utc).date()
+    repository.list_completed_days.return_value = {today}
+    session = _session(status=ON_BREAK, work_minutes=25)
+    service = FocusSessionService(repository, shop_repository)
+
+    updated = await service.mark_break_notified(session)
+
+    assert updated.reward_coins == 5
+
+
+async def test_mark_break_notified_streak_bonus_caps(repository, shop_repository):
+    today = datetime.now(timezone.utc).date()
+    repository.list_completed_days.return_value = {
+        today - timedelta(days=i) for i in range(1, 20)
+    }
+    session = _session(status=ON_BREAK, work_minutes=25)
+    service = FocusSessionService(repository, shop_repository)
+
+    updated = await service.mark_break_notified(session)
+
+    # 5 базовых + не больше 2×5 = 10 бонусных, даже при стрике длиннее 5 дней
+    assert updated.reward_coins == 15
